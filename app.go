@@ -412,7 +412,10 @@ func (app *App) loadInstalledPlugins() {
 		var manifest dto.PluginManifest
 		_ = json.Unmarshal(manifestBytes, &manifest)
 		if manifest.Extensions != nil {
-			hasRuntime := len(manifest.Extensions.TaskHandlers) > 0 || len(manifest.Extensions.SiteBrowsers) > 0
+			// 运行时判据与安装闸门（service.go parsePluginPackage 的声明11 修正）同源：
+			// siteAuthorFetch 的拉取 RPC 由插件进程承载，纯该段插件也是运行时插件
+			hasRuntime := len(manifest.Extensions.TaskHandlers) > 0 || len(manifest.Extensions.SiteBrowsers) > 0 ||
+				len(manifest.Extensions.SiteAuthorFetch) > 0
 			if hasRuntime {
 				runtimeLoaded++
 			} else {
@@ -631,25 +634,6 @@ type pluginExecFactoryAdapter struct {
 // Executor 按插件公开 ID 取执行器（执行器按注册表现取，插件身份在调用参数中携带）
 func (a *pluginExecFactoryAdapter) Executor(pluginPublicId string) (download.PluginExecutor, error) {
 	return extension2.NewTaskExecutor(a.registry), nil
-}
-
-// urlListenerAdapter 适配 PluginTaskUrlListener.Service 到 UrlListenerRegistry 接口
-type urlListenerAdapter struct {
-	svc          *pluginTaskUrlListener.Service
-	pluginEntity *entity2.Plugin
-}
-
-func (a *urlListenerAdapter) RegisterUrlListener(pluginPublicId string, extensionId string, patterns []string) {
-	pwc := &pluginTaskUrlListener.PluginWithExtension{
-		Plugin:       a.pluginEntity,
-		ExtensionKey: "taskHandler",
-		ExtensionID:  extensionId,
-	}
-	a.svc.Register(pwc, patterns)
-}
-
-func (a *urlListenerAdapter) UnregisterUrlListener(pluginPublicId string, extensionId string) {
-	a.svc.Unregister(pluginPublicId, extensionId)
 }
 
 // wailsFrontendEventProvider 桥接 Wails Events 实现前后端通信
@@ -1042,6 +1026,7 @@ func (app *App) initAdvancedServices() error {
 
 	// plugin 服务
 	app.pluginLoader = extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry)
+	// URL 监听派生索引的清理回调：插件卸载/崩溃（进程表条目消失）时整插件注销其监听条目
 	app.pluginLoader.SetUrlListenerCleaner(func(pluginPublicId string) {
 		app.PluginTaskUrlListenerSvc.Unregister(pluginPublicId, "")
 	})
@@ -1082,7 +1067,6 @@ func (app *App) initAdvancedServices() error {
 		siteBrowserRegistry:       app.SiteBrowserRegistry,
 		frontendExtensionRegistry: app.FrontendExtensionRegistry,
 	})
-	app.PluginService.SetUrlListenerProvider(&pluginUrlListenerAdapter{manager: pluginTaskUrlListenerManager})
 
 	// backupGovernance 备份治理服务（backup/plugin 两个引用方就绪后创建：双向对账 + 监视哨 + 24h 巡检）。
 	// ★ 引用方枚举登记处（唯一落点）：新增「业务行内嵌 backup_id 列引用保管清单行」的模块时，必须在此
@@ -1247,7 +1231,7 @@ func (app *App) initAdvancedServices() error {
 	// 注入作品集父集关系获取能力（plugin 提供，work 作品入库后异步拉取建立层级 + 写 site_sort_order）
 	app.WorkService.SetWorkSetRelationFetcher(extension2.NewWorkSetRelationFetcher(app.TaskHandlerRegistry, app.pluginLoader))
 	// 注入站点作者信息拉取能力（plugin 能力桥提供，候选广播路由内嵌于实现侧）+ work 入库后自动触发面接线
-	app.AuthorInfoService.SetSiteAuthorFetcher(extension2.NewSiteAuthorFetcher(app.pluginLoader, app.pluginLoader, app.pluginLoader, app.pluginLoader))
+	app.AuthorInfoService.SetSiteAuthorFetcher(extension2.NewSiteAuthorFetcher(app.pluginLoader, app.pluginLoader, app.pluginLoader))
 	app.WorkService.SetSiteAuthorRefreshScheduler(app.AuthorInfoService)
 
 	// 深链协议自注册（便携分发：HKCU 幂等自写；安装版 HKLM 由 NSIS 管理；失败仅记日志不阻断）
@@ -1708,8 +1692,10 @@ func (p *frontendExtensionParticipant) OnStopped(ctx context.Context, pluginPubl
 }
 
 // pluginProcessParticipant 插件进程生命周期参与者：激活相位组装插件信息与宿主上下文并
-// 启动运行时子进程；停用相位停止子进程并清理其所属运行时注册表（任务处理器/站点浏览器/
-// URL 监听）。激活相位依赖的 TaskService 等服务与 mainHWND 均在本参与者构造后才绪，
+// 启动运行时子进程（进程 Activate 就绪后按清单声明派生注册任务处理器/站点浏览器代理，
+// 子进程加载成功后按清单 taskHandlers 条目 urlPatterns 登记 URL 监听派生索引）；
+// 停用相位停止子进程并清理其所属运行时注册表（任务处理器/站点浏览器/URL 监听）。
+// 激活相位依赖的 TaskService 等服务与 mainHWND 均在本参与者构造后才绪，
 // 统一经 *App 惰性读取（激活只发生在装配完成与窗口就绪后）
 type pluginProcessParticipant struct {
 	app *App
@@ -1743,13 +1729,10 @@ func (p *pluginProcessParticipant) Activate(ctx context.Context, plugin *entity2
 	extension2.ApplyManifestDeclarations(pluginInfo, manifest)
 
 	pluginCtx := extension2.NewPluginContext(extension2.PluginContextDeps{
-		PluginInfo:          pluginInfo,
-		RootPath:            rootPath,
-		TaskHandlerRegistry: app.TaskHandlerRegistry,
-		SiteBrowserRegistry: app.SiteBrowserRegistry,
-		Storage:             app.PluginStorageService,
+		PluginInfo: pluginInfo,
+		RootPath:   rootPath,
+		Storage:    app.PluginStorageService,
 		TaskCreate:          &taskCreateAdapter{svc: app.TaskService},
-		UrlListener:         &urlListenerAdapter{svc: app.PluginTaskUrlListenerSvc, pluginEntity: plugin},
 		FrontendEvent: &wailsFrontendEventProvider{
 			emitterFunc: func() extension2.WailsEventEmitter { return app.taskProgressEmitter },
 			onEventFunc: func() func(topic string, callback func(data any)) func() { return app.frontendEventOn },
@@ -1759,14 +1742,16 @@ func (p *pluginProcessParticipant) Activate(ctx context.Context, plugin *entity2
 
 	logger.Log.Infof("插件 %s: 正在启动子进程 %s", publicId, pluginPath)
 	if err := app.pluginLoader.LoadPluginProcess(pluginPath, publicId, extension2.PluginProcessDeps{
-		PluginInfo:          pluginInfo,
-		PluginCtx:           pluginCtx,
-		TaskHandlerRegistry: app.TaskHandlerRegistry,
-		SiteBrowserRegistry: app.SiteBrowserRegistry,
-		MainHWND:            app.mainHWND,
+		PluginInfo: pluginInfo,
+		PluginCtx:  pluginCtx,
+		MainHWND:   app.mainHWND,
 	}); err != nil {
 		return fmt.Errorf("加载插件失败 %s: %w", publicId, err)
 	}
+
+	// URL 监听派生索引随进程表登记而立：任务创建候选枚举的数据源，条目键 = 插件公开 ID +
+	// 清单条目 id；停用/崩溃随进程表条目消失经清理回调整插件注销
+	app.PluginTaskUrlListenerSvc.RegisterDeclared(plugin, manifest.Extensions.TaskHandlers)
 	return nil
 }
 
@@ -1817,15 +1802,6 @@ func (a *runtimeStatusAdapter) GetPluginRuntimeStatus(pluginPublicId string) *pl
 		PID:         rt.PID,
 		ActivatedAt: rt.ActivatedAt.UnixMilli(),
 	}
-}
-
-// urlListenerAdapter 将 Manager 适配为 plugin.UrlListenerProvider
-type pluginUrlListenerAdapter struct {
-	manager *pluginTaskUrlListener.Manager
-}
-
-func (a *pluginUrlListenerAdapter) ListPatternsByPlugin(pluginPublicId string) []string {
-	return a.manager.ListPatternsByPlugin(pluginPublicId)
 }
 
 // shutdownPlugins 关闭所有已加载的插件（停止子进程、注销扩展点和静态资源）

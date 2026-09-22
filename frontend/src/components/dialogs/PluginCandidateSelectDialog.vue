@@ -9,12 +9,20 @@ import { isNotBlank } from '@renderer/utils/StringUtil.ts'
 const state = defineModel<boolean>('state', { required: true })
 
 // props
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   /** 候选清单，顺序即展示序——首位为默认选中项（由后端按复合全键字典序排定，此处不再重排） */
   candidates: PluginCandidate[]
   /** 引导文案（可选）：候选按站点分组逐个询问时由调用方点明本次问的是哪个站点，缺省用通用文案 */
   tip?: string
-}>()
+  /** 弹窗标题（可选）：缺省用任务创建面的通用标题 */
+  title?: string
+  /** 是否在候选名旁展示扩展点标识（可选，缺省展示）：候选展示名已含条目段（后端拼好的
+   * 「插件名 · 条目名」全键展示名）的调用面关闭，避免条目身份以原始 id 重复展示 */
+  showExtensionId?: boolean
+}>(), {
+  title: '选择处理插件',
+  showExtensionId: true
+})
 
 // 事件
 const emits = defineEmits<{
@@ -34,7 +42,8 @@ const candidateList = computed<PluginCandidate[]>(() => props.candidates.filter(
 const selectedCandidate = computed<PluginCandidate | undefined>(() => candidateList.value[selectedIndex.value])
 
 // 方法
-// 候选展示名：插件名，缺名回落插件公开 ID
+// 候选展示名：后端下发的展示名按消费面而定（任务创建面为插件名，作者拉取面为「插件名 · 条目名」
+// 全键展示名），缺名回落插件公开 ID
 function candidateName(candidate: PluginCandidate): string {
   return isNotBlank(candidate.pluginName) ? candidate.pluginName : candidate.pluginPublicId
 }
@@ -78,7 +87,7 @@ function handleClosed() {
 <template>
   <el-dialog
     v-model="state"
-    title="选择处理插件"
+    :title="props.title"
     width="480px"
     :close-on-click-modal="false"
     @closed="handleClosed"
@@ -98,7 +107,7 @@ function handleClosed() {
       >
         <span class="plugin-candidate-select-name">{{ candidateName(candidate) }}</span>
         <span
-          v-if="isNotBlank(candidate.extensionId)"
+          v-if="props.showExtensionId && isNotBlank(candidate.extensionId)"
           class="plugin-candidate-select-extension"
         >{{ candidate.extensionId }}</span>
       </el-radio>

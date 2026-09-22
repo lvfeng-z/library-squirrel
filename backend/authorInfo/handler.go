@@ -9,8 +9,9 @@ import (
 	"github.com/library-squirrel/backend/base/model/dto"
 )
 
-// siteAuthorFetchConflictMsg 候选冲突的引导文案（前端据此提示用户选择插件后带显选键重发）
-const siteAuthorFetchConflictMsg = "该作者信息可由多个插件拉取，请选择插件"
+// siteAuthorFetchConflictMsg 候选冲突的引导文案（前端据此提示用户选择拉取来源后带显选键重发）。
+// 冲突既可能来自多个插件、也可能来自同一插件的多个作者源条目，文案取两态通用的「拉取来源」表述
+const siteAuthorFetchConflictMsg = "该作者信息可由多个拉取来源获取，请选择本次使用的来源"
 
 // Handler 作者个人信息 Handler
 type Handler struct {
@@ -33,8 +34,8 @@ func conflictResponse(resp *SiteAuthorFetchResponse) *model.ApiResponse[*SiteAut
 }
 
 // FetchSiteAuthorInfo 手动拉取单个站点作者信息（前端行操作，loading 态由前端按调用挂起）。
-// chosenPlugins 为交互面显选（站点键 → 插件，空=未显选）：该站点候选多于一个且未显选时返回
-// 冲突载荷且未调用任何插件，由前端选择后带显选重发
+// chosenPlugins 为交互面显选（站点键 → 插件 + 条目两键定位一个候选条目；未显选的站点不带条目）：
+// 该站点候选多于一个且未显选时返回冲突载荷且未调用任何插件，由前端选择后带显选重发
 func (h *Handler) FetchSiteAuthorInfo(ctx context.Context, siteAuthorId int64,
 	chosenPlugins []*dto.SiteAuthorFetchChoice) *model.ApiResponse[*SiteAuthorFetchResponse] {
 	resp, err := h.svc.FetchSiteAuthorInfoById(ctx, siteAuthorId, chosenPlugins)

@@ -23,8 +23,8 @@ import * as $models from "./models.js";
 
 /**
  * FetchSiteAuthorInfo 手动拉取单个站点作者信息（前端行操作，loading 态由前端按调用挂起）。
- * chosenPlugins 为交互面显选（站点键 → 插件，空=未显选）：该站点候选多于一个且未显选时返回
- * 冲突载荷且未调用任何插件，由前端选择后带显选重发
+ * chosenPlugins 为交互面显选（站点键 → 插件 + 条目两键定位一个候选条目；未显选的站点不带条目）：
+ * 该站点候选多于一个且未显选时返回冲突载荷且未调用任何插件，由前端选择后带显选重发
  */
 export function FetchSiteAuthorInfo(siteAuthorId: number, chosenPlugins: (dto$0.SiteAuthorFetchChoice | null)[]): $CancellablePromise<model$0.ApiResponse<$models.SiteAuthorFetchResponse | null> | null> {
     return $Call.ByID(3836208242, siteAuthorId, chosenPlugins).then(($result: any) => {

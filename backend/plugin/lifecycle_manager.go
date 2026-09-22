@@ -99,11 +99,10 @@ func readPluginManifest(plugin *entity2.Plugin) (*dto.PluginManifest, error) {
 }
 
 // readPluginManifestBytes 读取插件安装目录下的 plugin.json 原文（声明面校验就原文探测顶层键，
-// 故需要原文而非仅解析结果）
+// 故需要原文而非仅解析结果；激活与状态展示等多路径共用，不落激活语境日志）
 func readPluginManifestBytes(plugin *entity2.Plugin) ([]byte, error) {
 	publicId := plugin.PublicID.String
 	pluginRootDir := filepath.Join(util.RootPath(), plugin.RootPath.String)
-	logger.Log.Infof("正在激活插件: %s (root=%s)", publicId, pluginRootDir)
 	manifestBytes, err := os.ReadFile(filepath.Join(pluginRootDir, "plugin.json"))
 	if err != nil {
 		return nil, fmt.Errorf("读取 plugin.json 失败 %s: %w", publicId, err)
@@ -137,6 +136,7 @@ func (m *lifecycleManager) activate(ctx context.Context, plugin *entity2.Plugin)
 	}
 	m.states[publicId] = lifecycleActivating
 
+	logger.Log.Infof("正在激活插件: %s (root=%s)", publicId, filepath.Join(util.RootPath(), plugin.RootPath.String))
 	manifest, err := m.readManifest(plugin)
 	if err != nil {
 		delete(m.states, publicId)

@@ -47,32 +47,81 @@ func invalidDeclarationCases() []struct {
 		wantText string
 	}{
 		{
-			name: "缺 sites",
+			name: "siteAuthorFetch 空数组",
 			build: func(publicId string) string {
-				return declarationManifestWith(publicId, `{"siteAuthorFetch":{},`+frontendExtensionsField+`}`)
+				return declarationManifestWith(publicId, `{"siteAuthorFetch":[],`+frontendExtensionsField+`}`)
 			},
-			wantText: "siteAuthorFetch.sites 为空",
+			wantText: "siteAuthorFetch 为空数组",
 		},
 		{
-			name: "空 sites",
+			name: "siteAuthorFetch 条目缺 id",
 			build: func(publicId string) string {
-				return declarationManifestWith(publicId, `{"siteAuthorFetch":{"sites":[]},`+frontendExtensionsField+`}`)
+				return declarationManifestWith(publicId, `{"siteAuthorFetch":[{"name":"作者源","sites":["bilibili"]}],`+frontendExtensionsField+`}`)
 			},
-			wantText: "siteAuthorFetch.sites 为空",
+			wantText: "siteAuthorFetch[0] 条目缺 id",
 		},
 		{
-			name: "未注册站点键",
+			name: "siteAuthorFetch 条目 id 重复",
 			build: func(publicId string) string {
-				return declarationManifestWith(publicId, `{"siteAuthorFetch":{"sites":["nosite"]},`+frontendExtensionsField+`}`)
+				return declarationManifestWith(publicId, `{"siteAuthorFetch":[{"id":"main","name":"作者源","sites":["bilibili"]},{"id":"main","name":"备份源","sites":["pixiv"]}],`+frontendExtensionsField+`}`)
 			},
-			wantText: `未注册站点键 "nosite"`,
+			wantText: `含重复条目 id "main"`,
+		},
+		{
+			name: "siteAuthorFetch 条目缺 name",
+			build: func(publicId string) string {
+				return declarationManifestWith(publicId, `{"siteAuthorFetch":[{"id":"main","sites":["bilibili"]}],`+frontendExtensionsField+`}`)
+			},
+			wantText: "siteAuthorFetch[main].name 为空",
+		},
+		{
+			name: "siteAuthorFetch 条目缺 sites",
+			build: func(publicId string) string {
+				return declarationManifestWith(publicId, `{"siteAuthorFetch":[{"id":"main","name":"作者源"}],`+frontendExtensionsField+`}`)
+			},
+			wantText: "siteAuthorFetch[main].sites 为空",
+		},
+		{
+			name: "siteAuthorFetch 未注册站点键",
+			build: func(publicId string) string {
+				return declarationManifestWith(publicId, `{"siteAuthorFetch":[{"id":"main","name":"作者源","sites":["nosite"]}],`+frontendExtensionsField+`}`)
+			},
+			wantText: `siteAuthorFetch[main].sites 含未注册站点键 "nosite"`,
+		},
+		{
+			name: "taskHandlers 条目缺 name",
+			build: func(publicId string) string {
+				return declarationManifestWith(publicId, `{"taskHandlers":[{"id":"main","options":["workOrderQuery"]}],`+frontendExtensionsField+`}`)
+			},
+			wantText: "taskHandlers[main].name 为空",
 		},
 		{
 			name: "未识别 options",
 			build: func(publicId string) string {
-				return declarationManifestWith(publicId, `{"taskHandlers":[{"id":"main","options":["workOrderQuer"]}],`+frontendExtensionsField+`}`)
+				return declarationManifestWith(publicId, `{"taskHandlers":[{"id":"main","name":"主处理器","options":["workOrderQuer"]}],`+frontendExtensionsField+`}`)
 			},
 			wantText: `taskHandlers[main].options 含未识别的可选方法组 "workOrderQuer"`,
+		},
+		{
+			name: "urlPatterns 空数组",
+			build: func(publicId string) string {
+				return declarationManifestWith(publicId, `{"taskHandlers":[{"id":"main","name":"主处理器","urlPatterns":[]}],`+frontendExtensionsField+`}`)
+			},
+			wantText: "taskHandlers[main].urlPatterns 为空数组",
+		},
+		{
+			name: "urlPatterns 坏正则",
+			build: func(publicId string) string {
+				return declarationManifestWith(publicId, `{"taskHandlers":[{"id":"main","name":"主处理器","urlPatterns":["[invalid("]}],`+frontendExtensionsField+`}`)
+			},
+			wantText: `含无法编译的正则 "[invalid("`,
+		},
+		{
+			name: "siteBrowsers 条目缺 name",
+			build: func(publicId string) string {
+				return declarationManifestWith(publicId, `{"siteBrowsers":[{"id":"main"}],`+frontendExtensionsField+`}`)
+			},
+			wantText: "siteBrowsers[main].name 为空",
 		},
 		{
 			name:     "残留顶层 capabilities",
@@ -89,18 +138,18 @@ func invalidDeclarationCases() []struct {
 	}
 }
 
-// validDeclarationManifest 声明面合格的清单（含 taskHandlers 条目、siteAuthorFetch 段与
-// 根级 settings 段）
+// validDeclarationManifest 声明面合格的清单（含 taskHandlers 条目（带 urlPatterns）、
+// siteAuthorFetch 条目与根级 settings 段）
 func validDeclarationManifest(publicId string) string {
 	return `{"id":"` + publicId + `","name":"测试插件","version":"1.0.0","author":"tester",` +
 		fmt.Sprintf(`"contractVersion":%d,`, pluginsdktransport.ContractVersion) +
 		`"activation":{"type":1},"entryFile":"plugin.exe",` +
 		`"settings":[{"key":"apiToken","type":"string","title":"访问令牌","default":"anon","encrypted":true}],` +
-		`"extensions":{"taskHandlers":[{"id":"main","name":"主处理器","options":["workOrderQuery"]}],` +
-		`"siteAuthorFetch":{"sites":["bilibili"]},` + frontendExtensionsField + `}}`
+		`"extensions":{"taskHandlers":[{"id":"main","name":"主处理器","options":["workOrderQuery"],"urlPatterns":["^https://www\\.bilibili\\.com/video/"]}],` +
+		`"siteAuthorFetch":[{"id":"main","name":"作者源","sites":["bilibili"]}],` + frontendExtensionsField + `}}`
 }
 
-// TestInstallFromPathRejectsInvalidDeclarations 安装期闸门：六种不合格形态逐种拒收安装（安装失败且
+// TestInstallFromPathRejectsInvalidDeclarations 安装期闸门：不合格形态逐种拒收安装（安装失败且
 // 点名不合格项与期望形态），且安装主体不落库——拒收发生在解压/建行之前
 func TestInstallFromPathRejectsInvalidDeclarations(t *testing.T) {
 	for i, tc := range invalidDeclarationCases() {
@@ -136,6 +185,35 @@ func TestInstallFromPathAcceptsValidDeclarations(t *testing.T) {
 	}
 }
 
+// pureSiteAuthorFetchManifest 仅声明站点作者拉取能力包的清单（无任务处理器/站点浏览器/前端扩展）
+func pureSiteAuthorFetchManifest(publicId, entryFile string) string {
+	return `{"id":"` + publicId + `","name":"拉取插件","version":"1.0.0","author":"tester",` +
+		fmt.Sprintf(`"contractVersion":%d,`, pluginsdktransport.ContractVersion) +
+		`"activation":{"type":1},"entryFile":"` + entryFile + `",` +
+		`"extensions":{"siteAuthorFetch":[{"id":"main","name":"作者源","sites":["bilibili"]}]}}`
+}
+
+// TestInstallFromPathAcceptsPureSiteAuthorFetchPlugin 安装闸门把 siteAuthorFetch 数组计入扩展点与
+// 运行时判定：纯站点作者拉取插件（无其他扩展点）可安装；其拉取 RPC 由插件进程承载，缺 entryFile
+// 同样拒收
+func TestInstallFromPathAcceptsPureSiteAuthorFetchPlugin(t *testing.T) {
+	svc, _ := newCleanupTestService(t)
+	const publicId = "com.accept.fetchonly"
+	if _, _, err := svc.InstallFromPath(context.Background(),
+		writePluginZip(t, pureSiteAuthorFetchManifest(publicId, "plugin.exe")), true); err != nil {
+		t.Fatalf("纯 siteAuthorFetch 插件应安装成功: %v", err)
+	}
+
+	_, _, err := svc.InstallFromPath(context.Background(),
+		writePluginZip(t, pureSiteAuthorFetchManifest("com.reject.fetchonly.noentry", "")), true)
+	if err == nil {
+		t.Fatal("纯 siteAuthorFetch 插件缺 entryFile 应拒收")
+	}
+	if !errors.Is(err, ErrInvalidManifest) {
+		t.Errorf("缺 entryFile 拒收原因应为 ErrInvalidManifest, 实际: %v", err)
+	}
+}
+
 // plantPluginWithManifestOnDisk 预置插件行与其安装目录下的 plugin.json（RootPath 指向
 // <根目录>/plugin/package/<publicId>/1.0.0）。磁盘清单可直接指定，用以构造「旧版本装的、
 // 新版本跑」——DB 行已存在，待读的清单不合规
@@ -161,7 +239,7 @@ func plantPluginWithManifestOnDisk(t *testing.T, svc *Service, publicId, manifes
 	return row
 }
 
-// TestActivateSkipsPluginWithInvalidDeclarations 加载期闸门：六种不合格形态逐种在激活时被跳过
+// TestActivateSkipsPluginWithInvalidDeclarations 加载期闸门：不合格形态逐种在激活时被跳过
 // （行存量不合规时读盘清单校验不合格即中止，插件保持未激活、原因落日志）
 func TestActivateSkipsPluginWithInvalidDeclarations(t *testing.T) {
 	for i, tc := range invalidDeclarationCases() {

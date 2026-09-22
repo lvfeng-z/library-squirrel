@@ -24,13 +24,13 @@ site_author/local_author 元数据与引用列写入、persistentStore 入库事
 
 ## 核心概念
 
-- **单作者拉取序列（site 侧）**：能力广播定位插件（`SiteAuthorFetcher`，plugin 模块实现）→ RPC
+- **单作者拉取序列（site 侧）**：能力广播定位插件条目（`SiteAuthorFetcher`，plugin 模块实现）→ RPC
   流式首块 meta 回写 site_author（upsert 白名单列，与任务链重拉同一套覆盖语义）→ 判定需落字节
   （站点声明头像且（来源 URL 变化或行无 avatar_store_id））→ 换头像先删旧 → 字节写暂存（10MB
   上限）→ persistentStore 四调用入库（撤回处置恒丢弃）→ 业务事务内建 store 行 + 同事务写
   `site_author.avatar_store_id` → 作用域回收。
-- **能力广播路由**：候选=声明 `extensions.siteAuthorFetch` 能力包、且该包 `sites` 含本次请求站点键、且有可用服务客户端的已激活插件（插件级消费面，候选粒度=插件）。候选在发现侧即按站点归属收窄，故**候选集恒等于归属集**，插件不自判归属、「调用后才知不归属」态不复存在（`site_author_fetcher.go:92-107`）。经 `backend/route` 基座按候选序逐个调用，命中一个即止、任一候选失败即终止并点名插件（单极，无不适配顺延）；零候选单态收口报「无插件覆盖该站点」（`site_author_fetcher.go:57-63`）。
-- **候选冲突前置检测**：两个手动拉取入口在任何插件调用之前先经 `resolveFetchSelection` 做冲突检测——候选按站点收窄，故须**先解析目标行拿站点键**再做检测（`service.go:211-213,248-249`）；按本次触发的站点键逐站枚举候选，未显选且该站点候选 ≥2 即记一组冲突（同站点只记一组，返回冲突载荷且未调用任何插件），显选键非空须命中该站点候选集，否则报 `ErrChosenPluginInvalid`（`service.go:144-170`）。批量拉取**按站点分组整批问一次**（非逐作者问）。候选清单经 `SiteAuthorFetcher.ListSiteAuthorFetchCandidates` 枚举面取得（按插件标识字典序，首位即默认选中项）。
+- **能力广播路由**：候选=声明 `extensions.siteAuthorFetch` 条目、且该条目 `sites` 含本次请求站点键、插件有可用服务客户端的 (插件, 条目) 对（条目级消费面，候选粒度=条目）。候选在发现侧即按站点归属收窄，故**候选集恒等于归属集**，插件不自判归属、「调用后才知不归属」态不复存在。经 `backend/route` 基座按候选全键（插件公开 ID 与条目 id 的 NUL 拼接）字典序逐个调用（拉取请求携带候选条目 id，插件侧按条目分派），命中一个即止、任一候选失败即终止并点名候选（单极，无不适配顺延）；零候选单态收口报「无插件覆盖该站点」（实现在 plugin/extension 的 `site_author_fetcher.go`）。
+- **候选冲突前置检测**：两个手动拉取入口在任何插件调用之前先经 `resolveFetchSelection` 做冲突检测与显选解析——候选按站点收窄，故须**先解析目标行拿站点键**再做检测；按本次触发的站点键逐站枚举候选，未显选且该站点候选 ≥2 即记一组冲突（同站点只记一组，返回冲突载荷且未调用任何插件），显选键（插件公开 ID + 条目 id 两键）解析为该站点候选集内的具体条目——条目 id 缺省时该插件在候选集内须恰有一个条目（单实例插件显选补全为该条目），未命中或无法定位报 `ErrChosenPluginInvalid`。批量拉取**按站点分组整批问一次**（非逐作者问）。候选清单经 `SiteAuthorFetcher.ListSiteAuthorFetchCandidates` 枚举面取得（按候选全键字典序，首位即默认选中项；展示名=「插件名 · 条目名」）。
 - **两触发面共用在途去重**：mutex + map 的作者 DB ID 集合；在途时再次手动拒绝（409）、批量记
   跳过、自动触发静默跳过。开关 `authorSettings.autoFetchInfo`（默认开）只控制自动触发面。
 - **失败语义**：meta 回写与资源落库各自独立成功（头像缺省是合法态）；流中断/入库失败不留

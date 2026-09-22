@@ -358,11 +358,12 @@ function askNextConflictGroup() {
   pluginSelectCandidates.value = group.candidates.filter(notNullish)
   pluginSelectState.value = true
 }
-// 选择器确认：记下本组站点键的显选插件，继续问下一组站点
+// 选择器确认：记下本组站点键的显选来源（插件与条目两键联合定位一个候选条目），继续问下一组站点
 function handlePluginChosen(candidate: PluginCandidate) {
   pendingFetchChoices.push(new SiteAuthorFetchChoice({
     siteKey: pluginSelectSiteKey,
-    pluginPublicId: candidate.pluginPublicId
+    pluginPublicId: candidate.pluginPublicId,
+    extensionId: candidate.extensionId
   }))
   askNextConflictGroup()
 }
@@ -551,11 +552,14 @@ async function batchFetchSiteAuthorsInfo(ids: number[], nameById: Map<number, st
         :mode="siteAuthorDialogMode"
         @request-success="refreshTable"
       />
-      <!-- 插件候选选择器：拉取信息命中多个候选插件时由拉取流程唤起（候选按站点分组，逐站点问一次） -->
+      <!-- 拉取来源选择器：拉取信息命中多个候选拉取来源（多插件或同插件多条目，候选展示名为
+      「插件名 · 条目名」全键展示名）时由拉取流程唤起（候选按站点分组，逐站点问一次） -->
       <plugin-candidate-select-dialog
         v-model:state="pluginSelectState"
         :candidates="pluginSelectCandidates"
-        :tip="`站点「${pluginSelectSiteKey}」的作者信息可由多个插件拉取，请选择本次使用的插件`"
+        title="选择拉取来源"
+        :show-extension-id="false"
+        :tip="`站点「${pluginSelectSiteKey}」的作者信息可由多个拉取来源获取，请选择本次使用的来源`"
         @confirm="handlePluginChosen"
         @cancel="handlePluginChooseCanceled"
       />

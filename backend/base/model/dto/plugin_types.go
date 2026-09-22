@@ -98,14 +98,17 @@ func NewPluginManifest() *PluginManifest {
 type PluginExtensions struct {
 	TaskHandlers       []TaskHandlerDeclaration       `json:"taskHandlers,omitempty"`
 	SiteBrowsers       []SiteBrowserDeclaration       `json:"siteBrowsers,omitempty"`
-	SiteAuthorFetch    *SiteAuthorFetchDeclaration    `json:"siteAuthorFetch,omitempty"`
+	SiteAuthorFetch    []SiteAuthorFetchDeclaration   `json:"siteAuthorFetch,omitempty"`
 	ResourceTypes      []ResourceTypeDeclaration      `json:"resourceTypes,omitempty"`
 	FrontendExtensions []FrontendExtensionDeclaration `json:"frontendExtensions,omitempty"`
 }
 
-// SiteAuthorFetchDeclaration 站点作者拉取能力包声明（plugin.json extensions.siteAuthorFetch）；
-// sites 为该插件服务的站点键清单（作用域 = 归属），取值须为 SDK 站点注册表内的注册键
+// SiteAuthorFetchDeclaration 站点作者拉取能力包的单个实例声明（plugin.json extensions.siteAuthorFetch
+// 数组项）；一插件可声明多个拉取实例，各按 id 独立寻址（拉取请求携带条目 id，插件侧分派到对应实现）。
+// sites 为该实例服务的站点键清单（作用域 = 归属），取值须为 SDK 站点注册表内的注册键
 type SiteAuthorFetchDeclaration struct {
+	ID    string   `json:"id"`
+	Name  string   `json:"name"` // 实例显示名（候选冲突选择器展示「插件名 · 条目名」）
 	Sites []string `json:"sites"`
 }
 
@@ -133,15 +136,16 @@ type SettingOption struct {
 // TaskHandlerDeclaration 任务处理器声明
 type TaskHandlerDeclaration struct {
 	ID          string   `json:"id"`
-	Name        string   `json:"name"`
+	Name        string   `json:"name"` // 显示名（派生注册表元数据的唯一源）
 	Description string   `json:"description,omitempty"`
-	Options     []string `json:"options,omitempty"` // 本条目启用的可选方法组（内置枚举见 extension 包 Capability* 常量）
+	Options     []string `json:"options,omitempty"`     // 本条目启用的可选方法组（内置枚举见 extension 包 Capability* 常量）
+	UrlPatterns []string `json:"urlPatterns,omitempty"` // URL 监听模式（正则模式串数组；匹配的 URL 创建任务时路由到本条目，缺省=不监听）
 }
 
 // SiteBrowserDeclaration 站点浏览器声明
 type SiteBrowserDeclaration struct {
 	ID          string `json:"id"`
-	Name        string `json:"name"`
+	Name        string `json:"name"` // 显示名（派生注册表元数据的唯一源）
 	Description string `json:"description,omitempty"`
 }
 

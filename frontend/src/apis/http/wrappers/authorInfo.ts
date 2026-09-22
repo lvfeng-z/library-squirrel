@@ -33,9 +33,10 @@ function resolveFetchResponse(
 /**
  * 手动拉取单个站点作者信息（行操作，loading 态由调用方挂起）
  *
- * chosenPlugins 为交互面显选（站点键 → 插件，空 = 未显选）：候选按站点收窄，该站点候选多于一个
- * 且未显选时载荷的 conflicts 非空——至多一组，candidates 为该站点的候选清单（首位即默认选中项，
- * 顺序由后端给定不再重排）
+ * chosenPlugins 为交互面显选（站点键 → 插件与条目两键联合定位一个候选条目，空 = 未显选）：
+ * 候选按站点收窄，该站点候选多于一个且未显选时载荷的 conflicts 非空——至多一组，candidates
+ * 为该站点的候选清单（插件 × 条目对，展示名为后端拼好的「插件名 · 条目名」全键展示名；
+ * 首位即默认选中项，顺序由后端给定不再重排）
  */
 export async function authorInfoFetchSiteAuthorInfo(
   siteAuthorId: number,

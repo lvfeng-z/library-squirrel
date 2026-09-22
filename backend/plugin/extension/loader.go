@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -21,6 +22,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
 	pluginsdktransport "github.com/lvfeng-z/library-squirrel-sdk/transport"
@@ -39,8 +41,10 @@ var (
 const currentContractVersion = pluginsdktransport.ContractVersion
 
 // minSupportedContractVersion 主程序仍兼容的最低插件契约版本；低于此版本的插件拒绝加载。
-// 版本 10 分界：清单结构变更——用户设置项声明（settings 段）住清单根级，extensions 段不承载该段
-const minSupportedContractVersion = 10
+// 版本 11 分界：清单声明面结构变更——siteAuthorFetch 数组化（条目 id/name/sites）、taskHandlers
+// 条目新增 urlPatterns（URL 监听迁清单）、运行时注册/监听 RPC 退役（taskHandlers/siteBrowsers
+// 改激活期按清单派生注册）
+const minSupportedContractVersion = 11
 
 // ValidateContractVersion 校验插件契约版本是否与主程序兼容。
 // pluginContract 为插件声明的契约版本；未声明（=0）视作低于 minSupported，拒绝加载并
@@ -70,19 +74,15 @@ const (
 	// 由 extensions.taskHandlers[].options 声明该值。
 	CapabilityWorkSetRelationQuery = "workSetRelationQuery"
 	// CapabilitySiteAuthorFetch 站点作者信息拉取能力（插件实现 sdkdto.SiteAuthorFetcher 可选接口），
-	// 由 extensions.siteAuthorFetch 段声明。主程序按能力声明广播路由——遍历声明本能力的已激活插件逐个调用，命中一个即止
+	// 由 extensions.siteAuthorFetch 数组条目声明（任一条目在场即声明本能力）。主程序按能力声明广播
+	// 路由——遍历声明本能力的已激活插件逐个调用，命中一个即止
 	CapabilitySiteAuthorFetch = "siteAuthorFetch"
 )
 
-// CapabilityQuerier 按插件公开 ID 查询其声明的能力集合（Loader 实现，供 fetcher 声明驱动调用）。
-type CapabilityQuerier interface {
-	GetCapabilities(pluginPublicId string) []string
-}
-
-// SiteAuthorFetchScopeQuerier 按插件公开 ID 查询其站点作者拉取能力包声明的归属站点键清单
-// （Loader 实现，供 fetcher 按站点收窄候选）。
-type SiteAuthorFetchScopeQuerier interface {
-	SiteAuthorFetchSites(pluginPublicId string) []string
+// SiteAuthorFetchEntryQuerier 按插件公开 ID 查询其站点作者拉取能力包的条目声明清单
+// （Loader 实现，供 fetcher 按 (插件, 条目) 枚举候选并按条目收窄站点归属）。
+type SiteAuthorFetchEntryQuerier interface {
+	SiteAuthorFetchEntries(pluginPublicId string) []dto.SiteAuthorFetchDeclaration
 }
 
 // TaskHandlerOptionQuerier 按（插件公开 ID, 任务处理器条目 ID）查询该条目声明的可选方法组
@@ -102,25 +102,16 @@ type ActivePluginLister interface {
 	ListActivePlugins() []ActivePlugin
 }
 
-// GetCapabilities 返回插件声明的可选能力集合（由清单声明面派生，供主程序决定是否调用对应能力；
-// 未加载/未声明返回 nil）。
-func (l *Loader) GetCapabilities(pluginPublicId string) []string {
+// SiteAuthorFetchEntries 返回插件声明的站点作者拉取能力包条目清单（各条目 id/name/sites 原样；
+// 未加载/未声明该能力包返回 nil）。消费方只读使用，不改动返回切片
+func (l *Loader) SiteAuthorFetchEntries(pluginPublicId string) []dto.SiteAuthorFetchDeclaration {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	if entry, ok := l.processes[pluginPublicId]; ok && entry.info != nil {
-		return deriveCapabilities(entry.info)
+	entry, ok := l.processes[pluginPublicId]
+	if !ok || entry.info == nil {
+		return nil
 	}
-	return nil
-}
-
-// SiteAuthorFetchSites 返回插件声明的站点作者拉取能力包归属站点键清单（未加载/未声明该能力包返回 nil）。
-func (l *Loader) SiteAuthorFetchSites(pluginPublicId string) []string {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	if entry, ok := l.processes[pluginPublicId]; ok && entry.info != nil && entry.info.SiteAuthorFetch != nil {
-		return entry.info.SiteAuthorFetch.Sites
-	}
-	return nil
+	return entry.info.SiteAuthorFetch
 }
 
 // HasTaskHandlerOption 查询插件指定任务处理器条目是否声明了该方法组（未加载/无该条目/该条目未声明
@@ -146,9 +137,9 @@ func (l *Loader) HasTaskHandlerOption(pluginPublicId, extensionId, option string
 	return false
 }
 
-// deriveCapabilities 由插件声明面派生可选能力集合：siteAuthorFetch 段在场 → CapabilitySiteAuthorFetch；
-// taskHandlers 各条目的 options 逐项取用。resourceTypes 段不派生能力——该段在场即注册自定义资源类型。
-// 去重保序（声明序）。
+// deriveCapabilities 由插件声明面派生可选能力集合：siteAuthorFetch 数组任一条目在场 →
+// CapabilitySiteAuthorFetch；taskHandlers 各条目的 options 逐项取用。resourceTypes 段不派生
+// 能力——该段在场即注册自定义资源类型。去重保序（声明序）。
 func deriveCapabilities(info *PluginInfo) []string {
 	if info == nil {
 		return nil
@@ -162,7 +153,7 @@ func deriveCapabilities(info *PluginInfo) []string {
 		seen[capability] = struct{}{}
 		caps = append(caps, capability)
 	}
-	if info.SiteAuthorFetch != nil {
+	if len(info.SiteAuthorFetch) > 0 {
 		appendCap(CapabilitySiteAuthorFetch)
 	}
 	for _, handler := range info.TaskHandlers {
@@ -173,15 +164,16 @@ func deriveCapabilities(info *PluginInfo) []string {
 	return caps
 }
 
-// ApplyManifestDeclarations 把已解析清单的扩展点声明填入插件信息（任务处理器条目及其可选方法组、
-// 站点作者拉取能力包及其归属站点、自定义资源类型）。清单或 extensions 段缺失时声明字段保持零值
-// （等同未声明）。
+// ApplyManifestDeclarations 把已解析清单的扩展点声明填入插件信息（任务处理器条目及其可选方法组
+// 与 URL 监听模式、站点浏览器条目、站点作者拉取能力包条目、自定义资源类型）。清单或 extensions 段缺失时声明字段
+// 保持零值（等同未声明）。
 func ApplyManifestDeclarations(info *PluginInfo, manifest *dto.PluginManifest) {
 	if info == nil || manifest == nil || manifest.Extensions == nil {
 		return
 	}
 	ext := manifest.Extensions
 	info.TaskHandlers = ext.TaskHandlers
+	info.SiteBrowsers = ext.SiteBrowsers
 	info.SiteAuthorFetch = ext.SiteAuthorFetch
 	info.ResourceTypes = ext.ResourceTypes
 }
@@ -227,8 +219,13 @@ func registeredSiteKeyList() string {
 //     能力声明住在 extensions 各条目内
 //   - extensions 子对象内 settings 键在场（值恰为 null 亦然——键在场即该段在场）判不合格：
 //     settings（用户设置项声明）住清单根级，不属 extensions 能力包
-//   - extensions.siteAuthorFetch.sites：须非空，且每项为 SDK 站点注册表内的已注册键
+//   - extensions.siteAuthorFetch：数组条目化——非空数组；条目 id 非空且插件内唯一、name 非空、
+//     sites 须非空且每项为 SDK 站点注册表内的已注册键
+//   - extensions.taskHandlers[].name 与 extensions.siteBrowsers[].name：须非空（清单为条目显示名
+//     的唯一来源）
 //   - extensions.taskHandlers[].options：每项须为内置可选方法组枚举值
+//   - extensions.taskHandlers[].urlPatterns：可选字段，在场时须为非空数组且逐项为非空、可编译的
+//     正则模式串
 //
 // manifestRaw 为 plugin.json 原文：顶层 capabilities 与 extensions 下 settings 在已解析结构里
 // 没有承载字段，只能就原文探测键是否在场。
@@ -262,24 +259,68 @@ func ValidateManifestDeclarations(manifestRaw []byte) error {
 		return nil
 	}
 	ext := manifest.Extensions
-	if fetch := ext.SiteAuthorFetch; fetch != nil {
+	// siteAuthorFetch：数组在场但为空（键在场、条目数为零）判不合格；未声明（键不在场）通过
+	if ext.SiteAuthorFetch != nil && len(ext.SiteAuthorFetch) == 0 {
+		return fmt.Errorf("%w: extensions.siteAuthorFetch 为空数组，须至少声明一个条目（条目含 id/name/sites）",
+			ErrManifestDeclarationInvalid)
+	}
+	seenFetchIDs := make(map[string]struct{}, len(ext.SiteAuthorFetch))
+	for i, fetch := range ext.SiteAuthorFetch {
+		if fetch.ID == "" {
+			return fmt.Errorf("%w: extensions.siteAuthorFetch[%d] 条目缺 id，条目须携带 id（插件内唯一）",
+				ErrManifestDeclarationInvalid, i)
+		}
+		if _, dup := seenFetchIDs[fetch.ID]; dup {
+			return fmt.Errorf("%w: extensions.siteAuthorFetch 含重复条目 id %q，条目 id 须插件内唯一",
+				ErrManifestDeclarationInvalid, fetch.ID)
+		}
+		seenFetchIDs[fetch.ID] = struct{}{}
+		if fetch.Name == "" {
+			return fmt.Errorf("%w: extensions.siteAuthorFetch[%s].name 为空，条目须携带显示名",
+				ErrManifestDeclarationInvalid, fetch.ID)
+		}
 		if len(fetch.Sites) == 0 {
-			return fmt.Errorf("%w: extensions.siteAuthorFetch.sites 为空，须列出该能力包服务的站点键（已注册键：%s）",
-				ErrManifestDeclarationInvalid, registeredSiteKeyList())
+			return fmt.Errorf("%w: extensions.siteAuthorFetch[%s].sites 为空，须列出该条目服务的站点键（已注册键：%s）",
+				ErrManifestDeclarationInvalid, fetch.ID, registeredSiteKeyList())
 		}
 		for _, siteKey := range fetch.Sites {
 			if _, ok := identity.Lookup(siteKey); !ok {
-				return fmt.Errorf("%w: extensions.siteAuthorFetch.sites 含未注册站点键 %q，须为 SDK 站点注册表内的键（已注册键：%s）",
-					ErrManifestDeclarationInvalid, siteKey, registeredSiteKeyList())
+				return fmt.Errorf("%w: extensions.siteAuthorFetch[%s].sites 含未注册站点键 %q，须为 SDK 站点注册表内的键（已注册键：%s）",
+					ErrManifestDeclarationInvalid, fetch.ID, siteKey, registeredSiteKeyList())
 			}
 		}
 	}
 	for _, handler := range ext.TaskHandlers {
+		if handler.Name == "" {
+			return fmt.Errorf("%w: extensions.taskHandlers[%s].name 为空，条目须携带显示名",
+				ErrManifestDeclarationInvalid, handler.ID)
+		}
+		// urlPatterns 可选：字段不在场（缺省/null）通过；在场即须为非空数组且逐项可编译
+		if handler.UrlPatterns != nil && len(handler.UrlPatterns) == 0 {
+			return fmt.Errorf("%w: extensions.taskHandlers[%s].urlPatterns 为空数组，声明该字段须列出至少一个 URL 模式",
+				ErrManifestDeclarationInvalid, handler.ID)
+		}
+		for j, pattern := range handler.UrlPatterns {
+			if pattern == "" {
+				return fmt.Errorf("%w: extensions.taskHandlers[%s].urlPatterns[%d] 为空串，模式项须为非空正则",
+					ErrManifestDeclarationInvalid, handler.ID, j)
+			}
+			if _, err := regexp.Compile(pattern); err != nil {
+				return fmt.Errorf("%w: extensions.taskHandlers[%s].urlPatterns[%d] 含无法编译的正则 %q: %v",
+					ErrManifestDeclarationInvalid, handler.ID, j, pattern, err)
+			}
+		}
 		for _, option := range handler.Options {
 			if !isValidTaskHandlerOption(option) {
 				return fmt.Errorf("%w: extensions.taskHandlers[%s].options 含未识别的可选方法组 %q，合法取值：%s",
 					ErrManifestDeclarationInvalid, handler.ID, option, validTaskHandlerOptionList())
 			}
+		}
+	}
+	for _, browser := range ext.SiteBrowsers {
+		if browser.Name == "" {
+			return fmt.Errorf("%w: extensions.siteBrowsers[%s].name 为空，条目须携带显示名",
+				ErrManifestDeclarationInvalid, browser.ID)
 		}
 	}
 	return nil
@@ -300,16 +341,6 @@ func (l *Loader) ListActivePlugins() []ActivePlugin {
 	}
 	sort.Slice(plugins, func(i, j int) bool { return plugins[i].PublicID < plugins[j].PublicID })
 	return plugins
-}
-
-// hasCapability 判断插件是否声明了指定能力。
-func hasCapability(caps []string, cap string) bool {
-	for _, c := range caps {
-		if c == cap {
-			return true
-		}
-	}
-	return false
 }
 
 // registerPluginResourceTypes 注册插件声明的自定义资源类型到 ResourceTypeRegistry。
@@ -343,6 +374,47 @@ func unregisterPluginResourceTypes(info *PluginInfo) {
 	}
 }
 
+// registerDeclaredExtensions 激活期按清单声明逐条建代理注册进任务处理器/站点浏览器两注册表。
+// 注册键 = 插件公开 ID + 条目 id；元数据 name/description 取清单条目（清单为条目显示名的
+// 唯一来源）。代理无状态，调用期经进程表解析 gRPC 客户端——清单已声明而插件未实现的条目
+// 在注册表有条目、调用期得 gRPC 错误。任一条目注册失败（如同键条目已存在）即整体失败，
+// 由激活相位的统一回滚清两注册表；停用/崩溃清理走 UnloadPlugin 的 UnregisterAll。
+func (l *Loader) registerDeclaredExtensions(info *PluginInfo) error {
+	for _, entry := range info.TaskHandlers {
+		var handler sdkdto.TaskHandler = newTaskHandlerProxy(l, info.PublicID, entry.ID)
+		metadata := model.ExtensionMetadata{
+			Type:           model.ExtensionTypeTaskHandler,
+			ID:             entry.ID,
+			PluginID:       info.ID,
+			PluginPublicID: info.PublicID,
+			Name:           entry.Name,
+			Description:    entry.Description,
+		}
+		if err := l.taskHandlerRegistry.Register(model.NewExtension(metadata, handler)); err != nil {
+			return fmt.Errorf("注册任务处理器条目 %s: %w", entry.ID, err)
+		}
+	}
+	for _, entry := range info.SiteBrowsers {
+		var browser sdkdto.SiteBrowser = &SiteBrowserProxy{
+			serviceAccessor: l,
+			pluginPublicId:  info.PublicID,
+			extensionId:     entry.ID,
+		}
+		metadata := model.ExtensionMetadata{
+			Type:           model.ExtensionTypeSiteBrowser,
+			ID:             entry.ID,
+			PluginID:       info.ID,
+			PluginPublicID: info.PublicID,
+			Name:           entry.Name,
+			Description:    entry.Description,
+		}
+		if err := l.siteBrowserRegistry.Register(model.NewExtension(metadata, browser)); err != nil {
+			return fmt.Errorf("注册站点浏览器条目 %s: %w", entry.ID, err)
+		}
+	}
+	return nil
+}
+
 // toStoreRoleSpecs 将 manifest 声明角色转 Registry StoreRoleSpec。
 func toStoreRoleSpecs(roles []dto.StoreRoleDeclaration) []entity.StoreRoleSpec {
 	out := make([]entity.StoreRoleSpec, 0, len(roles))
@@ -370,11 +442,9 @@ const CreateNoWindow = 0x08000000
 
 // PluginProcessDeps 加载插件进程所需的依赖
 type PluginProcessDeps struct {
-	PluginInfo          *PluginInfo
-	PluginCtx           sdkdto.PluginContext
-	TaskHandlerRegistry *TaskHandlerRegistry
-	SiteBrowserRegistry *SiteBrowserRegistry
-	MainHWND            uintptr
+	PluginInfo *PluginInfo
+	PluginCtx  sdkdto.PluginContext
+	MainHWND   uintptr
 }
 
 // pluginEntry 存储单个插件的 hashicorp/go-plugin 客户端和 gRPC 服务客户端
@@ -449,10 +519,11 @@ func (l *Loader) unregisterUrlListener(pluginPublicId string) {
 	}
 }
 
-// LoadPluginProcess 以子进程模式加载插件
+// LoadPluginProcess 以子进程模式加载插件：起子进程、握手并 Activate，随后按清单声明派生注册
+// 任务处理器/站点浏览器代理进两注册表
 // exePath: 插件可执行文件路径 (.exe)
 // pluginPublicId: 插件公开ID
-// deps: 加载插件所需的依赖（含 HostDeps 用于 HostService 注册）
+// deps: 加载插件所需的依赖（插件信息、宿主上下文、主窗口句柄）
 func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps PluginProcessDeps) error {
 	// 活条目拒绝守卫：同名插件已有活跃进程条目时拒绝二次加载（与三注册表 already-exists
 	// 守卫对齐——裸覆盖旧条目会令旧进程失去管理句柄成为孤儿）
@@ -468,17 +539,12 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		return fmt.Errorf("%w: %s: %v", ErrPluginLoadFailed, pluginPublicId, err)
 	}
 	// 构建 HostDeps，用于在 GRPCClient 中注册 HostService
-	callbacks := newHostPluginCallbacks(deps.PluginInfo, l, l.taskHandlerRegistry, l.siteBrowserRegistry)
 	hostDeps := &pluginsdktransport.HostDeps{
-		StorageProvider:         &hostStorageProvider{ctx: deps.PluginCtx},
-		PluginRootProvider:      &hostPluginRootProvider{ctx: deps.PluginCtx},
-		TaskCreateProvider:      &hostTaskCreateProvider{ctx: deps.PluginCtx},
-		UrlListenerRegistry:     &hostUrlListenerRegistry{ctx: deps.PluginCtx},
-		FrontendEventProvider:   &hostFrontendEventProvider{ctx: deps.PluginCtx},
-		LibraryQueryProvider:    &hostLibraryQueryProvider{ctx: deps.PluginCtx},
-		OnRegisterTaskHandler:   callbacks.onRegisterTaskHandler,
-		OnRegisterSiteBrowser:   callbacks.onRegisterSiteBrowser,
-		OnUnregisterSiteBrowser: callbacks.onUnregisterSiteBrowser,
+		StorageProvider:       &hostStorageProvider{ctx: deps.PluginCtx},
+		PluginRootProvider:    &hostPluginRootProvider{ctx: deps.PluginCtx},
+		TaskCreateProvider:    &hostTaskCreateProvider{ctx: deps.PluginCtx},
+		FrontendEventProvider: &hostFrontendEventProvider{ctx: deps.PluginCtx},
+		LibraryQueryProvider:  &hostLibraryQueryProvider{ctx: deps.PluginCtx},
 		LogFunc: func(level int32, template string, args []string, loggerName string) {
 			sugar := deps.PluginCtx.(*pluginContext).ResolveLogger(loggerName)
 			anyArgs := make([]any, len(args))
@@ -578,6 +644,13 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 				}
 			}
 		}
+	}
+
+	// 按清单声明派生注册任务处理器/站点浏览器代理；注册失败（如同键条目残留）即本次
+	// 加载失败，由激活相位统一回滚清两注册表
+	if err := l.registerDeclaredExtensions(deps.PluginInfo); err != nil {
+		client.Kill()
+		return fmt.Errorf("%w: register declared extensions %s: %v", ErrPluginLoadFailed, pluginPublicId, err)
 	}
 
 	// 注册插件自定义资源类型(声明 extensions.resourceTypes 段时);
@@ -728,8 +801,9 @@ type PluginInfo struct {
 	Version             string
 	ContractVersion     int                             // 插件编译时锁定的契约版本（0=未声明/缺字段，校验时拒载，须声明）
 	ConfigSchemaVersion int64                           // 插件配置 schema 版本（来自 plugin 记录；0=legacy/未管理，pluginContext.SetValue 据此盖戳到 plugin_storage.schema_version）
-	TaskHandlers        []dto.TaskHandlerDeclaration    // 任务处理器条目声明（含各自的 options 可选方法组；来自 manifest）
-	SiteAuthorFetch     *dto.SiteAuthorFetchDeclaration // 站点作者拉取能力包声明（sites=该插件服务的站点键清单；nil=未声明该能力包）
+	TaskHandlers        []dto.TaskHandlerDeclaration    // 任务处理器条目声明（含各自的 options 可选方法组与 urlPatterns 监听模式；来自 manifest）
+	SiteBrowsers        []dto.SiteBrowserDeclaration    // 站点浏览器条目声明（各条目 id/name/description；激活期据此派生注册代理；来自 manifest）
+	SiteAuthorFetch     []dto.SiteAuthorFetchDeclaration // 站点作者拉取能力包条目声明（各条目 id/name/sites；空=未声明该能力包）
 	ResourceTypes       []dto.ResourceTypeDeclaration   // 插件自定义资源类型声明（来自 manifest；该段在场即注册进 Registry）
 	Author              string
 	EntryPath           string
@@ -778,18 +852,6 @@ type hostTaskCreateProvider struct {
 
 func (p *hostTaskCreateProvider) CreateTask(_ context.Context, url string) (*sdkdto.CreateTaskResult, error) {
 	return p.ctx.CreateTask(url)
-}
-
-type hostUrlListenerRegistry struct {
-	ctx sdkdto.PluginContext
-}
-
-func (p *hostUrlListenerRegistry) RegisterUrlListener(_ context.Context, extensionId string, patterns []string) error {
-	return p.ctx.RegisterUrlListener(extensionId, patterns)
-}
-
-func (p *hostUrlListenerRegistry) UnregisterUrlListener(_ context.Context, extensionId string) error {
-	return p.ctx.UnregisterUrlListener(extensionId)
 }
 
 type hostFrontendEventProvider struct {

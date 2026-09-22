@@ -117,7 +117,6 @@ type Service struct {
 
 	runtimeStatusProvider RuntimeStatusProvider
 	extensionListProvider ExtensionListProvider
-	urlListenerProvider   UrlListenerProvider
 
 	pendingMu       sync.Mutex                      // 检查更新待办列表互斥锁（含执行中守卫）
 	pendingUpgrades map[string]*pendingUpgradeEntry // 启动期检测出的更新待办（内存态，重启重检）
@@ -188,11 +187,6 @@ type ExtensionListProvider interface {
 	GetFrontendExtensionsByPlugin(pluginPublicId string) []FrontendExtensionMeta
 }
 
-// UrlListenerProvider URL 监听规则提供者接口
-type UrlListenerProvider interface {
-	ListPatternsByPlugin(pluginPublicId string) []string
-}
-
 // ExtensionMeta 扩展点元数据
 type ExtensionMeta struct {
 	ID          string
@@ -215,11 +209,6 @@ func (s *Service) SetRuntimeStatusProvider(provider RuntimeStatusProvider) {
 // SetExtensionListProvider 设置扩展点列表提供者
 func (s *Service) SetExtensionListProvider(provider ExtensionListProvider) {
 	s.extensionListProvider = provider
-}
-
-// SetUrlListenerProvider 设置 URL 监听规则提供者
-func (s *Service) SetUrlListenerProvider(provider UrlListenerProvider) {
-	s.urlListenerProvider = provider
 }
 
 // GetById 根据ID获取
@@ -335,12 +324,14 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 		return nil, ErrInvalidManifest
 	}
 	ext := manifest.Extensions
-	hasExtensions := len(ext.TaskHandlers) > 0 || len(ext.SiteBrowsers) > 0 || len(ext.FrontendExtensions) > 0
+	// 站点作者拉取能力包的拉取 RPC 由插件进程承载，计入运行时扩展点（urlPatterns 挂 taskHandlers
+	// 条目级，条目在场即随其计入）
+	hasRuntime := len(ext.TaskHandlers) > 0 || len(ext.SiteBrowsers) > 0 || len(ext.SiteAuthorFetch) > 0
+	hasExtensions := hasRuntime || len(ext.FrontendExtensions) > 0
 	if !hasExtensions {
 		return nil, ErrInvalidManifest
 	}
 	// EntryFile 仅在有运行时扩展点时必填
-	hasRuntime := len(ext.TaskHandlers) > 0 || len(ext.SiteBrowsers) > 0
 	if hasRuntime && manifest.EntryFile == "" {
 		return nil, ErrInvalidManifest
 	}
@@ -848,10 +839,22 @@ func (s *Service) GetPluginStatus(ctx context.Context, pluginPublicId string) (*
 		}
 	}
 
-	// URL 监听规则
-	if s.urlListenerProvider != nil {
-		status.UrlPatterns = s.urlListenerProvider.ListPatternsByPlugin(pluginPublicId)
-	}
+	// URL 监听规则（清单声明的任务处理器条目 urlPatterns 聚合；插件未运行也可展示）
+	status.UrlPatterns = s.declaredUrlPatterns(plugin)
 
 	return status, nil
+}
+
+// declaredUrlPatterns 读插件清单声明的 URL 监听模式（任务处理器条目 urlPatterns 跨条目聚合）。
+// 展示面 best-effort：清单读取/解析失败返回 nil，不阻断状态面板其余字段
+func (s *Service) declaredUrlPatterns(plugin *entity2.Plugin) []string {
+	manifest, err := readPluginManifest(plugin)
+	if err != nil || manifest.Extensions == nil {
+		return nil
+	}
+	var patterns []string
+	for _, handler := range manifest.Extensions.TaskHandlers {
+		patterns = append(patterns, handler.UrlPatterns...)
+	}
+	return patterns
 }

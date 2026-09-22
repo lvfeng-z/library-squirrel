@@ -1,12 +1,13 @@
 package authorInfo
 
-// 作者个人信息编排：site 侧拉取主链（能力广播定位插件 → RPC 流式首块 meta 回写元数据（插件
+// 作者个人信息编排：site 侧拉取主链（能力广播定位插件条目 → RPC 流式首块 meta 回写元数据（插件
 // 权威域白名单列）→ 判定需落字节（来源 URL 变化或行无引用）→ 换头像先删旧 → 头像字节写暂存
 // （尺寸上限）→ 四调用入库 → 业务事务内建行 + 同事务写 site_author.avatar_store_id → 作用域
 // 回收。两触发面（作品入库后自动带开关、手动单条/批量）共用同一拉取序列与在途去重集合）；
 // 手动面在任何插件调用前先按行解析站点键、再按站点做候选冲突检测（该站点多候选未显选即返回冲突
-// 载荷，批量按站点分组整批交回）；local 侧头像手动导入/移除；siteAuthor/localAuthor 删除联动的
-// 头像行清理（AvatarFileCleaner，行面入调用方删除事务、文件面在事务提交后清理）。
+// 载荷，批量按站点分组整批交回；显选键按 (插件, 条目) 两键定位候选条目）；local 侧头像手动导入/
+// 移除；siteAuthor/localAuthor 删除联动的头像行清理（AvatarFileCleaner，行面入调用方删除事务、
+// 文件面在事务提交后清理）。
 
 import (
 	"context"
@@ -125,7 +126,7 @@ func (s *Service) OnSiteAuthorsUpserted(siteAuthorIds []int64) {
 			if !s.acquire(target.ID) {
 				continue
 			}
-			s.fetchTargetWithTimeout(ctx, target, "")
+			s.fetchTargetWithTimeout(ctx, target, nil)
 			s.release(target.ID)
 		}
 	}()
@@ -141,31 +142,29 @@ type SiteAuthorFetchResponse struct {
 	Items     []*SiteAuthorFetchItemResult   `json:"items"`
 }
 
-// resolveFetchSelection 候选冲突检测与显选校验：候选依赖站点键（站点不同则候选集不同），故
+// resolveFetchSelection 候选冲突检测与显选校验/解析：候选依赖站点键（站点不同则候选集不同），故
 // 调用方须先解析目标行拿站点键。按本次触发的站点键逐站枚举候选——未显选且该站点候选多于一个即
-// 记一组冲突（同站点只记一组），调用方据此询问用户后带显选重发；显选键须命中该站点的候选集。
-// siteKeys 为本次触发的站点键（去重保序）；chosen 中站点键不在 siteKeys 内的条目不参与本次触发
-// （本次触发没有该站点的目标行）。冲突组与入参站点序同序
+// 记一组冲突（同站点只记一组），调用方据此询问用户后带显选重发；显选键（插件公开 ID + 条目 id）
+// 解析为该站点候选集内的具体条目，未命中或无法定位报错。返回按站点键索引的已解析显选（未显选的
+// 站点不在表内，条目 id 恒补全为命中条目的 id）。siteKeys 为本次触发的站点键（去重保序）；
+// chosen 中站点键不在 siteKeys 内的条目不参与本次触发（本次触发没有该站点的目标行）。
+// 冲突组与入参站点序同序
 func (s *Service) resolveFetchSelection(ctx context.Context, siteKeys []string,
-	chosen []*dto.SiteAuthorFetchChoice) ([]*dto.SiteAuthorFetchConflict, error) {
+	chosen []*dto.SiteAuthorFetchChoice) (map[string]*dto.SiteAuthorFetchChoice, []*dto.SiteAuthorFetchConflict, error) {
+	resolved := make(map[string]*dto.SiteAuthorFetchChoice, len(siteKeys))
 	var conflicts []*dto.SiteAuthorFetchConflict
 	for _, siteKey := range siteKeys {
 		candidates, err := s.fetcher.ListSiteAuthorFetchCandidates(ctx, siteKey)
 		if err != nil {
-			return nil, fmt.Errorf("枚举站点 %s 的作者信息拉取候选失败: %w", siteKey, err)
+			return nil, nil, fmt.Errorf("枚举站点 %s 的作者信息拉取候选失败: %w", siteKey, err)
 		}
-		picked := chosenPluginOf(chosen, siteKey)
-		if picked != "" {
-			hit := false
-			for _, candidate := range candidates {
-				if candidate.PluginPublicId == picked {
-					hit = true
-					break
-				}
+		picked := chosenOf(chosen, siteKey)
+		if picked != nil {
+			hit, ok := resolveChosenCandidate(candidates, picked)
+			if !ok {
+				return nil, nil, ErrChosenPluginInvalid
 			}
-			if !hit {
-				return nil, ErrChosenPluginInvalid
-			}
+			resolved[siteKey] = hit
 			continue
 		}
 		if len(candidates) >= 2 {
@@ -176,17 +175,49 @@ func (s *Service) resolveFetchSelection(ctx context.Context, siteKeys []string,
 			})
 		}
 	}
-	return conflicts, nil
+	return resolved, conflicts, nil
 }
 
-// chosenPluginOf 取本次触发对该站点的显选插件键（空串=未显选）
-func chosenPluginOf(chosen []*dto.SiteAuthorFetchChoice, siteKey string) string {
+// chosenOf 取本次触发对该站点的显选条目（nil = 未显选）
+func chosenOf(chosen []*dto.SiteAuthorFetchChoice, siteKey string) *dto.SiteAuthorFetchChoice {
 	for _, choice := range chosen {
 		if choice != nil && choice.SiteKey == siteKey {
-			return choice.PluginPublicId
+			return choice
 		}
 	}
-	return ""
+	return nil
+}
+
+// resolveChosenCandidate 显选键解析为该站点候选集内的具体条目：带条目 id 时两键联合命中；
+// 条目 id 缺省时该插件在候选集内须恰有一个条目（单实例插件的显选不歧义，补全为该条目；
+// 同插件多条目命中即无法定位）。命中返回条目 id 补全后的显选，未命中/无法定位返回 false
+func resolveChosenCandidate(candidates []*dto.PluginCandidate, choice *dto.SiteAuthorFetchChoice) (*dto.SiteAuthorFetchChoice, bool) {
+	if choice.ExtensionId != "" {
+		for _, candidate := range candidates {
+			if candidate.PluginPublicId == choice.PluginPublicId && candidate.ExtensionId == choice.ExtensionId {
+				return choice, true
+			}
+		}
+		return nil, false
+	}
+	var hit *dto.PluginCandidate
+	for _, candidate := range candidates {
+		if candidate.PluginPublicId != choice.PluginPublicId {
+			continue
+		}
+		if hit != nil {
+			return nil, false
+		}
+		hit = candidate
+	}
+	if hit == nil {
+		return nil, false
+	}
+	return &dto.SiteAuthorFetchChoice{
+		SiteKey:        choice.SiteKey,
+		PluginPublicId: hit.PluginPublicId,
+		ExtensionId:    hit.ExtensionId,
+	}, true
 }
 
 // triggerSiteKeys 本次触发的站点键（按入参作者序去重保序）：仅含已解析到目标行的作者，
@@ -220,7 +251,7 @@ func (s *Service) FetchSiteAuthorInfoById(ctx context.Context, siteAuthorId int6
 	if err != nil {
 		return nil, err
 	}
-	conflicts, err := s.resolveFetchSelection(ctx, []string{target.SiteKey}, chosen)
+	resolved, conflicts, err := s.resolveFetchSelection(ctx, []string{target.SiteKey}, chosen)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +262,7 @@ func (s *Service) FetchSiteAuthorInfoById(ctx context.Context, siteAuthorId int6
 		return nil, pkgerr.NewBusinessError(409, "该作者的信息正在拉取中，请稍后再试")
 	}
 	defer s.release(target.ID)
-	if err := s.fetchTargetWithTimeout(ctx, target, chosenPluginOf(chosen, target.SiteKey)); err != nil {
+	if err := s.fetchTargetWithTimeout(ctx, target, resolved[target.SiteKey]); err != nil {
 		logger.Log.Warnf("[authorInfo] 手动拉取站点作者 %d 信息失败: %v", siteAuthorId, err)
 		return nil, err
 	}
@@ -247,8 +278,8 @@ type SiteAuthorFetchItemResult struct {
 
 // FetchSiteAuthorsInfoByIds 手动批量拉取：先解析整批目标行拿站点键，再按站点分组做候选冲突检测
 // ——同一站点=同一候选集=同一冲突集，只问一次；不同站点各记一组，整批一次触发交回（未调用任何插件）。
-// 无冲突则逐作者串行走同一拉取序列、共用在途去重与逐站点显选；单作者失败不阻断其余，
-// 逐条结果与入参顺序一致
+// 无冲突则逐作者串行走同一拉取序列、共用在途去重与逐站点显选（显选键已按站点解析补全条目 id）；
+// 单作者失败不阻断其余，逐条结果与入参顺序一致
 func (s *Service) FetchSiteAuthorsInfoByIds(ctx context.Context, siteAuthorIds []int64,
 	chosen []*dto.SiteAuthorFetchChoice) (*SiteAuthorFetchResponse, error) {
 	if s.fetcher == nil {
@@ -266,7 +297,7 @@ func (s *Service) FetchSiteAuthorsInfoByIds(ctx context.Context, siteAuthorIds [
 	for _, t := range targets {
 		targetById[t.ID] = t
 	}
-	conflicts, err := s.resolveFetchSelection(ctx, triggerSiteKeys(siteAuthorIds, targetById), chosen)
+	resolved, conflicts, err := s.resolveFetchSelection(ctx, triggerSiteKeys(siteAuthorIds, targetById), chosen)
 	if err != nil {
 		return nil, err
 	}
@@ -282,7 +313,7 @@ func (s *Service) FetchSiteAuthorsInfoByIds(ctx context.Context, siteAuthorIds [
 		case !s.acquire(id):
 			result.Message = "正在拉取中，已跳过"
 		default:
-			if err := s.fetchTargetWithTimeout(ctx, target, chosenPluginOf(chosen, target.SiteKey)); err != nil {
+			if err := s.fetchTargetWithTimeout(ctx, target, resolved[target.SiteKey]); err != nil {
 				logger.Log.Warnf("[authorInfo] 批量拉取站点作者 %d 信息失败: %v", id, err)
 				result.Message = err.Error()
 			} else {
@@ -295,11 +326,12 @@ func (s *Service) FetchSiteAuthorsInfoByIds(ctx context.Context, siteAuthorIds [
 	return &SiteAuthorFetchResponse{Items: results}, nil
 }
 
-// fetchTargetWithTimeout 带整程超时的单作者拉取（在途去重由调用方持有）
-func (s *Service) fetchTargetWithTimeout(ctx context.Context, target *dto.SiteAuthorFetchTarget, chosenPluginPublicId string) error {
+// fetchTargetWithTimeout 带整程超时的单作者拉取（在途去重由调用方持有）。chosen 为该站点的
+// 已解析显选（nil = 未显选，按候选全键字典序路由）
+func (s *Service) fetchTargetWithTimeout(ctx context.Context, target *dto.SiteAuthorFetchTarget, chosen *dto.SiteAuthorFetchChoice) error {
 	ctx, cancel := context.WithTimeout(ctx, authorFetchTimeout)
 	defer cancel()
-	return s.fetchSiteAuthor(ctx, target, chosenPluginPublicId)
+	return s.fetchSiteAuthor(ctx, target, chosen)
 }
 
 // resolveTarget 按单 ID 反查拉取目标行
@@ -316,11 +348,11 @@ func (s *Service) resolveTarget(ctx context.Context, siteAuthorId int64) (*dto.S
 
 // ===== 单作者拉取序列 =====
 
-// fetchSiteAuthor 单作者拉取序列（调用方须已持有在途去重）：广播定位插件 → 流式首块 meta
+// fetchSiteAuthor 单作者拉取序列（调用方须已持有在途去重）：广播定位插件条目 → 流式首块 meta
 // 回写元数据 → 资源轨道（按需：换头像删旧 → 暂存字节 → 四调用入库 → 同事务写引用列）。
-// chosenPluginPublicId 经能力桥置于候选序首位。失败上抛不留半成品——元数据回写与资源落库
-// 各自独立成功，头像缺省是合法态
-func (s *Service) fetchSiteAuthor(ctx context.Context, target *dto.SiteAuthorFetchTarget, chosenPluginPublicId string) error {
+// chosen 为该站点的已解析显选（nil = 未显选），显选两键经能力桥置于候选序首位。失败上抛不留
+// 半成品——元数据回写与资源落库各自独立成功，头像缺省是合法态
+func (s *Service) fetchSiteAuthor(ctx context.Context, target *dto.SiteAuthorFetchTarget, chosen *dto.SiteAuthorFetchChoice) error {
 	if err := settings.RefuseIfUnconfigured(s.workDir.GetWorkDir(), "authorInfo"); err != nil {
 		return err
 	}
@@ -330,8 +362,12 @@ func (s *Service) fetchSiteAuthor(ctx context.Context, target *dto.SiteAuthorFet
 	if target.SiteAuthorID == "" {
 		return fmt.Errorf("作者 %d 缺少站点侧作者 id", target.ID)
 	}
+	var chosenPluginPublicId, chosenExtensionId string
+	if chosen != nil {
+		chosenPluginPublicId, chosenExtensionId = chosen.PluginPublicId, chosen.ExtensionId
+	}
 	session := &avatarFetchSession{svc: s, target: target, ctx: ctx}
-	if err := s.fetcher.FetchSiteAuthorInfo(ctx, target.SiteKey, target.SiteAuthorID, chosenPluginPublicId, session.onMeta, session.onData); err != nil {
+	if err := s.fetcher.FetchSiteAuthorInfo(ctx, target.SiteKey, target.SiteAuthorID, chosenPluginPublicId, chosenExtensionId, session.onMeta, session.onData); err != nil {
 		session.cleanupScope()
 		return err
 	}

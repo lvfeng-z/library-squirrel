@@ -82,7 +82,8 @@ func (t *orderTrace) countOf(event string) int {
 	return n
 }
 
-// scriptedFetcher 脚本化拉取替身：按站点侧作者 id 取脚本回放，记录调用、显选键与字节下发次数
+// scriptedFetcher 脚本化拉取替身：按站点侧作者 id 取脚本回放，记录调用、显选键（插件键+"/"+条目键）
+// 与字节下发次数
 type scriptedFetcher struct {
 	mu         sync.Mutex
 	calls      []string
@@ -95,12 +96,12 @@ type scriptedFetcher struct {
 	trace *orderTrace
 }
 
-func (f *scriptedFetcher) FetchSiteAuthorInfo(_ context.Context, siteKey, siteAuthorId, chosenPluginPublicId string,
+func (f *scriptedFetcher) FetchSiteAuthorInfo(_ context.Context, siteKey, siteAuthorId, chosenPluginPublicId, chosenExtensionId string,
 	onMeta func(meta *pluginsdkdto.AuthorInfoMeta) (wantAvatar bool, err error),
 	onData func(data []byte) error) error {
 	f.mu.Lock()
 	f.calls = append(f.calls, siteKey+"/"+siteAuthorId)
-	f.chosenKeys = append(f.chosenKeys, chosenPluginPublicId)
+	f.chosenKeys = append(f.chosenKeys, chosenPluginPublicId+"/"+chosenExtensionId)
 	script, ok := f.plan[siteAuthorId]
 	f.mu.Unlock()
 	if !ok {
@@ -149,7 +150,7 @@ func (f *scriptedFetcher) chosenKeysSnapshot() []string {
 	return append([]string(nil), f.chosenKeys...)
 }
 
-// lastChosenKey 最近一次拉取携带的显选键（空串 = 未显选）
+// lastChosenKey 最近一次拉取携带的显选键（"插件键/条目键"，两键均空 = 未显选）
 func (f *scriptedFetcher) lastChosenKey() string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -173,7 +174,7 @@ type blockingFetcher struct {
 	callN   int
 }
 
-func (f *blockingFetcher) FetchSiteAuthorInfo(_ context.Context, _, _, _ string,
+func (f *blockingFetcher) FetchSiteAuthorInfo(_ context.Context, _, _, _, _ string,
 	_ func(meta *pluginsdkdto.AuthorInfoMeta) (wantAvatar bool, err error),
 	_ func(data []byte) error) error {
 	f.callsMu.Lock()
@@ -252,18 +253,20 @@ func newFetchTestEnv(t *testing.T) *fetchTestEnv {
 	psSvc := persistentStore.NewService(persistentStore.NewRepository(db), nil, func() string { return workDir })
 	trace := &orderTrace{}
 	fetcher := &scriptedFetcher{
-		plan:             map[string]fetchScript{},
-		candidatesBySite: map[string][]*dto.PluginCandidate{"pixiv": {{PluginPublicId: "p-a", PluginName: "p-a"}}},
-		trace:            trace,
+		plan: map[string]fetchScript{},
+		candidatesBySite: map[string][]*dto.PluginCandidate{
+			"pixiv": {{PluginPublicId: "p-a", PluginName: "p-a", ExtensionId: "a-main"}},
+		},
+		trace: trace,
 	}
 	svc := NewService(&tracingSiteAuthorStore{Service: saSvc, trace: trace}, laSvc, psSvc, psSvc, settingsSvc, settingsSvc, &txTransactor{db: db})
 	svc.SetSiteAuthorFetcher(fetcher)
 	return &fetchTestEnv{svc: svc, db: db, workDir: workDir, settings: settingsSvc, fetcher: fetcher, saSvc: saSvc, laSvc: laSvc, trace: trace}
 }
 
-// fetchChoice 构造单站点显选键
-func fetchChoice(siteKey, pluginPublicId string) []*dto.SiteAuthorFetchChoice {
-	return []*dto.SiteAuthorFetchChoice{{SiteKey: siteKey, PluginPublicId: pluginPublicId}}
+// fetchChoice 构造单站点显选键（extensionId 空串 = 条目键缺省，由编排侧按候选集解析）
+func fetchChoice(siteKey, pluginPublicId, extensionId string) []*dto.SiteAuthorFetchChoice {
+	return []*dto.SiteAuthorFetchChoice{{SiteKey: siteKey, PluginPublicId: pluginPublicId, ExtensionId: extensionId}}
 }
 
 // seedSiteAuthor 建站点+站点作者种子行，返回作者行（同站点多作者时可重复调用：站点行已存在即复用）
@@ -684,11 +687,11 @@ func TestManualFetchUnknownAuthor(t *testing.T) {
 	}
 }
 
-// multiCandidatePlugins 两插件候选（按插件标识字典序——候选序由能力桥保证，本模块不重排）
+// multiCandidatePlugins 两插件候选各带条目 id（按候选全键字典序——候选序由能力桥保证，本模块不重排）
 func multiCandidatePlugins() []*dto.PluginCandidate {
 	return []*dto.PluginCandidate{
-		{PluginPublicId: "p-a", PluginName: "p-a"},
-		{PluginPublicId: "p-b", PluginName: "p-b"},
+		{PluginPublicId: "p-a", PluginName: "p-a", ExtensionId: "a-main"},
+		{PluginPublicId: "p-b", PluginName: "p-b", ExtensionId: "b-main"},
 	}
 }
 
@@ -716,6 +719,9 @@ func TestManualFetchConflictAfterTargetResolution(t *testing.T) {
 	}
 	if len(outcome.Conflicts[0].Candidates) != 2 || outcome.Conflicts[0].Candidates[0].PluginPublicId != "p-a" {
 		t.Fatalf("候选清单应原样交回（首位=默认选中项）, 实际 %+v", outcome.Conflicts[0].Candidates)
+	}
+	if got := outcome.Conflicts[0].Candidates[0].ExtensionId; got != "a-main" {
+		t.Fatalf("冲突候选应为条目级（ExtensionId 携带条目 id）, 实际 %q", got)
 	}
 	if got := env.fetcher.callCount(); got != 0 {
 		t.Fatalf("冲突路径不应调用插件, 实际 %d 次", got)
@@ -794,7 +800,7 @@ func TestBatchFetchConflictGroupedBySite(t *testing.T) {
 		t.Fatalf("冲突路径不应调用插件, 实际 %d 次", got)
 	}
 
-	// 带逐站点显选重发：无冲突，各站点作者按本站点显选下达能力桥
+	// 带逐站点显选重发：无冲突，各站点作者按本站点显选下达能力桥（pixiv 条目键缺省由候选集解析补全）
 	env.trace = &orderTrace{}
 	env.fetcher.trace = env.trace
 	env.fetcher.plan["a1"] = fetchScript{meta: metaOf("a1 新名", "", "", "", "")}
@@ -802,7 +808,7 @@ func TestBatchFetchConflictGroupedBySite(t *testing.T) {
 	env.fetcher.plan["b1"] = fetchScript{meta: metaOf("b1 新名", "", "", "", "")}
 	chosen := []*dto.SiteAuthorFetchChoice{
 		{SiteKey: "pixiv", PluginPublicId: "p-b"},
-		{SiteKey: "bilibili", PluginPublicId: "p-a"},
+		{SiteKey: "bilibili", PluginPublicId: "p-a", ExtensionId: "a-main"},
 	}
 	outcome, err = env.svc.FetchSiteAuthorsInfoByIds(context.Background(), ids, chosen)
 	if err != nil {
@@ -819,14 +825,15 @@ func TestBatchFetchConflictGroupedBySite(t *testing.T) {
 			t.Fatalf("逐站点显选后各条应成功, 实际 %+v", item)
 		}
 	}
-	wantChosen := []string{"p-b", "p-b", "p-a"}
+	wantChosen := []string{"p-b/b-main", "p-b/b-main", "p-a/a-main"}
 	if got := env.fetcher.chosenKeysSnapshot(); len(got) != 3 || got[0] != wantChosen[0] || got[1] != wantChosen[1] || got[2] != wantChosen[2] {
-		t.Fatalf("各作者应按本站点显选下达能力桥（异站点显选互不串用）, 期望 %v 实际 %v", wantChosen, got)
+		t.Fatalf("各作者应按本站点显选（含条目键补全）下达能力桥（异站点显选互不串用）, 期望 %v 实际 %v", wantChosen, got)
 	}
 }
 
-// TestManualFetchChosenPluginPropagated 合法显选：冲突不触发，显选键随本次拉取下达能力桥
-func TestManualFetchChosenPluginPropagated(t *testing.T) {
+// TestManualFetchChosenCandidatePropagated 合法显选（条目键缺省，该插件在候选集内恰一个条目）：
+// 冲突不触发，显选两键（条目 id 解析补全后）随本次拉取下达能力桥
+func TestManualFetchChosenCandidatePropagated(t *testing.T) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
 	}
@@ -835,23 +842,67 @@ func TestManualFetchChosenPluginPropagated(t *testing.T) {
 	env.fetcher.candidatesBySite["pixiv"] = multiCandidatePlugins()
 	env.fetcher.plan["12345"] = fetchScript{meta: metaOf("显选后的新名", "", "", "", "")}
 
-	outcome, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), fetchChoice("pixiv", "p-b"))
+	outcome, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), fetchChoice("pixiv", "p-b", ""))
 	if err != nil {
 		t.Fatalf("显选拉取失败: %v", err)
 	}
 	if len(outcome.Conflicts) != 0 {
 		t.Fatalf("已显选不应返回冲突载荷, 实际 %+v", outcome.Conflicts)
 	}
-	if got := env.fetcher.lastChosenKey(); got != "p-b" {
-		t.Fatalf("显选键应下达能力桥, 实际 %q", got)
+	if got := env.fetcher.lastChosenKey(); got != "p-b/b-main" {
+		t.Fatalf("显选两键（含条目键补全）应下达能力桥, 实际 %q", got)
 	}
 	if got := env.loadSiteAuthor(t, row.GetID()).AuthorName.String; got != "显选后的新名" {
 		t.Fatalf("显选拉取应回写元数据, 实际 %v", got)
 	}
 }
 
-// TestManualFetchInvalidChoiceRejected 显选键未命中该站点的候选集：单条与批量两入口均报错，
-// 且不在任何插件调用前放行
+// TestManualFetchChoiceEntryKeyResolution 显选条目键的解析判定：两键联合显式命中即透传；条目键
+// 缺省时该插件在候选集内恰一个条目则补全为该条目（单实例插件显选路由到其唯一条目），同插件
+// 多条目（条目键缺省）无法定位即拒绝，两键联合不命中即拒绝——各态均不在任何插件调用前放行
+func TestManualFetchChoiceEntryKeyResolution(t *testing.T) {
+	if testing.Short() {
+		t.Skip("内存 SQLite 依赖 CGO")
+	}
+	env := newFetchTestEnv(t)
+	row := env.seedSiteAuthor(t, "pixiv", "12345", nil)
+	// p-a 同站点双条目（条目键缺省的显选无法定位）；p-b 单条目
+	env.fetcher.candidatesBySite["pixiv"] = []*dto.PluginCandidate{
+		{PluginPublicId: "p-a", PluginName: "p-a", ExtensionId: "a-alpha"},
+		{PluginPublicId: "p-a", PluginName: "p-a", ExtensionId: "a-beta"},
+		{PluginPublicId: "p-b", PluginName: "p-b", ExtensionId: "b-main"},
+	}
+	env.fetcher.plan["12345"] = fetchScript{meta: metaOf("解析后的新名", "", "", "", "")}
+
+	// 两键联合显式命中：透传到能力桥
+	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), fetchChoice("pixiv", "p-a", "a-beta")); err != nil {
+		t.Fatalf("两键联合显选应放行: %v", err)
+	}
+	if got := env.fetcher.lastChosenKey(); got != "p-a/a-beta" {
+		t.Fatalf("两键联合显选应原样下达能力桥, 实际 %q", got)
+	}
+	// 条目键缺省 + 单条目插件：补全为该条目
+	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), fetchChoice("pixiv", "p-b", "")); err != nil {
+		t.Fatalf("单条目插件的缺省条目键显选应放行: %v", err)
+	}
+	if got := env.fetcher.lastChosenKey(); got != "p-b/b-main" {
+		t.Fatalf("单条目插件显选应补全为唯一条目, 实际 %q", got)
+	}
+	// 条目键缺省 + 同插件多条目：无法定位，拒绝且不调用插件
+	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), fetchChoice("pixiv", "p-a", "")); err == nil || !strings.Contains(err.Error(), "候选集") {
+		t.Fatalf("同插件多条目且条目键缺省应拒绝, 实际 %v", err)
+	}
+	// 两键联合不命中（条目 id 错）：拒绝
+	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), fetchChoice("pixiv", "p-b", "b-ghost")); err == nil || !strings.Contains(err.Error(), "候选集") {
+		t.Fatalf("条目 id 不命中的显选应拒绝, 实际 %v", err)
+	}
+	if got := env.fetcher.callCount(); got != 2 {
+		t.Fatalf("仅两态合法显选应触发拉取（拒绝态不调用插件）, 实际 %d 次", got)
+	}
+}
+
+// TestManualFetchInvalidChoiceRejected 显选键未命中该站点的候选集（插件键不存在）：单条与批量
+// 两入口均报错，且不在任何插件调用前放行
 func TestManualFetchInvalidChoiceRejected(t *testing.T) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
@@ -860,10 +911,10 @@ func TestManualFetchInvalidChoiceRejected(t *testing.T) {
 	row := env.seedSiteAuthor(t, "pixiv", "12345", nil)
 	env.fetcher.candidatesBySite["pixiv"] = multiCandidatePlugins()
 
-	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), fetchChoice("pixiv", "p-x")); err == nil || !strings.Contains(err.Error(), "候选集") {
+	if _, err := env.svc.FetchSiteAuthorInfoById(context.Background(), row.GetID(), fetchChoice("pixiv", "p-x", "")); err == nil || !strings.Contains(err.Error(), "候选集") {
 		t.Fatalf("单条非法显选应报错, 实际 %v", err)
 	}
-	if _, err := env.svc.FetchSiteAuthorsInfoByIds(context.Background(), []int64{row.GetID()}, fetchChoice("pixiv", "p-x")); err == nil || !strings.Contains(err.Error(), "候选集") {
+	if _, err := env.svc.FetchSiteAuthorsInfoByIds(context.Background(), []int64{row.GetID()}, fetchChoice("pixiv", "p-x", "")); err == nil || !strings.Contains(err.Error(), "候选集") {
 		t.Fatalf("批量非法显选应报错, 实际 %v", err)
 	}
 	if got := env.fetcher.callCount(); got != 0 {

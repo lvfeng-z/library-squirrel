@@ -13,13 +13,14 @@ import (
 // declarationManifest 以给定 extensions 段内容拼一份清单原文（其余字段取合法值），
 // 供校验矩阵逐形态构造不合格声明
 func declarationManifest(extensions string) string {
-	return `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":10,"extensions":` + extensions + `}`
+	return `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":11,"extensions":` + extensions + `}`
 }
 
 // TestValidateManifestDeclarationsRejectsMatrix 拒收矩阵：不合格形态逐种被点名拒收
-// （缺 sites / 空 sites / 未注册站点键 / 未识别 options / 残留顶层 capabilities 键 /
-// extensions 内 settings 键），合格声明与无 extensions 段的清单放行。输入一律为清单原文
-// （顶层残留学段无承载字段，只能就原文探测）
+// （siteAuthorFetch 空数组/条目缺 id/条目 id 重复/条目缺 name/缺 sites/空 sites/未注册站点键/
+// taskHandlers 条目缺 name/未识别 options/urlPatterns 空数组/空模式串/坏正则/siteBrowsers 条目缺
+// name/残留顶层 capabilities 键/extensions 内 settings 键），合格声明与无 extensions 段的清单放行。
+// 输入一律为清单原文（顶层残留学段无承载字段，只能就原文探测）
 func TestValidateManifestDeclarationsRejectsMatrix(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -28,42 +29,104 @@ func TestValidateManifestDeclarationsRejectsMatrix(t *testing.T) {
 		wantText string
 	}{
 		{
-			name:     "缺 sites",
-			manifest: declarationManifest(`{"siteAuthorFetch":{}}`),
+			name:     "siteAuthorFetch 空数组",
+			manifest: declarationManifest(`{"siteAuthorFetch":[]}`),
 			wantErr:  true,
-			wantText: "siteAuthorFetch.sites 为空",
+			wantText: "siteAuthorFetch 为空数组",
 		},
 		{
-			name:     "空 sites",
-			manifest: declarationManifest(`{"siteAuthorFetch":{"sites":[]}}`),
+			name:     "siteAuthorFetch 条目缺 id",
+			manifest: declarationManifest(`{"siteAuthorFetch":[{"name":"作者源","sites":["bilibili"]}]}`),
 			wantErr:  true,
-			wantText: "siteAuthorFetch.sites 为空",
+			wantText: "siteAuthorFetch[0] 条目缺 id",
 		},
 		{
-			name:     "未注册站点键",
-			manifest: declarationManifest(`{"siteAuthorFetch":{"sites":["bilibili","nosite"]}}`),
+			name: "siteAuthorFetch 条目 id 重复",
+			manifest: declarationManifest(`{"siteAuthorFetch":[` +
+				`{"id":"main","name":"作者源","sites":["bilibili"]},` +
+				`{"id":"main","name":"备份源","sites":["pixiv"]}]}`),
 			wantErr:  true,
-			wantText: `未注册站点键 "nosite"`,
+			wantText: `含重复条目 id "main"`,
+		},
+		{
+			name:     "siteAuthorFetch 条目缺 name",
+			manifest: declarationManifest(`{"siteAuthorFetch":[{"id":"main","sites":["bilibili"]}]}`),
+			wantErr:  true,
+			wantText: "siteAuthorFetch[main].name 为空",
+		},
+		{
+			name:     "siteAuthorFetch 条目缺 sites",
+			manifest: declarationManifest(`{"siteAuthorFetch":[{"id":"main","name":"作者源"}]}`),
+			wantErr:  true,
+			wantText: "siteAuthorFetch[main].sites 为空",
+		},
+		{
+			name:     "siteAuthorFetch 条目空 sites",
+			manifest: declarationManifest(`{"siteAuthorFetch":[{"id":"main","name":"作者源","sites":[]}]}`),
+			wantErr:  true,
+			wantText: "siteAuthorFetch[main].sites 为空",
+		},
+		{
+			name:     "siteAuthorFetch 未注册站点键",
+			manifest: declarationManifest(`{"siteAuthorFetch":[{"id":"main","name":"作者源","sites":["bilibili","nosite"]}]}`),
+			wantErr:  true,
+			wantText: `siteAuthorFetch[main].sites 含未注册站点键 "nosite"`,
+		},
+		{
+			name:     "siteAuthorFetch 旧单对象形态",
+			manifest: declarationManifest(`{"siteAuthorFetch":{"sites":["bilibili"]}}`),
+			wantErr:  true,
+			wantText: "cannot unmarshal",
+		},
+		{
+			name:     "taskHandlers 条目缺 name",
+			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","options":["workOrderQuery"]}]}`),
+			wantErr:  true,
+			wantText: "taskHandlers[main].name 为空",
 		},
 		{
 			name:     "未识别 options",
-			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","options":["workSetRelationQuer"]}]}`),
+			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","name":"主处理器","options":["workSetRelationQuer"]}]}`),
 			wantErr:  true,
 			wantText: `taskHandlers[main].options 含未识别的可选方法组 "workSetRelationQuer"`,
 		},
 		{
+			name:     "urlPatterns 空数组",
+			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","name":"主处理器","urlPatterns":[]}]}`),
+			wantErr:  true,
+			wantText: "taskHandlers[main].urlPatterns 为空数组",
+		},
+		{
+			name:     "urlPatterns 空模式串",
+			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","name":"主处理器","urlPatterns":["^https://example\\.com/", ""]}]}`),
+			wantErr:  true,
+			wantText: "urlPatterns[1] 为空串",
+		},
+		{
+			name:     "urlPatterns 坏正则",
+			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","name":"主处理器","urlPatterns":["[invalid("]}]}`),
+			wantErr:  true,
+			wantText: `含无法编译的正则 "[invalid("`,
+		},
+		{
+			name:     "siteBrowsers 条目缺 name",
+			manifest: declarationManifest(`{"siteBrowsers":[{"id":"main"}]}`),
+			wantErr:  true,
+			wantText: "siteBrowsers[main].name 为空",
+		},
+		{
 			name: "残留顶层 capabilities",
-			manifest: `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":10,` +
+			manifest: `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":11,` +
 				`"capabilities":["siteAuthorFetch"],` +
-				`"extensions":{"siteAuthorFetch":{"sites":["bilibili"]}}}`,
+				`"extensions":{"siteAuthorFetch":[{"id":"main","name":"作者源","sites":["bilibili"]}]}}`,
 			wantErr:  true,
 			wantText: "顶层 capabilities 段不在声明面内",
 		},
 		{
 			name: "残留顶层 capabilities(null 值)",
-			manifest: `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":10,` +
+			manifest: `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":11,` +
 				`"capabilities":null,` +
-				`"extensions":{"siteAuthorFetch":{"sites":["bilibili"]}}}`,
+				`"extensions":{"siteAuthorFetch":[{"id":"main","name":"作者源","sites":["bilibili"]}]}}`,
 			wantErr:  true,
 			wantText: "顶层 capabilities 段不在声明面内",
 		},
@@ -80,18 +143,27 @@ func TestValidateManifestDeclarationsRejectsMatrix(t *testing.T) {
 			wantText: "settings 须住清单根级",
 		},
 		{
-			name:     "合格声明",
-			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","options":["workOrderQuery","workSetRelationQuery"]}],"siteAuthorFetch":{"sites":["bilibili","pixiv","local"]}}`),
+			name: "合格声明（多 siteAuthorFetch 条目 + urlPatterns）",
+			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","name":"主处理器","options":["workOrderQuery","workSetRelationQuery"],"urlPatterns":["^https://www\\.bilibili\\.com/video/"]}],` +
+				`"siteAuthorFetch":[{"id":"main","name":"作者源","sites":["bilibili","pixiv","local"]},{"id":"alt","name":"备用源","sites":["bilibili"]}]}`),
+		},
+		{
+			name:     "合格声明（urlPatterns 缺省放行）",
+			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","name":"主处理器"}]}`),
 		},
 		{
 			name: "根级 settings 放行",
-			manifest: `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":10,` +
+			manifest: `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":11,` +
 				`"settings":[{"key":"a","type":"string","title":"甲"}],` +
-				`"extensions":{"siteAuthorFetch":{"sites":["bilibili"]}}}`,
+				`"extensions":{"siteAuthorFetch":[{"id":"main","name":"作者源","sites":["bilibili"]}]}}`,
 		},
 		{
 			name:     "无 extensions 段",
-			manifest: `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":10}`,
+			manifest: `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":11}`,
+		},
+		{
+			name:     "siteAuthorFetch 键 null 值等同未声明",
+			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","name":"主处理器"}],"siteAuthorFetch":null}`),
 		},
 	}
 	for _, tc := range cases {

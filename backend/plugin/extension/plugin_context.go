@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	"github.com/library-squirrel/backend/base/logger"
-	"github.com/library-squirrel/backend/base/model"
 	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -31,22 +30,13 @@ type TaskCreateProvider interface {
 	CreateTaskByURL(ctx context.Context, url string) (*pluginsdkdto.CreateTaskResult, error)
 }
 
-// UrlListenerRegistry URL监听器注册
-type UrlListenerRegistry interface {
-	RegisterUrlListener(pluginPublicId string, extensionId string, patterns []string)
-	UnregisterUrlListener(pluginPublicId string, extensionId string)
-}
-
 // PluginContextDeps PluginContext 的依赖项
 type PluginContextDeps struct {
-	PluginInfo          *PluginInfo
-	RootPath            string
-	TaskHandlerRegistry *TaskHandlerRegistry
-	SiteBrowserRegistry *SiteBrowserRegistry
-	Storage             PluginStorageService
-	TaskCreate          TaskCreateProvider
-	UrlListener         UrlListenerRegistry
-	FrontendEvent       pluginsdkdto.FrontendEventProvider
+	PluginInfo    *PluginInfo
+	RootPath      string
+	Storage       PluginStorageService
+	TaskCreate    TaskCreateProvider
+	FrontendEvent pluginsdkdto.FrontendEventProvider
 	// LibraryQuery 库查询核心（Tier 1 只读查询；装配处构造一次全体插件共享）
 	LibraryQuery *libraryQueryProvider
 }
@@ -54,17 +44,14 @@ type PluginContextDeps struct {
 // --- Implementation ---
 
 type pluginContext struct {
-	pluginInfo          *PluginInfo
-	taskHandlerRegistry *TaskHandlerRegistry
-	siteBrowserRegistry *SiteBrowserRegistry
-	rootPath            string
-	storage             PluginStorageService
-	taskCreate          TaskCreateProvider
-	urlListener         UrlListenerRegistry
-	frontendEvent       pluginsdkdto.FrontendEventProvider
-	query               *libraryQueryProvider
-	scopedLogger        *zap.SugaredLogger
-	logger              pluginsdkdto.Logger
+	pluginInfo    *PluginInfo
+	rootPath      string
+	storage       PluginStorageService
+	taskCreate    TaskCreateProvider
+	frontendEvent pluginsdkdto.FrontendEventProvider
+	query         *libraryQueryProvider
+	scopedLogger  *zap.SugaredLogger
+	logger        pluginsdkdto.Logger
 }
 
 // NewPluginContext 创建插件上下文
@@ -77,50 +64,15 @@ func NewPluginContext(deps PluginContextDeps) pluginsdkdto.PluginContext {
 	sugar := logger.Log.Named("Plugin[" + pluginName + "]")
 
 	return &pluginContext{
-		pluginInfo:          deps.PluginInfo,
-		taskHandlerRegistry: deps.TaskHandlerRegistry,
-		siteBrowserRegistry: deps.SiteBrowserRegistry,
-		rootPath:            deps.RootPath,
-		storage:             deps.Storage,
-		taskCreate:          deps.TaskCreate,
-		urlListener:         deps.UrlListener,
-		frontendEvent:       deps.FrontendEvent,
-		query:               deps.LibraryQuery,
-		scopedLogger:        sugar,
-		logger:              newHostLogger(sugar),
+		pluginInfo:    deps.PluginInfo,
+		rootPath:      deps.RootPath,
+		storage:       deps.Storage,
+		taskCreate:    deps.TaskCreate,
+		frontendEvent: deps.FrontendEvent,
+		query:         deps.LibraryQuery,
+		scopedLogger:  sugar,
+		logger:        newHostLogger(sugar),
 	}
-}
-
-// --- 扩展点注册 ---
-
-func (pc *pluginContext) RegisterTaskHandler(id, name, description string, handler pluginsdkdto.TaskHandler) error {
-	metadata := model.ExtensionMetadata{
-		Type:           model.ExtensionTypeTaskHandler,
-		ID:             id,
-		PluginID:       pc.pluginInfo.ID,
-		PluginPublicID: pc.pluginInfo.PublicID,
-		Name:           name,
-		Description:    description,
-	}
-	return pc.taskHandlerRegistry.Register(model.NewExtension(metadata, handler))
-}
-
-func (pc *pluginContext) RegisterSiteBrowser(id, name, description string, browser pluginsdkdto.SiteBrowser) error {
-	metadata := model.ExtensionMetadata{
-		Type:           model.ExtensionTypeSiteBrowser,
-		ID:             id,
-		PluginID:       pc.pluginInfo.ID,
-		PluginPublicID: pc.pluginInfo.PublicID,
-		Name:           name,
-		Description:    description,
-	}
-	return pc.siteBrowserRegistry.Register(model.NewExtension(metadata, browser))
-}
-
-// --- 扩展点注销 ---
-
-func (pc *pluginContext) UnregisterSiteBrowser(id string) error {
-	return pc.siteBrowserRegistry.Unregister(pc.pluginInfo.PublicID, id)
 }
 
 // --- 插件自存信息（统一 KV）---
@@ -146,16 +98,6 @@ func (pc *pluginContext) GetAllValues() (map[string]*pluginsdkdto.StorageValue, 
 }
 
 // --- 任务 ---
-
-func (pc *pluginContext) RegisterUrlListener(extensionId string, patterns []string) error {
-	pc.urlListener.RegisterUrlListener(pc.pluginInfo.PublicID, extensionId, patterns)
-	return nil
-}
-
-func (pc *pluginContext) UnregisterUrlListener(extensionId string) error {
-	pc.urlListener.UnregisterUrlListener(pc.pluginInfo.PublicID, extensionId)
-	return nil
-}
 
 func (pc *pluginContext) CreateTask(url string) (*pluginsdkdto.CreateTaskResult, error) {
 	return pc.taskCreate.CreateTaskByURL(context.Background(), url)

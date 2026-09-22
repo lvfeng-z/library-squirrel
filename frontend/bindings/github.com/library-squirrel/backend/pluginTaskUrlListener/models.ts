@@ -10,7 +10,7 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as sql$0 from "../../../../database/sql/models.js";
 
 /**
- * PluginWithExtension 带贡献点的插件
+ * PluginWithExtension 带贡献点的插件（任务创建候选枚举的单个条目）
  */
 export class PluginWithExtension {
     "id": number;

@@ -1022,11 +1022,14 @@ func namedListener(publicId, name, extId string) *pluginTaskUrlListener.PluginWi
 	return &pluginTaskUrlListener.PluginWithExtension{Plugin: plugin, ExtensionID: extId}
 }
 
-// newURLListenerService 把监听器条目注册到同一匹配模式（同模式内按注册序返回，顺序确定）。
+// newURLListenerService 把监听器条目以生产输入形态（清单任务处理器条目声明 urlPatterns）
+// 登记到同一匹配模式（同模式内按登记序返回，顺序确定）。
 func newURLListenerService(entries ...*pluginTaskUrlListener.PluginWithExtension) *pluginTaskUrlListener.Service {
 	svc := pluginTaskUrlListener.NewService(pluginTaskUrlListener.NewManager())
 	for _, e := range entries {
-		svc.Register(e, []string{"^http"})
+		svc.RegisterDeclared(e.Plugin, []dto.TaskHandlerDeclaration{
+			{ID: e.ExtensionID, Name: e.Name.String, UrlPatterns: []string{"^http"}},
+		})
 	}
 	return svc
 }
@@ -1449,8 +1452,10 @@ func TestCreateTaskByURL_ChosenCandidateNotInCandidatesFails(t *testing.T) {
 func TestCreateTaskByURL_ProgrammaticEntryUsesFullKeyOrder(t *testing.T) {
 	handlerA, handlerB := viableHandler(), viableHandler()
 	listenerSvc := pluginTaskUrlListener.NewService(pluginTaskUrlListener.NewManager())
-	listenerSvc.Register(namedListener("pub-b", "插件B", "ext-b"), []string{"^http"})
-	listenerSvc.Register(namedListener("pub-a", "插件A", "ext-a"), []string{"^http://x"})
+	listenerSvc.RegisterDeclared(namedListener("pub-b", "插件B", "ext-b").Plugin,
+		[]dto.TaskHandlerDeclaration{{ID: "ext-b", Name: "插件B", UrlPatterns: []string{"^http"}}})
+	listenerSvc.RegisterDeclared(namedListener("pub-a", "插件A", "ext-a").Plugin,
+		[]dto.TaskHandlerDeclaration{{ID: "ext-a", Name: "插件A", UrlPatterns: []string{"^http://x"}}})
 	svc, _ := newCreateByURLService(t,
 		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{
 			"pub-a/ext-a": handlerA,

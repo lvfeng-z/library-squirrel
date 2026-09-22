@@ -19,8 +19,10 @@ Library Squirrel 通过插件扩展支持的站点（pixiv、本地导入等）�
 
 | 扩展点 | 注册方式 | 说明 |
 |---|---|---|
-| TaskHandler | 运行时（代码注册） | 处理资源下载任务生命周期 |
-| SiteBrowser | 运行时（代码注册） | 打开/关闭站点浏览器 |
+| TaskHandler | **声明式**（`extensions.taskHandlers`，宿主激活期派生注册） | 处理资源下载任务生命周期 |
+| SiteBrowser | **声明式**（`extensions.siteBrowsers`，宿主激活期派生注册） | 打开/关闭站点浏览器 |
+| URL 监听 | **声明式**（`extensions.taskHandlers[].urlPatterns`，激活期派生索引） | 匹配的 URL 创建任务时路由到该条目 |
+| siteAuthorFetch | **声明式**（`extensions.siteAuthorFetch` 数组条目，可多实例，契约 v11 起） | 站点作者信息拉取 |
 | Slot: `view` | **声明式**（`plugin.json`） | 新增独立路由页面 |
 | Slot: `replaceView` | **声明式** | 替换主程序已有页面（覆盖路由 component） |
 | Slot: `embed` | **声明式** | 插入主程序具名插槽位 |
@@ -59,10 +61,10 @@ import (
 func main() {
     handler := &MyTaskHandler{}
     sdkplugin.Serve(
-        sdkplugin.WithTaskHandler(handler),
+        sdkplugin.WithTaskHandler(handler),   // 只提供实现体；扩展点条目与元数据住清单
         sdkplugin.WithActivate(func(ctx sdkdto.PluginContext) {
-            ctx.RegisterTaskHandler("main", "我的任务处理器", "处理下载", handler)
-            ctx.RegisterUrlListener("main", []string{`https?://example\.com/.*`})
+            // 激活回调里做插件自身初始化（注入 ctx、拉起自持资源等）；
+            // 扩展点注册已声明化：条目见下方 plugin.json，宿主激活期按清单派生注册
         }),
     )
 }
@@ -72,7 +74,7 @@ type MyTaskHandler struct{}
 // ... 实现 8 个方法
 ```
 
-对应 `plugin.json`：
+对应 `plugin.json`（条目元数据是唯一源：`name` 必填，URL 监听写在条目级 `urlPatterns`）：
 
 ```json
 {
@@ -81,9 +83,13 @@ type MyTaskHandler struct{}
   "version": "1.0.0",
   "author": "author",
   "entryFile": "my_plugin.exe",
+  "contractVersion": 11,
   "activation": {"type": 1},
   "extensions": {
-    "taskHandlers": [{"id": "main"}]
+    "taskHandlers": [
+      {"id": "main", "name": "我的任务处理器", "description": "处理下载",
+       "urlPatterns": ["https?://example\\.com/.*"]}
+    ]
   }
 }
 ```
@@ -103,7 +109,7 @@ type MyTaskHandler struct{}
 | `description` | string | 否 | 描述 |
 | `entryFile` | string | 条件必填 | 可执行文件名（运行时插件必填，纯 UI 插件不需要） |
 | `activation.type` | number | 是 | `0`=手动激活，`1`=启动时自动激活 |
-| `contractVersion` | number | 是 | 编译期契约版本（主程序据此协商加载，见「契约版本协商」）。**显式手填、不随 SDK 自动跟随**——SDK 升版后须自行改本字段；当前 = 10 |
+| `contractVersion` | number | 是 | 编译期契约版本（主程序据此协商加载，见「契约版本协商」）。**显式手填、不随 SDK 自动跟随**——SDK 升版后须自行改本字段；当前 = 11 |
 | `configSchemaVersion` | number | 否 | 配置 schema 版本（0/缺省=legacy 不管理；启用配置迁移时从 1 起递增，见 8.3）。与 contractVersion 正交：前者管插件配置结构，后者管 host↔plugin 协议 |
 | `settings` | `[SettingDeclaration]` | 否 | 用户可配置项声明，住清单根级（见「settings 用户设置声明」与 8.2）；`extensions` 子对象内出现 `settings` 键（值 `null` 亦然）即判不合格 |
 | `extensions` | object | 是 | 能力包声明集合（见下与「能力声明」） |
@@ -114,19 +120,20 @@ type MyTaskHandler struct{}
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `taskHandlers` | `[{id, name?, description?, options?}]` | 三选一 | TaskHandler 声明（运行时注册）；`options` 为该条目启用的可选方法组（内置枚举，见「能力声明」） |
-| `siteBrowsers` | `[{id, name?, description?}]` | 三选一 | SiteBrowser 声明（运行时注册） |
-| `siteAuthorFetch` | `{sites: string[]}` | 否 | 站点作者信息拉取能力包；`sites` 为该插件服务的站点键清单（作用域 = 归属），见「能力声明」 |
+| `taskHandlers` | `[{id, name, description?, options?, urlPatterns?}]` | 三选一 | TaskHandler 声明（清单声明 + 宿主激活期派生注册）；`name` **必填**（派生注册表元数据唯一源）；`options` 为该条目启用的可选方法组（内置枚举，见「能力声明」）；`urlPatterns` 为该条目的 URL 监听模式（正则串数组，可选，见下「校验规则」） |
+| `siteBrowsers` | `[{id, name, description?}]` | 三选一 | SiteBrowser 声明（清单声明 + 宿主激活期派生注册）；`name` **必填** |
+| `siteAuthorFetch` | `[{id, name, sites}]` | 否 | 站点作者信息拉取能力包（**数组，一插件可多实例**）；`id` 插件内唯一、`name` 必填（冲突选择器展示「插件名 · 条目名」）、`sites` 为该条目服务的站点键清单（作用域 = 归属），见「能力声明」 |
 | `resourceTypes` | `[ResourceTypeDeclaration]` | 否 | 自定义资源类型声明（自契约 v9 起住本段，段存在即启用，见「自定义资源类型声明」） |
 | `frontendExtensions` | `[FrontendExtensionDeclaration]` | 三选一 | UI 前端扩展（声明式注册，见 6.3） |
 
 **校验规则**（安装时）：
 - `id/name/version/author` 必填。
-- `extensions` 必须存在，且 `taskHandlers/siteBrowsers/frontendExtensions` 至少一个非空。
-- `entryFile` 仅在含运行时扩展点（taskHandlers 或 siteBrowsers）时必填；纯 UI 插件可省略。
-- `extensions.siteAuthorFetch.sites` 与 `extensions.taskHandlers[].options` **安装时强校验**：`sites` 须非空且每项为 SDK 站点注册表内的已注册键，`options` 每项须为内置可选方法组枚举值，不合格即拒收并点名不合格项（`backend/plugin/extension/loader.go:224-271`，安装闸门 `backend/plugin/service.go:354`）。
-- 顶层残留 `capabilities` 键（值恰为 `null` 亦然）即判**未迁移**：安装时拒收、加载时跳过（`backend/plugin/extension/loader.go:242-244`）。
-- `extensions` 子对象内 `settings` 键在场（值恰为 `null` 亦然）即判不合格——用户设置项声明须住清单根级 `settings` 段（`backend/plugin/extension/loader.go:246-256`）。
+- `extensions` 必须存在，且 `taskHandlers/siteBrowsers/frontendExtensions/siteAuthorFetch` 至少一个非空（纯 `siteAuthorFetch` 插件可安装，需 `entryFile`）。
+- `entryFile` 仅在含运行时扩展点（taskHandlers / siteBrowsers / siteAuthorFetch）时必填；纯 UI 插件可省略。
+- 条目 `name` 一律必填（`taskHandlers`/`siteBrowsers`/`siteAuthorFetch` 三类条目同规）——派生注册表与候选展示的元数据唯一源是清单。
+- `extensions.siteAuthorFetch` 与 `extensions.taskHandlers[]` **安装时强校验**：`siteAuthorFetch` 须为非空数组、条目 `id` 非空且插件内唯一、`sites` 非空且每项为 SDK 站点注册表内的已注册键；`urlPatterns` 可选，但在场须为非空数组且逐项可编译；`options` 每项须为内置可选方法组枚举值。不合格即拒收并点名不合格项（`backend/plugin/extension/loader.go:262-325`，安装闸门 `backend/plugin/service.go:344-346`）。旧单对象形态 `{"sites": [...]}` 已不受支持（v11 起）。
+- 顶层残留 `capabilities` 键（值恰为 `null` 亦然）即判**未迁移**：安装时拒收、加载时跳过（`backend/plugin/extension/loader.go:240-241`）。
+- `extensions` 子对象内 `settings` 键在场（值恰为 `null` 亦然）即判不合格——用户设置项声明须住清单根级 `settings` 段。
 - 其余枚举值（kind/contentType/position/settings.type）**安装时不校验**，错误值在激活/运行期暴露，请自行核对拼写。
 
 ### 前端扩展声明
@@ -194,7 +201,7 @@ type MyTaskHandler struct{}
 
 ### 契约版本协商
 
-`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 10，直接引用 SDK `transport.ContractVersion` 常量，`backend/plugin/extension/loader.go:39`）与 `minSupportedContractVersion`（当前 10，`backend/plugin/extension/loader.go:43`），插件 manifest 声明自己编译时锁定的 `contractVersion`。**该字段是 plugin.json 的显式手填字段，不随 SDK 自动跟随**——SDK 提升 `ContractVersion` 常量后，你必须自行把它改到 plugin.json 里；漏改即被主程序按「过旧」拒载。
+`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 11，直接引用 SDK `transport.ContractVersion` 常量，`backend/plugin/extension/loader.go:41`）与 `minSupportedContractVersion`（当前 11，`backend/plugin/extension/loader.go:47`），插件 manifest 声明自己编译时锁定的 `contractVersion`。**该字段是 plugin.json 的显式手填字段，不随 SDK 自动跟随**——SDK 提升 `ContractVersion` 常量后，你必须自行把它改到 plugin.json 里；漏改即被主程序按「过旧」拒载。
 
 **校验**（安装期预检 + 加载期终检，硬拒绝 + 清晰提示）：
 - 插件 `contractVersion` > 主程序 `current` → 插件太新，拒（提示升级主程序）。
@@ -212,6 +219,7 @@ type MyTaskHandler struct{}
 - 8 — 关联级维度体系（tag namespace + author role 同构）：ns 从 site_tag 实体行收回关联级——`SiteTagInfo` 删 `Namespace` 字段（**删字段属破坏性变更**），`TaskSiteTagDTO.Namespace` 保留、语义=本作品上该标签的关联级 ns；role 同构补齐——`TaskSiteAuthorDTO` 加 `RoleName` 声明面，`ListAuthorsByWorkId` 返回面由实体级 DTO 整体更换为关联条目 `WorkLocalAuthorEntry`/`WorkSiteAuthorEntry`（`author` + 关联级 `role_name`，**返回消息类型更换属破坏性变更**）；实体级 DTO 不携带关联维度。主程序 `minSupportedContractVersion` 同步升 8（v8 以下插件拒载，捆绑包随之重建）。
 - 9 — 插件声明面重构（能力包模型）：顶层 `capabilities` 段取消，其声明移入 `extensions` 段——`siteAuthorFetch` 携 `sites` 作用域、`workOrderQuery` 与 `workSetRelationQuery` 下沉 `taskHandlers[].options`、`resourceTypeProvider` 取消（`resourceTypes` 迁入 `extensions` 段后「段存在即启用」），门控粒度相应改为（插件, 扩展点）**条目级**；站点归属自判机制退役——插件侧身份键比对辅助、跨进程未归属错误信号及其转译与宿主侧判定一并删除，作者拉取候选改由宿主按插件已声明的站点范围收窄，插件不再自判归属。声明面结构更换与导出符号删除属源级破坏。主程序 `minSupportedContractVersion` 同步升 9（v9 以下插件拒载，捆绑包随之重建）。
 - 10 — 插件清单结构变更：用户设置项声明（settings 段）住清单根级，`extensions` 段只承载能力包声明、不承载 settings 子段（其子对象内该键在场即判不合格）。段位置变更属宿主读清单的源级破坏——主程序 `minSupportedContractVersion` 同步升 10（低于 10 的清单拒载，捆绑包随之重建）。
+- 11 — **注册面声明化 + siteAuthorFetch 实例化**：`extensions.siteAuthorFetch` 由单对象 `{sites}` 改**数组** `[{id,name,sites}]`（条目 id 插件内唯一、name 必填）；拉取请求 `FetchSiteAuthorInfoRequest` 加 `extensionId`（插件侧服务端按条目 id 分派、未命中报 `InvalidArgument`，SDK `WithSiteAuthorFetcher(id, fetcher)` 改为可按条目多次注册）；`taskHandlers/siteBrowsers` 的 `name` 变必填并由宿主**激活期按清单条目派生注册**（元数据 name/description 取清单）；`taskHandlers[]` 加可选 `urlPatterns`（URL 监听迁清单，宿主激活期建派生索引）；HostService 五个运行时注册/监听 RPC（`RegisterTaskHandler`/`RegisterSiteBrowser`/`UnregisterSiteBrowser`/`RegisterUrlListener`/`UnregisterUrlListener`）与 `PluginContext` 对应方法整体退役。**删 RPC 属线级破坏**——主程序 `minSupportedContractVersion` 同步升 11（v10 及以下插件包拒载并提示升级，捆绑包随之重建）。
 
 **填法（注意：手填，不自动跟随）**：插件作者须把 SDK 的 `ContractVersion` 常量（`github.com/lvfeng-z/library-squirrel-sdk/transport.ContractVersion`）**显式写进 plugin.json 的 `contractVersion` 字段**——该字段不会随 SDK 升版自动变化，SDK bump 后漏改即被主程序按「过旧」拒载。bump（提升契约版本）只在破坏性变更时由 SDK 侧发起（proto 加字段、**加 RPC** 不 bump；删/改字段、删 RPC、改 DTO 结构/RPC 签名/前端 props 契约才 bump）。加 RPC 不 bump 意味着版本门拦不住「同代宿主缺某查询端点」的组合——运行期探测约定见 5.1「Unimplemented 降级」。
 
@@ -221,14 +229,15 @@ type MyTaskHandler struct{}
 
 | 原 `capabilities` 值 | 新去向 | 说明 |
 |---|---|---|
-| `siteAuthorFetch` | `extensions.siteAuthorFetch` | 单对象 `{"sites": ["bilibili"]}`：`sites` 为该插件服务的站点键清单（作用域 = 归属），须非空且每项为 SDK 站点注册表内的已注册键；宿主据此收窄作者拉取候选——`sites` 不含本次请求站点即不成为候选 |
+| `siteAuthorFetch` | `extensions.siteAuthorFetch` | **数组** `[{"id": "main", "name": "作者源", "sites": ["bilibili"]}]`（契约 v11 起）：一条目 = 一个拉取实例，`id` 插件内唯一、`name` 必填、`sites` 为该条目服务的站点键清单（作用域 = 归属）须非空且每项为 SDK 站点注册表内的已注册键；宿主按**条目**收窄作者拉取候选——条目 `sites` 不含本次请求站点即不成为候选。多条目可同站点（冲突时交互面按「插件名 · 条目名」显选，拉取 RPC 带条目 id 分派） |
 | `workOrderQuery` | `extensions.taskHandlers[].options` | 包内**条目级**可选方法组，对应 `WorkOrderQuerier`（实现该接口的 taskHandler 条目声明此值，如 pixiv） |
 | `workSetRelationQuery` | `extensions.taskHandlers[].options` | 同上，对应 `WorkSetRelationQuerier` |
+| （无对应旧值） | `extensions.taskHandlers[].urlPatterns` | 契约 v11 起 URL 监听迁清单：条目级正则模式串数组（可选；在场须非空且逐项可编译），匹配的 URL 创建任务时路由到该条目；条目级粒度与旧 `RegisterUrlListener(extensionId, …)` 一致 |
 | `resourceTypeProvider` | **取消** | `resourceTypes` 迁入 `extensions` 段后「段存在即启用」，一把锁不再需要两把钥匙 |
 
 `options` 的合法取值 = 内置封闭枚举（当前 `workOrderQuery`、`workSetRelationQuery`，见 `backend/plugin/extension/loader.go:64-74`）；非法值安装期与加载期均拒。**门控粒度为条目级**——（插件, 扩展点条目）粒度判定，未声明某 `options` 项的 taskHandler 条目不经该条目被调用（`backend/plugin/extension/loader.go:125-146`）。
 
-顶层 `capabilities` 键在场（值恰为 `null` 亦然）即视为**未迁移**：安装时拒收、加载时跳过（校验入口 `backend/plugin/extension/loader.go:224-241`；安装闸门 `backend/plugin/service.go:354`、加载闸门 `backend/plugin/service.go:147`）。能力不单独版本化，演进由全局 `contractVersion` 兜底。
+顶层 `capabilities` 键在场（值恰为 `null` 亦然）即视为**未迁移**：安装时拒收、加载时跳过（校验入口 `backend/plugin/extension/loader.go:233-241`；安装闸门 `backend/plugin/service.go:345`、加载闸门 `backend/plugin/service.go:146`）。能力不单独版本化，演进由全局 `contractVersion` 兜底。
 
 ### 自定义资源类型声明（resourceTypes 段）
 
@@ -297,11 +306,13 @@ func main() {
     handler := &MyTaskHandler{}
     browser := &MySiteBrowser{}
     sdkplugin.Serve(
-        sdkplugin.WithTaskHandler(handler),  // 下载型插件：注册 TaskHandler
-        sdkplugin.WithBrowser(browser),      // 可选，注册 SiteBrowser
+        sdkplugin.WithTaskHandler(handler),  // 下载型插件：提供 TaskHandler 实现体
+        sdkplugin.WithBrowser(browser),      // 可选：提供 SiteBrowser 实现体
         sdkplugin.WithActivate(func(ctx sdkdto.PluginContext) {
-            // 在此注册扩展点、监听 URL 等（站点行由主程序按 identity 注册表自动投影，插件无需建站）
-            ctx.RegisterUrlListener("main", []string{`https?://example\.com/.*`})
+            // 激活回调：只做插件自身初始化（注入 ctx、拉起自持资源）。
+            // 扩展点条目与元数据住 plugin.json、URL 监听写条目级 urlPatterns，
+            // 宿主激活期按清单派生注册/建索引——此处不再调用注册 API。
+            // （站点行由主程序按 identity 注册表自动投影，插件无需建站）
         }),
         sdkplugin.WithShutdown(func() {
             // 可选，进程关闭前的清理
@@ -311,10 +322,11 @@ func main() {
 ```
 
 - `Serve(opts...)`：全部能力以选项提供，**无必填参数**。未设置 `WithTaskHandler` 时插件进程不注册 TaskHandlerService，主程序侧任务相关 RPC 得到 gRPC `Unimplemented`。
-- `WithTaskHandler(handler)`：注册 TaskHandler 扩展点（下载任务生命周期，见 6.1）。
-- `WithBrowser(browser)`：注册 SiteBrowser（也可在 Activate 内 `RegisterSiteBrowser`）。
-- `WithActivate(fn)`：回调签名 `func(ctx sdkdto.PluginContext)`，主程序握手完成后调用。**这是注册扩展点的唯一时机**。
+- `WithTaskHandler(handler)`：提供 TaskHandler 实现体（下载任务生命周期，见 6.1）；**扩展点条目本身在 `extensions.taskHandlers` 清单里声明**（`id`/`name` 必填），宿主激活期按清单派生注册。
+- `WithBrowser(browser)`：提供 SiteBrowser 实现体；条目在 `extensions.siteBrowsers` 清单里声明（`id`/`name` 必填）。契约 v11 起 `RegisterSiteBrowser` 已退役。
+- `WithActivate(fn)`：回调签名 `func(ctx sdkdto.PluginContext)`，主程序握手完成后调用。用于插件自身初始化（持住 `ctx`、装配自持资源）；**扩展点注册不在此处**——注册面已声明化（契约 v11）。
 - `WithShutdown(fn)`：进程关闭前回调（主程序 `UnloadPlugin` 时触发）。
+- `WithSiteAuthorFetcher(id, fetcher)`：提供 `extensions.siteAuthorFetch` 中 **id** 条目的实现体（契约 v11 起可**多次调用**，一条目一次，同 id 后调覆盖）；拉取请求按条目 id 分派，未命中条目 id 得 `InvalidArgument`。单实例插件传一个条目即等价旧用法。
 
 **工具型插件形态**（无下载功能，仅用宿主库查询 + 声明式前端扩展，如统计面板/去重扫描）：省略 `WithTaskHandler`，在 Activate 里持住 `ctx` 即可调用库查询方法组（见 5.1）：
 
@@ -339,21 +351,16 @@ func main() {
 
 ## 五、PluginContext 完整 API
 
-`ctx sdkdto.PluginContext` 是插件访问主程序能力的**唯一入口**，共 43 个方法（22 个通用方法 + 21 个库查询方法，后者见 5.1）：
+`ctx sdkdto.PluginContext` 是插件访问主程序能力的**唯一入口**，共 37 个方法（16 个通用方法 + 21 个库查询方法，后者见 5.1）：
 
 | 分类 | 方法 | 签名 |
 |---|---|---|
-| 扩展点注册 | `RegisterTaskHandler` | `(id, name, desc string, handler TaskHandler) error` |
-| | `RegisterSiteBrowser` | `(id, name, desc string, browser SiteBrowser) error` |
-| | `UnregisterSiteBrowser` | `(id string) error` |
 | 自存信息 | `GetValue` | `(key string) (*StorageValue, error)`（`StorageValue.Value` 明文 + `SchemaVersion`，见 8.3；key 不存在返回 nil） |
 | | `SetValue` | `(key, value string) error` |
 | | `SetValueEncrypted` | `(key, value string) error` |
 | | `DeleteValue` | `(key string) error` |
 | | `GetAllValues` | `() (map[string]*StorageValue, error)` |
-| 任务 | `RegisterUrlListener` | `(extensionId string, patterns []string) error` |
-| | `UnregisterUrlListener` | `(extensionId string) error`（空则清该插件全部监听） |
-| | `CreateTask` | `(url string) (*CreateTaskResult, error)` |
+| 任务 | `CreateTask` | `(url string) (*CreateTaskResult, error)` |
 | 前端通信 | `PublishToFrontend` | `(topic string, data []byte) error` |
 | | `SubscribeFrontend` | `(topic string) (<-chan []byte, error)` |
 | | `UnsubscribeFrontend` | `(topic string) error` |
@@ -362,6 +369,8 @@ func main() {
 | 窗口 | `GetMainWindowHandle` | `() uintptr` |
 | 日志 | `Infof` / `Debugf` / `Warnf` / `Errorf` | `(template string, args ...any)` |
 | | `GetLogger` | `() Logger`（可 `Named(...)` 派生子 logger） |
+
+> **扩展点注册与 URL 监听不在此接口**（契约 v11 起已整体退役）：条目元数据住清单 `extensions`，宿主激活期按清单派生注册/建索引；插件侧只经 `sdkplugin.Serve` 的选项提供实现体（`WithTaskHandler`/`WithBrowser`/`WithSiteAuthorFetcher`），URL 监听写在 `extensions.taskHandlers[].urlPatterns`。
 
 ### 5.1 宿主库查询（Tier 1 只读）
 
@@ -394,13 +403,13 @@ func main() {
 
 - `StoreInfo.size`（文件字节数）当前宿主恒缺省——`persistent_store` 无字节列，字段为契约留位；需要体积信息时插件可对 `file_path` 自行 `os.Stat`。
 - `QueryWorks` 作者名过滤匹配 `author_name`（本地/站点两轨任一命中即匹配）；站点轨的 `fixed_author_name`（排序固定名）**未纳入**匹配域。
-- 安装门禁要求 manifest 至少声明一个扩展（taskHandlers / siteBrowsers / frontendExtensions 任一非空，`backend/plugin/service.go:320`）——纯查询无任何扩展声明的插件**不可安装**；工具型插件至少声明一个前端扩展（如惰性 view）。已安装后，子进程启动判据是**入口文件在场**（有 `entryFile` 即运行时插件，含仅查询+view 的工具型形态），与扩展声明解耦。
+- 安装门禁要求 manifest 至少声明一个扩展（taskHandlers / siteBrowsers / frontendExtensions / siteAuthorFetch 任一非空，`backend/plugin/service.go:329-330`）——纯查询无任何扩展声明的插件**不可安装**；工具型插件至少声明一个前端扩展（如惰性 view）。已安装后，子进程启动判据是**入口文件在场**（有 `entryFile` 即运行时插件，含仅查询+view 的工具型形态），与扩展声明解耦。
 - 任务历史不在查询面（任务域刚完成表拆分、查询语义未稳定，留待需求）。
 - 库查询是 Tier 1 只读面：写库数据接口（Tier 2）未开放——仅有准入判据无实现；作品及周边数据的写入走任务管线声明面（`WorkResponse` 周边 DTO，统一矩阵见 6.1「作品及周边数据写面契约」），不经库查询面。host→插件事件推送方向留位未做，不得在插件中假设可用。
 
 ## 六、扩展点
 
-### 6.1 TaskHandler(运行时)
+### 6.1 TaskHandler（清单声明 · 激活期派生注册）
 
 处理资源下载任务完整生命周期,实现 7 个方法:
 
@@ -636,7 +645,7 @@ resp.LocalAuthors = append(resp.LocalAuthors, &sdkdto.LocalAuthorDTO{AuthorName:
 
 > 与 `contractVersion`（host↔plugin 协议代际，见「契约版本协商」）和 `configSchemaVersion`（插件配置 KV 结构，见 8.3）是三个独立维度：contractVersion 管 RPC/proto 契约、configSchemaVersion 管 `plugin_storage` 配置、PluginData 的 `schemaVersion` 管 task 内部数据格式，互不耦合。
 
-### 6.2 SiteBrowser（运行时）
+### 6.2 SiteBrowser（清单声明 · 激活期派生注册）
 
 ```go
 type SiteBrowser interface {
@@ -645,7 +654,7 @@ type SiteBrowser interface {
 }
 ```
 
-> SiteBrowser（运行时注册，业务功能）与 `siteBrowserList` Slot（声明式，UI 入口卡片）**是两个东西，必须同时存在**：Slot 提供点击入口，SiteBrowser 提供打开/关闭逻辑。Slot 的 `extensionId` 指向 SiteBrowser 的 `id`。
+> SiteBrowser（清单声明 `extensions.siteBrowsers`，业务功能）与 `siteBrowserList` Slot（声明式，UI 入口卡片）**是两个东西，必须同时存在**：Slot 提供点击入口，SiteBrowser 提供打开/关闭逻辑。Slot 的 `extensionId` 指向 SiteBrowser 条目的 `id`；条目 `name` 必填（管理页展示名取清单）。
 
 ### 6.3 前端扩展（声明式）
 
@@ -947,7 +956,7 @@ dist/
 
 卸载插件时，主程序执行：
 1. 停止插件子进程（`Shutdown` RPC → 超时强杀）。
-2. 清理扩展点：TaskHandler/SiteBrowser/UrlListener/Slot 全部注销。
+2. 清理扩展点：宿主激活期派生的 TaskHandler/SiteBrowser 注册条目与 URL 监听派生索引随进程表一并清空（`UnloadPlugin` 的 `UnregisterAll` 链），Slot 推送随之注销。
 3. 清理静态资源注册。
 4. **前端刷新**：如果插件含 `view`/`replaceView` slot，前端执行 `window.location.reload()` 重新加载（清除已渲染的插件组件与模块缓存，保持当前页面 URL）。
 5. 插件前端组件的 CSS 通过 `link[data-plugin-id]` 标签管理，可在 `useSlotSyncListener` 的 `unloadPluginStyles` 中清理。
@@ -1036,8 +1045,8 @@ return fmt.Errorf("API 业务错误: code=%d message=%s body=%s", code, msg, tru
 - **受限模式**：用户可开启「受限模式」（设置页开关），启用后启动时仅激活官方捆绑插件、跳过所有第三方——用于排查问题时的安全启动。第三方插件在受限模式下不运行。
 17. **HTTP Transport 分离 + 代理决策**：API 路径（风控敏感）与下载路径（重连代价高）用不同 Transport；代理走"显式设置 > 系统代理(注册表) > env"，`DisableKeepAlives` 默认开、连接复用 opt-in（见 7.1）。
 18. **`ExecuteScript` 有 UAF 风险**：注入窗口内容改用 `data:URL` Navigate，不要 `ExecuteScript(document.write)`（见第十节）。
-19. **manifest 手填 contractVersion**：`contractVersion` 是 plugin.json 的**显式手填字段、不随 SDK 自动跟随**——发布前须把它手动对齐目标主程序支持的契约版本（当前 10）；不声明或版本不匹配会被主程序拒绝加载（见「契约版本协商」）。
-20. **能力声明与实现一致**：实现 `WorkOrderQuerier` 的 taskHandler 条目须在其 `options` 含 `"workOrderQuery"`、实现 `WorkSetRelationQuerier` 须含 `"workSetRelationQuery"`、声明站点作者拉取的插件须在 `extensions.siteAuthorFetch.sites` 列出其服务的站点键；声明而未实现、或实现而未声明，均不符契约（见「能力声明」）。
+19. **manifest 手填 contractVersion**：`contractVersion` 是 plugin.json 的**显式手填字段、不随 SDK 自动跟随**——发布前须把它手动对齐目标主程序支持的契约版本（当前 11）；不声明或版本不匹配会被主程序拒绝加载（见「契约版本协商」）。
+20. **能力声明与实现一致**：实现 `WorkOrderQuerier` 的 taskHandler 条目须在其 `options` 含 `"workOrderQuery"`、实现 `WorkSetRelationQuerier` 须含 `"workSetRelationQuery"`、声明站点作者拉取的插件须在 `extensions.siteAuthorFetch` 声明条目（`id`/`name` 必填）并在 `sites` 列出其服务的站点键、需声明 URL 监听的 taskHandler 条目须写 `urlPatterns`；声明而未实现（缺 `WithTaskHandler`/`WithSiteAuthorFetcher` 对应条目实现）或实现而未声明，均不符契约（见「能力声明」）。
 21. **resourceViewer 用 render.Context**：插件资源渲染器 props 是 `{context: render.Context}`（非主程序 `WorkFullDTO`）；类型从 SDK `dto/render` 引用，禁用主程序展示 DTO 替代（见「资源渲染器契约」）。
 22. **共享枚举用 SDK 常量禁字面量**：store_type/resource_type/generation 一律用 `sdkdto.*` 常量，禁硬编码字面量（见「共享枚举常量」）。
 

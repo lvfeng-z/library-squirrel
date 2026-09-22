@@ -22,18 +22,21 @@ func parseManifest(t *testing.T, raw string) *dto.PluginManifest {
 	return &manifest
 }
 
-// manifestWithAllPackages 一份声明了三个能力包的清单：任务处理器（含两个可选方法组）、
-// 站点作者拉取（两个归属站点）、自定义资源类型（一个）。
+// manifestWithAllPackages 一份声明了四个能力包的清单：任务处理器（含两个可选方法组与 URL 监听模式）、
+// 站点浏览器（单个条目）、站点作者拉取（单个实例条目、两个归属站点）、自定义资源类型（一个）。
 const manifestWithAllPackages = `{
   "id": "com.example.plugin_a",
   "name": "插件甲",
   "version": "1.0.0",
-  "contractVersion": 9,
+  "contractVersion": 11,
   "extensions": {
     "taskHandlers": [
-      {"id": "main", "name": "主处理器", "options": ["workOrderQuery", "workSetRelationQuery"]}
+      {"id": "main", "name": "主处理器", "options": ["workOrderQuery", "workSetRelationQuery"], "urlPatterns": ["^https://www\\.example\\.com/"]}
     ],
-    "siteAuthorFetch": {"sites": ["bilibili", "pixiv"]},
+    "siteBrowsers": [
+      {"id": "main", "name": "站点浏览器", "description": "条目描述"}
+    ],
+    "siteAuthorFetch": [{"id": "main", "name": "作者源", "sites": ["bilibili", "pixiv"]}],
     "resourceTypes": [
       {"type": "com.example.panorama",
        "roles": [{"storeType": "image", "min": 1, "max": 0}],
@@ -44,13 +47,14 @@ const manifestWithAllPackages = `{
   "entryFile": "plugin.exe"
 }`
 
-// TestApplyManifestDeclarationsCarriesPackages 三个能力包在激活期内存结构中逐字段可达：
-// taskHandlers 条目的 options、siteAuthorFetch 的 sites、resourceTypes 的声明字段
+// TestApplyManifestDeclarationsCarriesPackages 四个能力包在激活期内存结构中逐字段可达：
+// taskHandlers 条目的 options 与 urlPatterns、siteBrowsers 条目的 id/name/description、
+// siteAuthorFetch 条目的 id/name/sites、resourceTypes 的声明字段
 func TestApplyManifestDeclarationsCarriesPackages(t *testing.T) {
 	info := &PluginInfo{PublicID: "com.example.plugin_a"}
 	ApplyManifestDeclarations(info, parseManifest(t, manifestWithAllPackages))
 
-	// options：条目级可选方法组逐项可达
+	// options 与 urlPatterns：条目级声明逐项可达
 	if len(info.TaskHandlers) != 1 {
 		t.Fatalf("taskHandlers 条目数 = %d, 期望 1", len(info.TaskHandlers))
 	}
@@ -62,14 +66,31 @@ func TestApplyManifestDeclarationsCarriesPackages(t *testing.T) {
 	if !slices.Equal(handler.Options, wantOptions) {
 		t.Errorf("taskHandlers[0].options = %v, 期望 %v", handler.Options, wantOptions)
 	}
+	if !slices.Equal(handler.UrlPatterns, []string{`^https://www\.example\.com/`}) {
+		t.Errorf("taskHandlers[0].urlPatterns = %v, 期望 [^https://www\\.example\\.com/]", handler.UrlPatterns)
+	}
 
-	// sites：归属站点键逐项可达
-	if info.SiteAuthorFetch == nil {
-		t.Fatal("siteAuthorFetch 未落进内存结构")
+	// siteBrowsers：条目 id/name/description 逐字段可达（激活期派生注册的元数据源）
+	if len(info.SiteBrowsers) != 1 {
+		t.Fatalf("siteBrowsers 条目数 = %d, 期望 1", len(info.SiteBrowsers))
+	}
+	browser := info.SiteBrowsers[0]
+	if browser.ID != "main" || browser.Name != "站点浏览器" || browser.Description != "条目描述" {
+		t.Errorf("siteBrowsers[0] = {%s %s %s}, 期望 {main 站点浏览器 条目描述}",
+			browser.ID, browser.Name, browser.Description)
+	}
+
+	// siteAuthorFetch：条目 id/name 与归属站点键逐项可达
+	if len(info.SiteAuthorFetch) != 1 {
+		t.Fatalf("siteAuthorFetch 条目数 = %d, 期望 1", len(info.SiteAuthorFetch))
+	}
+	fetch := info.SiteAuthorFetch[0]
+	if fetch.ID != "main" || fetch.Name != "作者源" {
+		t.Errorf("siteAuthorFetch[0] = {%s %s}, 期望 {main 作者源}", fetch.ID, fetch.Name)
 	}
 	wantSites := []string{"bilibili", "pixiv"}
-	if !slices.Equal(info.SiteAuthorFetch.Sites, wantSites) {
-		t.Errorf("siteAuthorFetch.sites = %v, 期望 %v", info.SiteAuthorFetch.Sites, wantSites)
+	if !slices.Equal(fetch.Sites, wantSites) {
+		t.Errorf("siteAuthorFetch[0].sites = %v, 期望 %v", fetch.Sites, wantSites)
 	}
 
 	// resourceTypes：类型值、结构角色基数、展示主体优先级逐字段可达
@@ -105,9 +126,19 @@ func TestDeriveCapabilitiesMatchesLegacyDeclaration(t *testing.T) {
 		t.Errorf("派生能力集合 = %v, 期望与旧声明面一致 %v", got, legacyCapabilities)
 	}
 
-	// 未声明任何能力包的插件不派生能力（与旧清单未声明 capabilities 等价）
+	// siteAuthorFetch 数组任一条目在场即派生该能力（条目数不限一）
+	multiEntry := &PluginInfo{SiteAuthorFetch: []dto.SiteAuthorFetchDeclaration{{ID: "main"}, {ID: "alt"}}}
+	if got := deriveCapabilities(multiEntry); !slices.Equal(got, []string{CapabilitySiteAuthorFetch}) {
+		t.Errorf("双条目声明派生能力集合 = %v, 期望 [%s]", got, CapabilitySiteAuthorFetch)
+	}
+
+	// 未声明任何能力包的插件不派生能力（与旧清单未声明 capabilities 等价）；siteAuthorFetch
+	// 空数组无条目在场，等同未声明
 	if got := deriveCapabilities(&PluginInfo{}); got != nil {
 		t.Errorf("无声明插件派生能力集合 = %v, 期望 nil", got)
+	}
+	if got := deriveCapabilities(&PluginInfo{SiteAuthorFetch: []dto.SiteAuthorFetchDeclaration{}}); got != nil {
+		t.Errorf("空数组声明派生能力集合 = %v, 期望 nil", got)
 	}
 }
 
