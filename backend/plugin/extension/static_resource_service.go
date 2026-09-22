@@ -13,9 +13,8 @@ import (
 
 // pluginResourceMapping 插件资源路径映射
 type pluginResourceMapping struct {
-	rootPath    string   // 插件根目录绝对路径
-	allowedDirs []string // staticResources 中声明的允许目录（如 "views/", "assets/"）
-	cacheKey    string   // 缓存键（构建身份 buildId，未打标包为 version；进入资产 URL 与 ETag，令 immutable 长缓存随构建失效）
+	rootPath string // 插件根目录绝对路径（即静态站点根，目录内任意相对路径可服务）
+	cacheKey string // 缓存键（构建身份 buildId，未打标包为 version；进入资产 URL 与 ETag，令 immutable 长缓存随构建失效）
 }
 
 // StaticResourceService 插件静态资源服务，管理插件的静态资源路径映射和文件服务
@@ -31,18 +30,16 @@ func NewStaticResourceService() *StaticResourceService {
 	}
 }
 
-// RegisterPlugin 注册插件的静态资源路径（cacheKey 为缓存键：构建身份 buildId，未打标包为 version）
-func (s *StaticResourceService) RegisterPlugin(publicId, absRootPath string, allowedDirs []string, cacheKey string) {
+// RegisterPlugin 注册插件根目录为静态资源站点根（cacheKey 为缓存键：构建身份 buildId，未打标包为 version）
+func (s *StaticResourceService) RegisterPlugin(publicId, absRootPath string, cacheKey string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.plugins[publicId] = &pluginResourceMapping{
-		rootPath:    absRootPath,
-		allowedDirs: allowedDirs,
-		cacheKey:    cacheKey,
+		rootPath: absRootPath,
+		cacheKey: cacheKey,
 	}
 	logger.Log.Info("插件静态资源已注册",
 		zap.String("plugin", publicId),
-		zap.Strings("dirs", allowedDirs),
 	)
 }
 
@@ -84,12 +81,6 @@ func (s *StaticResourceService) ServeHTTP(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// 安全校验：验证路径在 allowedDirs 内
-	if !s.isPathAllowed(relativePath, mapping.allowedDirs) {
-		http.NotFound(w, r)
-		return
-	}
-
 	// 清理路径，防止路径穿越
 	cleanedPath := filepath.Clean(relativePath)
 	if strings.Contains(cleanedPath, "..") {
@@ -123,24 +114,6 @@ func (s *StaticResourceService) ServeHTTP(w http.ResponseWriter, r *http.Request
 	}
 
 	http.ServeFile(w, r, absPath)
-}
-
-// isPathAllowed 检查相对路径是否在声明的允许目录内
-func (s *StaticResourceService) isPathAllowed(relativePath string, allowedDirs []string) bool {
-	cleaned := filepath.Clean(relativePath)
-	for _, dir := range allowedDirs {
-		// 确保 allowedDir 也经过 Clean 处理
-		cleanDir := filepath.Clean(dir)
-		if strings.HasPrefix(cleaned, cleanDir) {
-			return true
-		}
-	}
-	return false
-}
-
-// ResolveURL 构建插件资源 URL（供主程序构建 FrontendExtensionConfig 时使用；cacheKey 为缓存键：buildId，未打标包为 version）
-func (s *StaticResourceService) ResolveURL(publicId, cacheKey, relativePath string) string {
-	return "/plugin/" + publicId + "/" + cacheKey + "/" + relativePath
 }
 
 // HasPlugin 检查插件是否已注册

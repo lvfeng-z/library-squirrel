@@ -97,7 +97,6 @@ type PluginExtensions struct {
 	SiteAuthorFetch    *SiteAuthorFetchDeclaration    `json:"siteAuthorFetch,omitempty"`
 	ResourceTypes      []ResourceTypeDeclaration      `json:"resourceTypes,omitempty"`
 	FrontendExtensions []FrontendExtensionDeclaration `json:"frontendExtensions,omitempty"`
-	StaticResources    *StaticResourcesConfig         `json:"staticResources,omitempty"`
 	Settings           []SettingDeclaration           `json:"settings,omitempty"`
 }
 
@@ -203,11 +202,6 @@ type ResourceViewerContent struct {
 	Source       json.RawMessage `json:"source"`
 	ResourceType string          `json:"resourceType"`
 	Props        json.RawMessage `json:"props,omitempty"`
-}
-
-// StaticResourcesConfig 静态资源配置
-type StaticResourcesConfig struct {
-	Directories []string `json:"directories"`
 }
 
 // ResourceTypeDeclaration 插件自定义资源类型声明（plugin.json extensions.resourceTypes 段每项）。

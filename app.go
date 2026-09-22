@@ -1639,20 +1639,15 @@ func manifestCacheKey(manifest *dto.PluginManifest, plugin *entity2.Plugin) stri
 	return cacheKey
 }
 
-// staticResourceParticipant 静态资源生命周期参与者：激活时注册插件静态资源目录，停用后注销
+// staticResourceParticipant 静态资源生命周期参与者：激活时把插件根目录注册为静态资源站点根，停用后注销
 type staticResourceParticipant struct {
 	svc *extension2.StaticResourceService
 }
 
 func (p *staticResourceParticipant) Activate(ctx context.Context, plugin *entity2.Plugin, manifest *dto.PluginManifest) error {
-	ext := manifest.Extensions
-	var allowedDirs []string
-	if ext != nil && ext.StaticResources != nil {
-		allowedDirs = ext.StaticResources.Directories
-	}
 	pluginRootDir := filepath.Join(util.RootPath(), plugin.RootPath.String)
-	p.svc.RegisterPlugin(plugin.PublicID.String, pluginRootDir, allowedDirs, manifestCacheKey(manifest, plugin))
-	logger.Log.Infof("插件 %s: 静态资源已注册 (dirs=%v)", plugin.PublicID.String, allowedDirs)
+	p.svc.RegisterPlugin(plugin.PublicID.String, pluginRootDir, manifestCacheKey(manifest, plugin))
+	logger.Log.Infof("插件 %s: 静态资源已注册", plugin.PublicID.String)
 	return nil
 }
 
