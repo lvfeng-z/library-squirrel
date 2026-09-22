@@ -83,8 +83,7 @@ type MyTaskHandler struct{}
   "entryFile": "my_plugin.exe",
   "activation": {"type": 1},
   "extensions": {
-    "taskHandlers": [{"id": "main"}],
-    "staticResources": {"directories": ["assets/"]}
+    "taskHandlers": [{"id": "main"}]
   }
 }
 ```
@@ -104,9 +103,10 @@ type MyTaskHandler struct{}
 | `description` | string | 否 | 描述 |
 | `entryFile` | string | 条件必填 | 可执行文件名（运行时插件必填，纯 UI 插件不需要） |
 | `activation.type` | number | 是 | `0`=手动激活，`1`=启动时自动激活 |
-| `contractVersion` | number | 是 | 编译期契约版本（主程序据此协商加载，见「契约版本协商」）。**显式手填、不随 SDK 自动跟随**——SDK 升版后须自行改本字段；当前 = 9 |
+| `contractVersion` | number | 是 | 编译期契约版本（主程序据此协商加载，见「契约版本协商」）。**显式手填、不随 SDK 自动跟随**——SDK 升版后须自行改本字段；当前 = 10 |
 | `configSchemaVersion` | number | 否 | 配置 schema 版本（0/缺省=legacy 不管理；启用配置迁移时从 1 起递增，见 8.3）。与 contractVersion 正交：前者管插件配置结构，后者管 host↔plugin 协议 |
-| `extensions` | object | 是 | 扩展点集合（见下）——插件的全部对外声明都住在这里 |
+| `settings` | `[SettingDeclaration]` | 否 | 用户可配置项声明，住清单根级（见「settings 用户设置声明」与 8.2）；`extensions` 子对象内出现 `settings` 键（值 `null` 亦然）即判不合格 |
+| `extensions` | object | 是 | 能力包声明集合（见下与「能力声明」） |
 
 > 身份键与五条版本轴（version/contractVersion/configSchemaVersion/plugin_data schemaVersion/buildId）的全貌与变更时机速查，见第十八节。
 
@@ -119,15 +119,14 @@ type MyTaskHandler struct{}
 | `siteAuthorFetch` | `{sites: string[]}` | 否 | 站点作者信息拉取能力包；`sites` 为该插件服务的站点键清单（作用域 = 归属），见「能力声明」 |
 | `resourceTypes` | `[ResourceTypeDeclaration]` | 否 | 自定义资源类型声明（自契约 v9 起住本段，段存在即启用，见「自定义资源类型声明」） |
 | `frontendExtensions` | `[FrontendExtensionDeclaration]` | 三选一 | UI 前端扩展（声明式注册，见 6.3） |
-| `staticResources` | `{directories: string[]}` | 否 | 允许前端访问的资源目录白名单 |
-| `settings` | `[SettingDeclaration]` | 否 | 用户可配置项（见 8.2） |
 
 **校验规则**（安装时）：
 - `id/name/version/author` 必填。
 - `extensions` 必须存在，且 `taskHandlers/siteBrowsers/frontendExtensions` 至少一个非空。
 - `entryFile` 仅在含运行时扩展点（taskHandlers 或 siteBrowsers）时必填；纯 UI 插件可省略。
 - `extensions.siteAuthorFetch.sites` 与 `extensions.taskHandlers[].options` **安装时强校验**：`sites` 须非空且每项为 SDK 站点注册表内的已注册键，`options` 每项须为内置可选方法组枚举值，不合格即拒收并点名不合格项（`backend/plugin/extension/loader.go:224-271`，安装闸门 `backend/plugin/service.go:354`）。
-- 顶层残留 `capabilities` 键（值恰为 `null` 亦然）即判**未迁移**：安装时拒收、加载时跳过（`backend/plugin/extension/loader.go:238-241`）。
+- 顶层残留 `capabilities` 键（值恰为 `null` 亦然）即判**未迁移**：安装时拒收、加载时跳过（`backend/plugin/extension/loader.go:242-244`）。
+- `extensions` 子对象内 `settings` 键在场（值恰为 `null` 亦然）即判不合格——用户设置项声明须住清单根级 `settings` 段（`backend/plugin/extension/loader.go:246-256`）。
 - 其余枚举值（kind/contentType/position/settings.type）**安装时不校验**，错误值在激活/运行期暴露，请自行核对拼写。
 
 ### 前端扩展声明
@@ -166,7 +165,9 @@ type MyTaskHandler struct{}
 
 > source 中的相对路径（`code` 类型除外）由后端自动转为 `http://wails.localhost:{port}/plugin/{author}/{id}/{cacheKey}/...` 完整 URL（cacheKey 为缓存键 = plugin.json `buildId`，未打标包回落 version）。
 
-### settings 用户设置声明
+### settings 用户设置声明（清单根级）
+
+用户设置项声明住 plugin.json **根级** `settings` 段——`extensions` 段只承载能力包声明，其子对象内出现 `settings` 键（值 `null` 亦然）清单即被判不合格：
 
 ```jsonc
 "settings": [
@@ -193,7 +194,7 @@ type MyTaskHandler struct{}
 
 ### 契约版本协商
 
-`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 9，直接引用 SDK `transport.ContractVersion` 常量，`backend/plugin/extension/loader.go:38`）与 `minSupportedContractVersion`（当前 9，`backend/plugin/extension/loader.go:42`），插件 manifest 声明自己编译时锁定的 `contractVersion`。**该字段是 plugin.json 的显式手填字段，不随 SDK 自动跟随**——SDK 提升 `ContractVersion` 常量后，你必须自行把它改到 plugin.json 里；漏改即被主程序按「过旧」拒载。
+`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 10，直接引用 SDK `transport.ContractVersion` 常量，`backend/plugin/extension/loader.go:39`）与 `minSupportedContractVersion`（当前 10，`backend/plugin/extension/loader.go:43`），插件 manifest 声明自己编译时锁定的 `contractVersion`。**该字段是 plugin.json 的显式手填字段，不随 SDK 自动跟随**——SDK 提升 `ContractVersion` 常量后，你必须自行把它改到 plugin.json 里；漏改即被主程序按「过旧」拒载。
 
 **校验**（安装期预检 + 加载期终检，硬拒绝 + 清晰提示）：
 - 插件 `contractVersion` > 主程序 `current` → 插件太新，拒（提示升级主程序）。
@@ -210,12 +211,13 @@ type MyTaskHandler struct{}
 - 7 — 周边数据写面契约：任务声明期周边三 DTO（`TaskSiteAuthorDTO`/`TaskSiteTagDTO`/`TaskWorkSetDTO`）加可选 `siteKey` 字段——周边数据跨站寻址（声明站点≠作品站点时 find-only 引用既有行，缺省=作品站点本站 upsert，见 6.1「作品及周边数据写面契约」）。加字段向前兼容，作为周边写面新能力标识升版。
 - 8 — 关联级维度体系（tag namespace + author role 同构）：ns 从 site_tag 实体行收回关联级——`SiteTagInfo` 删 `Namespace` 字段（**删字段属破坏性变更**），`TaskSiteTagDTO.Namespace` 保留、语义=本作品上该标签的关联级 ns；role 同构补齐——`TaskSiteAuthorDTO` 加 `RoleName` 声明面，`ListAuthorsByWorkId` 返回面由实体级 DTO 整体更换为关联条目 `WorkLocalAuthorEntry`/`WorkSiteAuthorEntry`（`author` + 关联级 `role_name`，**返回消息类型更换属破坏性变更**）；实体级 DTO 不携带关联维度。主程序 `minSupportedContractVersion` 同步升 8（v8 以下插件拒载，捆绑包随之重建）。
 - 9 — 插件声明面重构（能力包模型）：顶层 `capabilities` 段取消，其声明移入 `extensions` 段——`siteAuthorFetch` 携 `sites` 作用域、`workOrderQuery` 与 `workSetRelationQuery` 下沉 `taskHandlers[].options`、`resourceTypeProvider` 取消（`resourceTypes` 迁入 `extensions` 段后「段存在即启用」），门控粒度相应改为（插件, 扩展点）**条目级**；站点归属自判机制退役——插件侧身份键比对辅助、跨进程未归属错误信号及其转译与宿主侧判定一并删除，作者拉取候选改由宿主按插件已声明的站点范围收窄，插件不再自判归属。声明面结构更换与导出符号删除属源级破坏。主程序 `minSupportedContractVersion` 同步升 9（v9 以下插件拒载，捆绑包随之重建）。
+- 10 — 插件清单结构变更：用户设置项声明（settings 段）住清单根级，`extensions` 段只承载能力包声明、不承载 settings 子段（其子对象内该键在场即判不合格）。段位置变更属宿主读清单的源级破坏——主程序 `minSupportedContractVersion` 同步升 10（低于 10 的清单拒载，捆绑包随之重建）。
 
 **填法（注意：手填，不自动跟随）**：插件作者须把 SDK 的 `ContractVersion` 常量（`github.com/lvfeng-z/library-squirrel-sdk/transport.ContractVersion`）**显式写进 plugin.json 的 `contractVersion` 字段**——该字段不会随 SDK 升版自动变化，SDK bump 后漏改即被主程序按「过旧」拒载。bump（提升契约版本）只在破坏性变更时由 SDK 侧发起（proto 加字段、**加 RPC** 不 bump；删/改字段、删 RPC、改 DTO 结构/RPC 签名/前端 props 契约才 bump）。加 RPC 不 bump 意味着版本门拦不住「同代宿主缺某查询端点」的组合——运行期探测约定见 5.1「Unimplemented 降级」。
 
 ### 能力声明（能力包与可选功能）
 
-自契约 v9 起，**顶层 `capabilities` 段已删除**——插件的全部对外声明都住在 `extensions` 段：每个条目 = 插件对外提供的一个能力包，包内的可选项与作用域声明在包内。原先 `capabilities` 的各值各有新去向：
+自契约 v9 起，**顶层 `capabilities` 段已删除**——插件的能力声明都住在 `extensions` 段（用户设置项声明住根级 `settings` 段）：每个条目 = 插件对外提供的一个能力包，包内的可选项与作用域声明在包内。原先 `capabilities` 的各值各有新去向：
 
 | 原 `capabilities` 值 | 新去向 | 说明 |
 |---|---|---|
@@ -750,7 +752,7 @@ all, _ := ctx.GetAllValues()                // map[key]*StorageValue（加密项
 
 ### 8.2 用户设置（settings）
 
-在 `plugin.json` 声明 `extensions.settings` 后：
+在 `plugin.json` 根级 `settings` 段声明用户设置项后：
 - 主程序在插件管理页渲染表单（按 `type` 分发控件、按 `group` 分组），用户编辑后由主程序按声明的 `encrypted` 路由 `SetValue`/`SetValueEncrypted` 存入。
 - 插件用 `ctx.GetValue(key).Value` 读取用户配置值（统一为 string，integer 等类型自行转换）；`GetValue` 返回 `*StorageValue`，key 不存在时为 `nil`。
 
@@ -892,13 +894,11 @@ http://wails.localhost:{backend-port}/plugin/{publicId}/{cacheKey}/{relativePath
 - 后端在注册前端扩展时自动把 `source`/`icon` 的相对路径转为上述完整 URL，前端组件直接用。
 - 插件代码内可用 `ctx.GetPluginRoot(false)` 获取插件根目录绝对路径。
 
-### 目录白名单
+### 可访问范围（插件目录即静态站点根）
 
-只有声明在 `extensions.staticResources.directories` 中的目录可通过 HTTP 访问。**未声明的目录前端无法加载**（即使打包进 dist）。
+静态资源服务直接服务**插件根目录**：目录内打包的全部文件——组件 JS/CSS、图标、组件运行时 fetch 的图片/字体/数据等额外资源——均可经上述 URL 访问，无需在清单声明。含 `..` 的路径与解析后落在插件根目录之外的路径返回 404（publicId→插件根目录的路由隔离与穿越防护）。
 
-```json
-"staticResources": {"directories": ["views/", "assets/"]}
-```
+server 模式（`-tags server`，无 GUI）下，插件目录内全部文件（含插件可执行文件与 plugin.json）经网络可取。
 
 ### 缓存
 
@@ -919,7 +919,7 @@ http://wails.localhost:{backend-port}/plugin/{publicId}/{cacheKey}/{relativePath
 
 ### build.ps1 必须复制所有资源目录
 
-`plugin.json` 的 `staticResources.directories` 声明的目录（如 `views/`、`assets/`）必须被 `build.ps1` 复制到 `dist/`。**漏复制会导致安装后前端组件 404**。
+前端要访问的目录（如 `views/`、`assets/`）必须被 `build.ps1` 复制到 `dist/`——静态资源按插件根目录内的实际文件服务，**漏打包的文件安装后 404**。
 
 ### dist 目录结构
 
@@ -1009,7 +1009,7 @@ return fmt.Errorf("API 业务错误: code=%d message=%s body=%s", code, msg, tru
 
 1. **Activate 用标准签名**：`WithActivate(func(ctx))`，需要依赖注入时用闭包捕获，不要改签名。
 2. **优先声明式 Slot**：UI 扩展用 `plugin.json` 声明，无需子进程（纯 UI 插件）。
-3. **静态资源目录要声明 + build.ps1 要复制**：`staticResources.directories` 必须包含所有前端要访问的目录，且 `build.ps1` 必须复制到 `dist/`，否则安装后 404。
+3. **静态资源要打包进 dist**：插件目录即静态站点根，前端要访问的所有目录（`views/`、`assets/` 等）必须由 `build.ps1` 复制到 `dist/`，漏打包安装后 404。
 4. **路径用相对的**：`plugin.json` 中 `icon`、`source` 路径用相对插件根目录的相对路径，后端自动转完整 URL。
 5. **敏感数据用 SetValueEncrypted**：token、密钥等用加密存储，读取透明解密。
 6. **前端通信加超时**：阻塞等待前端响应必须设超时，避免永久阻塞。
@@ -1036,7 +1036,7 @@ return fmt.Errorf("API 业务错误: code=%d message=%s body=%s", code, msg, tru
 - **受限模式**：用户可开启「受限模式」（设置页开关），启用后启动时仅激活官方捆绑插件、跳过所有第三方——用于排查问题时的安全启动。第三方插件在受限模式下不运行。
 17. **HTTP Transport 分离 + 代理决策**：API 路径（风控敏感）与下载路径（重连代价高）用不同 Transport；代理走"显式设置 > 系统代理(注册表) > env"，`DisableKeepAlives` 默认开、连接复用 opt-in（见 7.1）。
 18. **`ExecuteScript` 有 UAF 风险**：注入窗口内容改用 `data:URL` Navigate，不要 `ExecuteScript(document.write)`（见第十节）。
-19. **manifest 手填 contractVersion**：`contractVersion` 是 plugin.json 的**显式手填字段、不随 SDK 自动跟随**——发布前须把它手动对齐目标主程序支持的契约版本（当前 9）；不声明或版本不匹配会被主程序拒绝加载（见「契约版本协商」）。
+19. **manifest 手填 contractVersion**：`contractVersion` 是 plugin.json 的**显式手填字段、不随 SDK 自动跟随**——发布前须把它手动对齐目标主程序支持的契约版本（当前 10）；不声明或版本不匹配会被主程序拒绝加载（见「契约版本协商」）。
 20. **能力声明与实现一致**：实现 `WorkOrderQuerier` 的 taskHandler 条目须在其 `options` 含 `"workOrderQuery"`、实现 `WorkSetRelationQuerier` 须含 `"workSetRelationQuery"`、声明站点作者拉取的插件须在 `extensions.siteAuthorFetch.sites` 列出其服务的站点键；声明而未实现、或实现而未声明，均不符契约（见「能力声明」）。
 21. **resourceViewer 用 render.Context**：插件资源渲染器 props 是 `{context: render.Context}`（非主程序 `WorkFullDTO`）；类型从 SDK `dto/render` 引用，禁用主程序展示 DTO 替代（见「资源渲染器契约」）。
 22. **共享枚举用 SDK 常量禁字面量**：store_type/resource_type/generation 一律用 `sdkdto.*` 常量，禁硬编码字面量（见「共享枚举常量」）。

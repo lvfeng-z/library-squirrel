@@ -40,14 +40,15 @@ globs:
   "id": "com.example.plugin_uuid",
   "name": "插件名称",
   "version": "1.0.0",
-  "contractVersion": 9,
+  "contractVersion": 10,
   "entryFile": "plugin.exe",
   "activation": {"type": 1},
+  "settings": [ ... ],
   "extensions": { ... }
 }
 ```
 
-> `contractVersion` **必填且手填**（不随 SDK 自动跟随）：低于宿主最低支持版本即拒载。`buildId` 由构建管线注入（勿手填）；`configSchemaVersion` 选填（与 contractVersion 正交，管插件配置结构）。`extensions` 段除下列 `frontendExtensions`/`settings` 外，还承载能力包声明 `taskHandlers`（含条目级 `options`）、`siteAuthorFetch`（含 `sites`）、`siteBrowsers`、`resourceTypes`——见上方能力包模型。
+> `contractVersion` **必填且手填**（不随 SDK 自动跟随）：低于宿主最低支持版本即拒载。`buildId` 由构建管线注入（勿手填）；`configSchemaVersion` 选填（与 contractVersion 正交，管插件配置结构）。`extensions` 段承载能力包声明——下列 `frontendExtensions` 与 `taskHandlers`（含条目级 `options`）、`siteAuthorFetch`（含 `sites`）、`siteBrowsers`、`resourceTypes`，见上方能力包模型；用户设置项声明住根级 `settings` 段（见下），`extensions` 子对象内 `settings` 键在场（值恰为 `null` 亦然）即判不合格。
 
 ### extensions.frontendExtensions[] 声明
 
@@ -164,9 +165,9 @@ globs:
 
 source 中的相对路径会自动解析为 `/plugin/{publicId}/{cacheKey}/...` 形式的完整 URL（cacheKey = buildId，未打标包为 version）。
 
-### extensions.settings[] 声明
+### settings[] 声明（清单根级）
 
-插件可通过 `extensions.settings` 声明用户可配置项，主程序据此在插件管理页渲染设置表单；用户编辑后存入 `plugin_storage`，插件用 `GetValue(key)` 读取。
+插件可通过清单根级 `settings` 段声明用户可配置项，主程序据此在插件管理页渲染设置表单；用户编辑后存入 `plugin_storage`，插件用 `GetValue(key)` 读取。
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
@@ -298,7 +299,7 @@ bundled 插件的升级检测与用户答复流（设计见 `../library-squirrel
 ## 插件开发规范
 
 - **前端扩展注册**：通过 `plugin.json` 的 `extensions.frontendExtensions` 声明式注册（`kind` 区分类型），调用 `RegisterSlot()` 的这种方式已不再被支持
-- **静态资源**：在 `extensions.staticResources.directories` 声明可访问目录
+- **静态资源**：插件目录即静态站点根——目录内打包的组件/图标/额外资源均可经 `/plugin/` 路由访问，无需声明；含 `..` 的穿越路径与目录外路径返回 404（publicId→插件根目录路由隔离）
 - **入口函数**：运行时插件 `main` 调用 `sdkplugin.Serve(opts ...ServeOption)`（全选项化、无必填参数：`WithTaskHandler`/`WithBrowser`/`WithActivate`/`WithShutdown`；工具型插件可省略 `WithTaskHandler`，此时任务相关 RPC 得 gRPC Unimplemented），Activate 回调内注册扩展点与 URL 监听
 - **PRECOMPILED_OVER_VUESOURCE** (P0): 新组件优先使用 `precompiled` contentType，`vueSource` 需要运行时 SFC 编译开销更大
 - **FACTORY_IMPORT_AS** (P0): 预编译组件中禁止使用 `import { X as Y }` 的 `as` 语法（Vite 工厂插件不兼容），需要别名时直接修改变量名
