@@ -79,17 +79,28 @@ func invalidDeclarationCases() []struct {
 			build:    declarationManifestLegacy,
 			wantText: "顶层 capabilities 段不在声明面内",
 		},
+		{
+			name: "extensions 内 settings 键",
+			build: func(publicId string) string {
+				return declarationManifestWith(publicId, `{"settings":[{"key":"a","type":"string","title":"甲"}],`+frontendExtensionsField+`}`)
+			},
+			wantText: "settings 须住清单根级",
+		},
 	}
 }
 
-// validDeclarationManifest 声明面合格的清单（含 taskHandlers 条目与 siteAuthorFetch 段）
+// validDeclarationManifest 声明面合格的清单（含 taskHandlers 条目、siteAuthorFetch 段与
+// 根级 settings 段）
 func validDeclarationManifest(publicId string) string {
-	return declarationManifestWith(publicId,
-		`{"taskHandlers":[{"id":"main","name":"主处理器","options":["workOrderQuery"]}],`+
-			`"siteAuthorFetch":{"sites":["bilibili"]},`+frontendExtensionsField+`}`)
+	return `{"id":"` + publicId + `","name":"测试插件","version":"1.0.0","author":"tester",` +
+		fmt.Sprintf(`"contractVersion":%d,`, pluginsdktransport.ContractVersion) +
+		`"activation":{"type":1},"entryFile":"plugin.exe",` +
+		`"settings":[{"key":"apiToken","type":"string","title":"访问令牌","default":"anon","encrypted":true}],` +
+		`"extensions":{"taskHandlers":[{"id":"main","name":"主处理器","options":["workOrderQuery"]}],` +
+		`"siteAuthorFetch":{"sites":["bilibili"]},` + frontendExtensionsField + `}}`
 }
 
-// TestInstallFromPathRejectsInvalidDeclarations 安装期闸门：五种不合格形态逐种拒收安装（安装失败且
+// TestInstallFromPathRejectsInvalidDeclarations 安装期闸门：六种不合格形态逐种拒收安装（安装失败且
 // 点名不合格项与期望形态），且安装主体不落库——拒收发生在解压/建行之前
 func TestInstallFromPathRejectsInvalidDeclarations(t *testing.T) {
 	for i, tc := range invalidDeclarationCases() {
@@ -150,7 +161,7 @@ func plantPluginWithManifestOnDisk(t *testing.T, svc *Service, publicId, manifes
 	return row
 }
 
-// TestActivateSkipsPluginWithInvalidDeclarations 加载期闸门：五种不合格形态逐种在激活时被跳过
+// TestActivateSkipsPluginWithInvalidDeclarations 加载期闸门：六种不合格形态逐种在激活时被跳过
 // （行存量不合规时读盘清单校验不合格即中止，插件保持未激活、原因落日志）
 func TestActivateSkipsPluginWithInvalidDeclarations(t *testing.T) {
 	for i, tc := range invalidDeclarationCases() {

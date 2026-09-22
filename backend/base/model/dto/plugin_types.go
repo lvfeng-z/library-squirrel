@@ -21,36 +21,39 @@ type PluginActivation struct {
 	Type ActivationType `json:"type"`
 }
 
-// PluginManifest 插件清单（从 plugin.json 解析）；插件的全部对外声明都住在 extensions 段
+// PluginManifest 插件清单（从 plugin.json 解析）；能力声明住 extensions 段，
+// settings（用户设置项声明）住根级
 type PluginManifest struct {
-	ID                  string            `json:"id"`
-	Name                string            `json:"name"`
-	Version             string            `json:"version"`
-	BuildID             string            `json:"buildId,omitempty"`   // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
-	ContractVersion     int               `json:"contractVersion"`     // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；未声明=0 拒载，须声明）
-	ConfigSchemaVersion int               `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
-	Author              string            `json:"author"`
-	Description         string            `json:"description,omitempty"`
-	Extensions          *PluginExtensions `json:"extensions"`
-	Activation          PluginActivation  `json:"activation"`
-	EntryFile           string            `json:"entryFile"`
+	ID                  string               `json:"id"`
+	Name                string               `json:"name"`
+	Version             string               `json:"version"`
+	BuildID             string               `json:"buildId,omitempty"`   // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
+	ContractVersion     int                  `json:"contractVersion"`     // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；未声明=0 拒载，须声明）
+	ConfigSchemaVersion int                  `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
+	Author              string               `json:"author"`
+	Description         string               `json:"description,omitempty"`
+	Settings            []SettingDeclaration `json:"settings,omitempty"` // 用户设置项声明（住清单根级，不属 extensions 能力包）
+	Extensions          *PluginExtensions    `json:"extensions"`
+	Activation          PluginActivation     `json:"activation"`
+	EntryFile           string               `json:"entryFile"`
 }
 
 // PluginInstallDTO 插件安装数据传输对象
 type PluginInstallDTO struct {
-	ID                  string            `json:"id"`
-	Name                string            `json:"name"`
-	Version             string            `json:"version"`
-	BuildID             string            `json:"buildId,omitempty"`   // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
-	ContractVersion     int               `json:"contractVersion"`     // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；未声明=0 拒载，须声明）
-	ConfigSchemaVersion int               `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
-	Author              string            `json:"author"`
-	Description         string            `json:"description,omitempty"`
-	Extensions          *PluginExtensions `json:"extensions"`
-	Activation          PluginActivation  `json:"activation"`
-	EntryFile           string            `json:"entryFile"`
-	PackagePath         string            `json:"packagePath,omitempty"`
-	PublicID            string            `json:"publicId,omitempty"`
+	ID                  string               `json:"id"`
+	Name                string               `json:"name"`
+	Version             string               `json:"version"`
+	BuildID             string               `json:"buildId,omitempty"`   // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
+	ContractVersion     int                  `json:"contractVersion"`     // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；未声明=0 拒载，须声明）
+	ConfigSchemaVersion int                  `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
+	Author              string               `json:"author"`
+	Description         string               `json:"description,omitempty"`
+	Settings            []SettingDeclaration `json:"settings,omitempty"` // 用户设置项声明（住清单根级，不属 extensions 能力包）
+	Extensions          *PluginExtensions    `json:"extensions"`
+	Activation          PluginActivation     `json:"activation"`
+	EntryFile           string               `json:"entryFile"`
+	PackagePath         string               `json:"packagePath,omitempty"`
+	PublicID            string               `json:"publicId,omitempty"`
 }
 
 // ToPluginInstallDTO 转换为安装DTO。publicId 即插件 id（纯反向域名，全局唯一身份键），
@@ -65,6 +68,7 @@ func (p *PluginManifest) ToPluginInstallDTO(packagePath string) *PluginInstallDT
 		ConfigSchemaVersion: p.ConfigSchemaVersion,
 		Author:              p.Author,
 		Description:         p.Description,
+		Settings:            p.Settings,
 		Extensions:          p.Extensions,
 		Activation:          p.Activation,
 		EntryFile:           p.EntryFile,
@@ -97,7 +101,6 @@ type PluginExtensions struct {
 	SiteAuthorFetch    *SiteAuthorFetchDeclaration    `json:"siteAuthorFetch,omitempty"`
 	ResourceTypes      []ResourceTypeDeclaration      `json:"resourceTypes,omitempty"`
 	FrontendExtensions []FrontendExtensionDeclaration `json:"frontendExtensions,omitempty"`
-	Settings           []SettingDeclaration           `json:"settings,omitempty"`
 }
 
 // SiteAuthorFetchDeclaration 站点作者拉取能力包声明（plugin.json extensions.siteAuthorFetch）；
@@ -106,7 +109,7 @@ type SiteAuthorFetchDeclaration struct {
 	Sites []string `json:"sites"`
 }
 
-// SettingDeclaration 用户设置项声明（plugin.json extensions.settings）
+// SettingDeclaration 用户设置项声明（plugin.json 根级 settings 段每项）
 type SettingDeclaration struct {
 	Key         string          `json:"key"`
 	Type        string          `json:"type"` // string | integer | boolean | select

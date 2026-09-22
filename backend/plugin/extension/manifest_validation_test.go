@@ -13,12 +13,13 @@ import (
 // declarationManifest 以给定 extensions 段内容拼一份清单原文（其余字段取合法值），
 // 供校验矩阵逐形态构造不合格声明
 func declarationManifest(extensions string) string {
-	return `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":9,"extensions":` + extensions + `}`
+	return `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":10,"extensions":` + extensions + `}`
 }
 
 // TestValidateManifestDeclarationsRejectsMatrix 拒收矩阵：不合格形态逐种被点名拒收
-// （缺 sites / 空 sites / 未注册站点键 / 未识别 options / 残留顶层 capabilities 键），
-// 合格声明与无 extensions 段的清单放行。输入一律为清单原文（顶层残留学段无承载字段，只能就原文探测）
+// （缺 sites / 空 sites / 未注册站点键 / 未识别 options / 残留顶层 capabilities 键 /
+// extensions 内 settings 键），合格声明与无 extensions 段的清单放行。输入一律为清单原文
+// （顶层残留学段无承载字段，只能就原文探测）
 func TestValidateManifestDeclarationsRejectsMatrix(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -52,7 +53,7 @@ func TestValidateManifestDeclarationsRejectsMatrix(t *testing.T) {
 		},
 		{
 			name: "残留顶层 capabilities",
-			manifest: `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":9,` +
+			manifest: `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":10,` +
 				`"capabilities":["siteAuthorFetch"],` +
 				`"extensions":{"siteAuthorFetch":{"sites":["bilibili"]}}}`,
 			wantErr:  true,
@@ -60,19 +61,37 @@ func TestValidateManifestDeclarationsRejectsMatrix(t *testing.T) {
 		},
 		{
 			name: "残留顶层 capabilities(null 值)",
-			manifest: `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":9,` +
+			manifest: `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":10,` +
 				`"capabilities":null,` +
 				`"extensions":{"siteAuthorFetch":{"sites":["bilibili"]}}}`,
 			wantErr:  true,
 			wantText: "顶层 capabilities 段不在声明面内",
 		},
 		{
+			name:     "extensions 内 settings 键",
+			manifest: declarationManifest(`{"settings":[{"key":"a","type":"string","title":"甲"}]}`),
+			wantErr:  true,
+			wantText: "settings 须住清单根级",
+		},
+		{
+			name:     "extensions 内 settings 键(null 值)",
+			manifest: declarationManifest(`{"settings":null}`),
+			wantErr:  true,
+			wantText: "settings 须住清单根级",
+		},
+		{
 			name:     "合格声明",
 			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","options":["workOrderQuery","workSetRelationQuery"]}],"siteAuthorFetch":{"sites":["bilibili","pixiv","local"]}}`),
 		},
 		{
+			name: "根级 settings 放行",
+			manifest: `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":10,` +
+				`"settings":[{"key":"a","type":"string","title":"甲"}],` +
+				`"extensions":{"siteAuthorFetch":{"sites":["bilibili"]}}}`,
+		},
+		{
 			name:     "无 extensions 段",
-			manifest: `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":9}`,
+			manifest: `{"id":"com.example.plugin_a","name":"插件甲","version":"1.0.0","contractVersion":10}`,
 		},
 	}
 	for _, tc := range cases {

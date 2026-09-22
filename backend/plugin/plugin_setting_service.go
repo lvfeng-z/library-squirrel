@@ -112,7 +112,8 @@ func (s *PluginSettingService) ResetSetting(ctx context.Context, publicId, key s
 	return s.storage.DeleteValue(ctx, plugin.GetID(), key)
 }
 
-// loadSettingDeclarations 从插件 plugin.json 读取 settings 声明
+// loadSettingDeclarations 从插件 plugin.json 根级 settings 段读取用户设置项声明；
+// 清单未声明该段时返回空（无设置项）
 func (s *PluginSettingService) loadSettingDeclarations(plugin *entity.Plugin) ([]dto.SettingDeclaration, error) {
 	manifestPath := filepath.Join(s.rootPath, plugin.RootPath.String, "plugin.json")
 	data, err := os.ReadFile(manifestPath)
@@ -123,10 +124,7 @@ func (s *PluginSettingService) loadSettingDeclarations(plugin *entity.Plugin) ([
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return nil, fmt.Errorf("解析 plugin.json 失败: %w", err)
 	}
-	if manifest.Extensions == nil {
-		return nil, nil
-	}
-	return manifest.Extensions.Settings, nil
+	return manifest.Settings, nil
 }
 
 func findSettingDeclaration(declarations []dto.SettingDeclaration, key string) *dto.SettingDeclaration {

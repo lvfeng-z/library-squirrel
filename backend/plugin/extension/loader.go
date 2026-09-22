@@ -30,7 +30,8 @@ import (
 var (
 	ErrPluginLoadFailed     = errors.New("plugin load failed")
 	ErrPluginContractTooNew = errors.New("插件契约版本过新，请升级主程序")
-	ErrPluginContractTooOld = errors.New("插件契约版本过旧或未声明，请升级插件或在 plugin.json 声明 contractVersion")
+	ErrPluginContractTooOld = fmt.Errorf("插件契约版本过旧或未声明（支持的契约版本区间 %d–%d），请升级插件或在 plugin.json 声明 contractVersion",
+		minSupportedContractVersion, currentContractVersion)
 )
 
 // currentContractVersion 主程序当前实现的插件契约版本（引用 SDK transport.ContractVersion，
@@ -38,8 +39,8 @@ var (
 const currentContractVersion = pluginsdktransport.ContractVersion
 
 // minSupportedContractVersion 主程序仍兼容的最低插件契约版本；低于此版本的插件拒绝加载。
-// v9 分界：插件清单声明面重构（顶层 capabilities 段取消，能力声明并入 extensions 段）
-const minSupportedContractVersion = 9
+// 版本 10 分界：清单结构变更——用户设置项声明（settings 段）住清单根级，extensions 段不承载该段
+const minSupportedContractVersion = 10
 
 // ValidateContractVersion 校验插件契约版本是否与主程序兼容。
 // pluginContract 为插件声明的契约版本；未声明（=0）视作低于 minSupported，拒绝加载并
@@ -224,10 +225,13 @@ func registeredSiteKeyList() string {
 // ValidateManifestDeclarations 校验 plugin.json 原文的声明面，安装期预检与加载期终检共用同一判据：
 //   - 顶层 capabilities 键在场（值恰为 null 亦然——键在场即该段在场）判不合格：该段不构成声明面，
 //     能力声明住在 extensions 各条目内
+//   - extensions 子对象内 settings 键在场（值恰为 null 亦然——键在场即该段在场）判不合格：
+//     settings（用户设置项声明）住清单根级，不属 extensions 能力包
 //   - extensions.siteAuthorFetch.sites：须非空，且每项为 SDK 站点注册表内的已注册键
 //   - extensions.taskHandlers[].options：每项须为内置可选方法组枚举值
 //
-// manifestRaw 为 plugin.json 原文：顶层残留段在已解析结构里没有承载字段，只能就原文探测顶层键是否在场。
+// manifestRaw 为 plugin.json 原文：顶层 capabilities 与 extensions 下 settings 在已解析结构里
+// 没有承载字段，只能就原文探测键是否在场。
 // 返回的错误逐项点名不合格项与期望形态；清单无 extensions 段（等同无声明）通过。
 func ValidateManifestDeclarations(manifestRaw []byte) error {
 	// 顶层键探针：只问键在场与否，不看取值
@@ -238,6 +242,17 @@ func ValidateManifestDeclarations(manifestRaw []byte) error {
 	if _, present := topLevelKeys["capabilities"]; present {
 		return fmt.Errorf("%w: 顶层 capabilities 段不在声明面内，能力声明须住 extensions 各条目（siteAuthorFetch 段 / taskHandlers[].options）",
 			ErrManifestDeclarationInvalid)
+	}
+	// extensions 子对象探针：只问 settings 键在场与否，不看取值；extensions 非法形态
+	// （非对象/非法 JSON）交由下方整体解析判不合格
+	if extRaw, present := topLevelKeys["extensions"]; present {
+		extKeys := map[string]json.RawMessage{}
+		if err := json.Unmarshal(extRaw, &extKeys); err == nil {
+			if _, hasSettings := extKeys["settings"]; hasSettings {
+				return fmt.Errorf("%w: extensions 内 settings 段不在声明面内，settings 须住清单根级（用户设置项声明）",
+					ErrManifestDeclarationInvalid)
+			}
+		}
 	}
 	var manifest dto.PluginManifest
 	if err := json.Unmarshal(manifestRaw, &manifest); err != nil {
