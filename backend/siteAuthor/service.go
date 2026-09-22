@@ -23,8 +23,8 @@ type Repository interface {
 	Create(ctx context.Context, author *entity.SiteAuthor) error
 	// CreateBatch 批量新建
 	CreateBatch(ctx context.Context, authors []*entity.SiteAuthor) error
-	// Updates 更新
-	Updates(ctx context.Context, author *entity.SiteAuthor) error
+	// UpdatesWithColumns 按列集更新（编辑面列集以提交为准，含置 NULL）
+	UpdatesWithColumns(ctx context.Context, author *entity.SiteAuthor, columns []string) error
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*entity.SiteAuthor, error)
 	// List 查询列表
@@ -140,12 +140,23 @@ func (s *Service) SaveBatch(ctx context.Context, authors []*entity.SiteAuthor) e
 	return s.repo.CreateBatch(ctx, authors)
 }
 
-// UpdateById 更新站点作者
+// siteAuthorEditableColumns 站点作者编辑链（行内编辑与编辑对话框）提交字段的落库列全集。
+// 用户清空类提交（取消绑定本地作者、清空介绍/固定名）经 DTO 指针 nil 映射为
+// sql.Null*{Valid:false}，须以列集更新强制落 NULL——普通 Updates 会把其当零值跳过
+var siteAuthorEditableColumns = []string{
+	"author_name",
+	"introduce",
+	"local_author_id",
+	"site_id",
+	"fixed_author_name",
+}
+
+// UpdateById 更新站点作者（编辑面列集以提交为准，含清空置 NULL）
 func (s *Service) UpdateById(ctx context.Context, author *entity.SiteAuthor) error {
 	if author.ID == 0 {
 		return ErrAuthorIdRequired
 	}
-	return s.repo.Updates(ctx, author)
+	return s.repo.UpdatesWithColumns(ctx, author, siteAuthorEditableColumns)
 }
 
 // UpdateLastUse 批量更新最后使用时间

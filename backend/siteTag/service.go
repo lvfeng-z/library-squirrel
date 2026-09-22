@@ -55,6 +55,8 @@ type Repository interface {
 	CreateBatch(ctx context.Context, tags []*entity2.SiteTag) error
 	// Updates 更新
 	Updates(ctx context.Context, tag *entity2.SiteTag) error
+	// UpdatesWithColumns 按列集更新（编辑面列集以提交为准，含置 NULL）
+	UpdatesWithColumns(ctx context.Context, tag *entity2.SiteTag, columns []string) error
 	// GetById 根据ID获取
 	GetById(ctx context.Context, id int64) (*entity2.SiteTag, error)
 	// List 查询列表
@@ -124,12 +126,22 @@ func (s *Service) SaveBatch(ctx context.Context, tags []*entity2.SiteTag) error 
 	return s.repo.CreateBatch(ctx, tags)
 }
 
-// UpdateById 更新站点标签
+// siteTagEditableColumns 站点标签编辑链（行内编辑与编辑对话框）提交字段的落库列全集。
+// 用户清空类提交（解绑本地标签、清空详情）经 DTO 指针 nil 映射为 sql.Null*{Valid:false}，
+// 须以列集更新强制落 NULL——普通 Updates 会把其当零值跳过
+var siteTagEditableColumns = []string{
+	"site_tag_name",
+	"description",
+	"local_tag_id",
+	"site_id",
+}
+
+// UpdateById 更新站点标签（编辑面列集以提交为准，含清空置 NULL）
 func (s *Service) UpdateById(ctx context.Context, tag *entity2.SiteTag) error {
 	if tag.ID == 0 {
 		return ErrTagIdRequired
 	}
-	return s.repo.Updates(ctx, tag)
+	return s.repo.UpdatesWithColumns(ctx, tag, siteTagEditableColumns)
 }
 
 // GetBySiteAndSiteTagID 根据站点ID和站点标签ID查询

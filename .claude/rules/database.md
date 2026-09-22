@@ -18,8 +18,9 @@ globs:
 - **写方法语义（命名与 GORM finisher 对齐）**：
   - `Create` / `CreateBatch` → GORM `Create`（INSERT，新建）
   - `Save` → GORM `Save`（UPSERT 全字段含零值，完整替换已存在记录或清空字段时用）
-  - `Updates` → GORM `Updates`（部分更新，仅写非零字段，编辑表单/更新状态时用）
-  - ⚠️ `Updates` 跳过零值字段——若字段的 Go 零值（int 0/bool false/string ""）是合法业务取值，须用 `sql.Null*` 类型（靠 `Valid` 区分"未设置"与"零值"），否则零值无法落盘
+  - `Updates` → GORM `Updates`（部分更新，仅写非零字段，更新状态时用）
+  - `UpdatesWithColumns` → GORM `Select(cols).Updates`（列集部分更新，选中列**强制写入含零值与 NULL**，未选中列不动；列集恒附加 `update_time`，空列集报 `ErrEmptyUpdateColumns`）——**编辑表单/行内编辑链的 UpdateById 用它**，圈定编辑面列集令用户清空（DTO 指针 nil → `sql.Null*{Valid:false}`）真正落 NULL
+  - ⚠️ `Updates` 跳过零值字段——`sql.Null*{Valid:false}` 也被当零值跳过：**编辑链「清空可空列」必须走 `UpdatesWithColumns`**（普通 Updates 下「取消绑定/清空描述」会被静默丢弃）；若字段的 Go 零值（int 0/bool false/string ""）是合法业务取值且无需置 NULL，用 `sql.Null*` 的 `Valid:true` 携带显式零值即可落盘
 - **事务**：`database.WithTransaction(db, func(tx *gorm.DB) error { ... })`
   - **连接池 MaxOpenConns=1**（`backend/database/db.go`）：SQLite 单写者，整个应用所有 DB 操作共享 1 个连接，Go `sql.DB` 连接池排队。
   - **事务内 repository 方法必须用 `dbFromCtx(ctx)`**（= `database.DBFromContext(ctx, r.GORM())`，从 ctx 取事务 tx），禁止 `r.GORM()`——后者会向连接池再取连接，而唯一连接正被事务占用 → Go 连接池永久等待 → **死锁**（`busy_timeout` 无效，卡在 Go 连接池层而非 SQLite 层）。自定义 repository 方法默认走 `dbFromCtx(ctx)` 模式。

@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -168,12 +169,32 @@ func (r *BaseRepository[T]) DeleteBatch(ctx context.Context, ids []int64) error 
 }
 
 // Updates 更新实体（部分更新，仅更新非零字段）
-// 注意：如果需要更新字段为零值（如清空描述），请使用 Save 并先 GetById 读回完整对象
+// 注意：如果需要更新字段为零值（如清空描述），请使用 UpdatesWithColumns 指定编辑面列集，
+// 或使用 Save 并先 GetById 读回完整对象
 func (r *BaseRepository[T]) Updates(ctx context.Context, entity *T) error {
 	e := *entity
 	e.SetUpdateTime(util.GetCurrentTimestamp())
 	*entity = e
 	return r.getDb(ctx).WithContext(ctx).Updates(entity).Error
+}
+
+// ErrEmptyUpdateColumns 列集更新传入空列集（无业务语义，属调用方编程错误）
+var ErrEmptyUpdateColumns = errors.New("列集更新必须提供至少一列")
+
+// UpdatesWithColumns 按列集更新（部分更新，仅写选中列；选中列强制写入，零值与 NULL 也落盘）。
+// 用途：编辑链「清空可空列」——提交面携带 sql.Null*{Valid:false}（表达置 NULL）时，普通 Updates
+// 会把其当零值跳过，须以列集圈定编辑面令该列强制落 NULL。列集恒附加 update_time，未选中列不动
+func (r *BaseRepository[T]) UpdatesWithColumns(ctx context.Context, entity *T, columns []string) error {
+	if len(columns) == 0 {
+		return ErrEmptyUpdateColumns
+	}
+	e := *entity
+	e.SetUpdateTime(util.GetCurrentTimestamp())
+	*entity = e
+	cols := make([]string, 0, len(columns)+1)
+	cols = append(cols, columns...)
+	cols = append(cols, "update_time")
+	return r.getDb(ctx).WithContext(ctx).Select(cols).Updates(entity).Error
 }
 
 // Save 保存实体（GORM Save 语义：存在主键则全字段更新含零值，否则插入）
