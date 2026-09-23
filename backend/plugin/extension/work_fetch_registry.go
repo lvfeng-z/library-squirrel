@@ -14,16 +14,16 @@ const (
 	KeySeparator = "/"
 )
 
-// TaskHandlerRegistry 任务处理器注册中心
-type TaskHandlerRegistry struct {
+// WorkFetchRegistry 作品拉取注册中心
+type WorkFetchRegistry struct {
 	mu         sync.RWMutex
-	extensions map[string]*model.Extension[pluginsdkdto.TaskHandler] // key: pluginPublicId/extensionId
+	extensions map[string]*model.Extension[pluginsdkdto.WorkFetcher] // key: pluginPublicId/extensionId
 }
 
-// NewTaskHandlerRegistry 创建任务处理器注册中心
-func NewTaskHandlerRegistry() *TaskHandlerRegistry {
-	return &TaskHandlerRegistry{
-		extensions: make(map[string]*model.Extension[pluginsdkdto.TaskHandler]),
+// NewWorkFetchRegistry 创建作品拉取注册中心
+func NewWorkFetchRegistry() *WorkFetchRegistry {
+	return &WorkFetchRegistry{
+		extensions: make(map[string]*model.Extension[pluginsdkdto.WorkFetcher]),
 	}
 }
 
@@ -33,7 +33,7 @@ func makeKey(pluginPublicId, extensionId string) string {
 }
 
 // Register 注册扩展点
-func (r *TaskHandlerRegistry) Register(extension *model.Extension[pluginsdkdto.TaskHandler]) error {
+func (r *WorkFetchRegistry) Register(extension *model.Extension[pluginsdkdto.WorkFetcher]) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -42,14 +42,14 @@ func (r *TaskHandlerRegistry) Register(extension *model.Extension[pluginsdkdto.T
 		return ErrExtensionAlreadyExists
 	}
 	r.extensions[key] = extension
-	logger.Log.Info("TaskHandler 已注册",
+	logger.Log.Info("WorkFetch 已注册",
 		zap.String("key", key),
 		zap.String("name", extension.Metadata.Name))
 	return nil
 }
 
 // Unregister 取消注册
-func (r *TaskHandlerRegistry) Unregister(pluginPublicId string, extensionId string) error {
+func (r *WorkFetchRegistry) Unregister(pluginPublicId string, extensionId string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -62,7 +62,7 @@ func (r *TaskHandlerRegistry) Unregister(pluginPublicId string, extensionId stri
 }
 
 // UnregisterAll 取消插件的所有扩展点
-func (r *TaskHandlerRegistry) UnregisterAll(pluginPublicId string) error {
+func (r *WorkFetchRegistry) UnregisterAll(pluginPublicId string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -75,13 +75,13 @@ func (r *TaskHandlerRegistry) UnregisterAll(pluginPublicId string) error {
 		}
 	}
 	if count > 0 {
-		logger.Log.Info("TaskHandler 已注销", zap.String("plugin", pluginPublicId), zap.Int("count", count))
+		logger.Log.Info("WorkFetch 已注销", zap.String("plugin", pluginPublicId), zap.Int("count", count))
 	}
 	return nil
 }
 
 // Get 获取扩展点
-func (r *TaskHandlerRegistry) Get(pluginPublicId string, extensionId string) (*model.Extension[pluginsdkdto.TaskHandler], error) {
+func (r *WorkFetchRegistry) Get(pluginPublicId string, extensionId string) (*model.Extension[pluginsdkdto.WorkFetcher], error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -93,9 +93,9 @@ func (r *TaskHandlerRegistry) Get(pluginPublicId string, extensionId string) (*m
 	return ext, nil
 }
 
-// GetTaskHandler 获取任务处理器实例（便捷方法）
-// 返回注册的 TaskHandler 实例，满足 task.TaskHandlerProvider 接口
-func (r *TaskHandlerRegistry) GetTaskHandler(pluginPublicId, extensionId string) (pluginsdkdto.TaskHandler, error) {
+// GetWorkFetcher 获取作品拉取实例（便捷方法）
+// 返回注册的 WorkFetcher 实例，满足 task.WorkFetchProvider 接口
+func (r *WorkFetchRegistry) GetWorkFetcher(pluginPublicId, extensionId string) (pluginsdkdto.WorkFetcher, error) {
 	ext, err := r.Get(pluginPublicId, extensionId)
 	if err != nil {
 		return nil, err
@@ -104,11 +104,11 @@ func (r *TaskHandlerRegistry) GetTaskHandler(pluginPublicId, extensionId string)
 }
 
 // GetByPlugin 获取插件的所有扩展点
-func (r *TaskHandlerRegistry) GetByPlugin(pluginPublicId string) ([]*model.Extension[pluginsdkdto.TaskHandler], error) {
+func (r *WorkFetchRegistry) GetByPlugin(pluginPublicId string) ([]*model.Extension[pluginsdkdto.WorkFetcher], error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	var result []*model.Extension[pluginsdkdto.TaskHandler]
+	var result []*model.Extension[pluginsdkdto.WorkFetcher]
 	for _, ext := range r.extensions {
 		if ext.Metadata.PluginPublicID == pluginPublicId {
 			result = append(result, ext)
@@ -118,11 +118,11 @@ func (r *TaskHandlerRegistry) GetByPlugin(pluginPublicId string) ([]*model.Exten
 }
 
 // List 列出所有扩展点
-func (r *TaskHandlerRegistry) List() []*model.Extension[pluginsdkdto.TaskHandler] {
+func (r *WorkFetchRegistry) List() []*model.Extension[pluginsdkdto.WorkFetcher] {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	result := make([]*model.Extension[pluginsdkdto.TaskHandler], 0, len(r.extensions))
+	result := make([]*model.Extension[pluginsdkdto.WorkFetcher], 0, len(r.extensions))
 	for _, ext := range r.extensions {
 		result = append(result, ext)
 	}

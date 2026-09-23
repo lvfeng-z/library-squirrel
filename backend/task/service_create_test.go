@@ -987,13 +987,13 @@ func TestTaskCreateUnknownKeyFails(t *testing.T) {
 
 // ---- CreateTaskByURL：失败即终止 + 原因/兜底文案 + 失败计数 ----
 
-// fakeTaskHandlerGetter TaskHandlerProvider 替身：按 (publicId, extensionId) 返回预置处理器，
+// fakeWorkFetchGetter WorkFetchProvider 替身：按 (publicId, extensionId) 返回预置处理器，
 // 未预置的键返回错误（模拟插件未激活/处理器不可用）。
-type fakeTaskHandlerGetter struct {
-	handlers map[string]sdkdto.TaskHandler
+type fakeWorkFetchGetter struct {
+	handlers map[string]sdkdto.WorkFetcher
 }
 
-func (f *fakeTaskHandlerGetter) GetTaskHandler(pluginPublicId, extensionId string) (sdkdto.TaskHandler, error) {
+func (f *fakeWorkFetchGetter) GetWorkFetcher(pluginPublicId, extensionId string) (sdkdto.WorkFetcher, error) {
 	h, ok := f.handlers[pluginPublicId+"/"+extensionId]
 	if !ok {
 		return nil, errors.New("task handler not found")
@@ -1001,15 +1001,15 @@ func (f *fakeTaskHandlerGetter) GetTaskHandler(pluginPublicId, extensionId strin
 	return h, nil
 }
 
-// fakePluginTaskHandler 仅实现 Create 的任务处理器替身；其余方法经接口嵌入满足签名，创建路径不触达。
+// fakePluginWorkFetcher 仅实现 Create 的作品拉取替身；其余方法经接口嵌入满足签名，创建路径不触达。
 // createCalls 记录 Create 被调用次数，供「首个失败即终止不轮询」断言。
-type fakePluginTaskHandler struct {
-	sdkdto.TaskHandler
+type fakePluginWorkFetcher struct {
+	sdkdto.WorkFetcher
 	createCalls int
 	create      func(url string) (*sdkdto.TaskCreateResult, error)
 }
 
-func (f *fakePluginTaskHandler) Create(url string) (*sdkdto.TaskCreateResult, error) {
+func (f *fakePluginWorkFetcher) Create(url string) (*sdkdto.TaskCreateResult, error) {
 	f.createCalls++
 	return f.create(url)
 }
@@ -1022,12 +1022,12 @@ func namedListener(publicId, name, extId string) *pluginTaskUrlListener.PluginWi
 	return &pluginTaskUrlListener.PluginWithExtension{Plugin: plugin, ExtensionID: extId}
 }
 
-// newURLListenerService 把监听器条目以生产输入形态（清单任务处理器条目声明 urlPatterns）
+// newURLListenerService 把监听器条目以生产输入形态（清单作品拉取条目声明 urlPatterns）
 // 登记到同一匹配模式（同模式内按登记序返回，顺序确定）。
 func newURLListenerService(entries ...*pluginTaskUrlListener.PluginWithExtension) *pluginTaskUrlListener.Service {
 	svc := pluginTaskUrlListener.NewService(pluginTaskUrlListener.NewManager())
 	for _, e := range entries {
-		svc.RegisterDeclared(e.Plugin, []dto.TaskHandlerDeclaration{
+		svc.RegisterDeclared(e.Plugin, []dto.WorkFetchDeclaration{
 			{ID: e.ExtensionID, Name: e.Name.String, UrlPatterns: []string{"^http"}},
 		})
 	}
@@ -1035,7 +1035,7 @@ func newURLListenerService(entries ...*pluginTaskUrlListener.PluginWithExtension
 }
 
 // newCreateByURLService 经生产构造函数组装带处理器提供者与监听器服务的 Service（fake 落库）。
-func newCreateByURLService(t *testing.T, getter TaskHandlerProvider, listenerSvc *pluginTaskUrlListener.Service) (*Service, *fakeTaskRepo) {
+func newCreateByURLService(t *testing.T, getter WorkFetchProvider, listenerSvc *pluginTaskUrlListener.Service) (*Service, *fakeTaskRepo) {
 	t.Helper()
 	repo := newFakeTaskRepo()
 	siteSvc := site.NewService(fakeSiteRepo{})
@@ -1053,8 +1053,8 @@ func batchResultWithReason(responses []*sdkdto.TaskCreateResponse, reason string
 }
 
 // viableHandler 可正常创建 1 个独立任务的处理器替身，用于「失败后不轮询后续监听器」的对照侧。
-func viableHandler() *fakePluginTaskHandler {
-	return &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+func viableHandler() *fakePluginWorkFetcher {
+	return &fakePluginWorkFetcher{create: func(string) (*sdkdto.TaskCreateResult, error) {
 		return batchResultWithReason([]*sdkdto.TaskCreateResponse{
 			{TaskName: "t", SiteWorkId: "w", Url: "http://x", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage},
 		}, ""), nil
@@ -1063,11 +1063,11 @@ func viableHandler() *fakePluginTaskHandler {
 
 // TestCreateTaskByURL_PluginReasonPassedThrough 零任务 + reason → 提示点名插件并透传插件业务原因。
 func TestCreateTaskByURL_PluginReasonPassedThrough(t *testing.T) {
-	handler := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+	handler := &fakePluginWorkFetcher{create: func(string) (*sdkdto.TaskCreateResult, error) {
 		return batchResultWithReason(nil, "获取令牌失败（限制级作品需要登录）"), nil
 	}}
 	svc, _ := newCreateByURLService(t,
-		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{"pub-a/ext-a": handler}},
+		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{"pub-a/ext-a": handler}},
 		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
 
 	resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
@@ -1084,11 +1084,11 @@ func TestCreateTaskByURL_PluginReasonPassedThrough(t *testing.T) {
 
 // TestCreateTaskByURL_FallbackWhenNoTasksNoReason 零任务且无原因 → 兜底文案点名插件。
 func TestCreateTaskByURL_FallbackWhenNoTasksNoReason(t *testing.T) {
-	handler := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+	handler := &fakePluginWorkFetcher{create: func(string) (*sdkdto.TaskCreateResult, error) {
 		return sdkdto.BatchResult(nil), nil
 	}}
 	svc, _ := newCreateByURLService(t,
-		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{"pub-a/ext-a": handler}},
+		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{"pub-a/ext-a": handler}},
 		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
 
 	resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
@@ -1104,7 +1104,7 @@ func TestCreateTaskByURL_FallbackWhenNoTasksNoReason(t *testing.T) {
 func TestCreateTaskByURL_HandlerUnavailableStopsPolling(t *testing.T) {
 	viable := viableHandler()
 	svc, _ := newCreateByURLService(t,
-		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{"pub-b/ext-b": viable}},
+		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{"pub-b/ext-b": viable}},
 		newURLListenerService(
 			namedListener("pub-a", "插件A", "ext-a"),
 			namedListener("pub-b", "插件B", "ext-b"),
@@ -1114,7 +1114,7 @@ func TestCreateTaskByURL_HandlerUnavailableStopsPolling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTaskByURL 返回错误: %v", err)
 	}
-	if want := "插件 插件A 未激活或任务处理器不可用"; resp.Msg != want {
+	if want := "插件 插件A 未激活或作品拉取不可用"; resp.Msg != want {
 		t.Fatalf("期望 Msg %q，得到 %q", want, resp.Msg)
 	}
 	if viable.createCalls != 0 {
@@ -1125,12 +1125,12 @@ func TestCreateTaskByURL_HandlerUnavailableStopsPolling(t *testing.T) {
 // TestCreateTaskByURL_CreateErrStopsPolling Create 返回 gRPC 层错误（基础设施故障）→
 // 中性措辞提示点名插件，不轮询后续监听器。
 func TestCreateTaskByURL_CreateErrStopsPolling(t *testing.T) {
-	handler := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+	handler := &fakePluginWorkFetcher{create: func(string) (*sdkdto.TaskCreateResult, error) {
 		return nil, errors.New("connection refused")
 	}}
 	viable := viableHandler()
 	svc, _ := newCreateByURLService(t,
-		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{
+		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{
 			"pub-a/ext-a": handler,
 			"pub-b/ext-b": viable,
 		}},
@@ -1154,12 +1154,12 @@ func TestCreateTaskByURL_CreateErrStopsPolling(t *testing.T) {
 // TestCreateTaskByURL_FirstFailureStopsPolling 首个监听器零任务且给出原因 → 以其原因返回，
 // 不再尝试后续监听器（首个明确结果即终止）。
 func TestCreateTaskByURL_FirstFailureStopsPolling(t *testing.T) {
-	reasoned := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+	reasoned := &fakePluginWorkFetcher{create: func(string) (*sdkdto.TaskCreateResult, error) {
 		return batchResultWithReason(nil, "未发现可导入的文件（目录为空）"), nil
 	}}
 	viable := viableHandler()
 	svc, _ := newCreateByURLService(t,
-		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{
+		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{
 			"pub-a/ext-a": reasoned,
 			"pub-b/ext-b": viable,
 		}},
@@ -1182,14 +1182,14 @@ func TestCreateTaskByURL_FirstFailureStopsPolling(t *testing.T) {
 
 // TestCreateTaskByURL_SuccessMsgFromBackend 全部落库成功 → 成功文案由后端 Msg 产出。
 func TestCreateTaskByURL_SuccessMsgFromBackend(t *testing.T) {
-	handler := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+	handler := &fakePluginWorkFetcher{create: func(string) (*sdkdto.TaskCreateResult, error) {
 		return batchResultWithReason([]*sdkdto.TaskCreateResponse{
 			{TaskName: "t-1", SiteWorkId: "w-1", Url: "http://x/1", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage},
 			{TaskName: "t-2", SiteWorkId: "w-2", Url: "http://x/2", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage},
 		}, ""), nil
 	}}
 	svc, repo := newCreateByURLService(t,
-		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{"pub-a/ext-a": handler}},
+		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{"pub-a/ext-a": handler}},
 		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
 
 	resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
@@ -1210,7 +1210,7 @@ func TestCreateTaskByURL_SuccessMsgFromBackend(t *testing.T) {
 // TestCreateTaskByURL_ArrayPartialFailureCounted 批量路径部分失败：成功项与失败项（填充失败的响应）
 // 分开计数，插件报告的原因（业务维度）追加在失败数（落库维度）之后。
 func TestCreateTaskByURL_ArrayPartialFailureCounted(t *testing.T) {
-	handler := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+	handler := &fakePluginWorkFetcher{create: func(string) (*sdkdto.TaskCreateResult, error) {
 		return batchResultWithReason([]*sdkdto.TaskCreateResponse{
 			{TaskName: "ok-1", SiteWorkId: "w-1", Url: "http://x/1", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage},
 			{TaskName: "bad", Url: "http://x/2", SiteKey: "", ResourceType: entity.ResourceTypeImage}, // SiteKey 缺失 → 字段填充失败
@@ -1218,7 +1218,7 @@ func TestCreateTaskByURL_ArrayPartialFailureCounted(t *testing.T) {
 		}, "部分任务创建失败"), nil
 	}}
 	svc, repo := newCreateByURLService(t,
-		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{"pub-a/ext-a": handler}},
+		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{"pub-a/ext-a": handler}},
 		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
 
 	resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
@@ -1244,13 +1244,13 @@ func TestCreateTaskByURL_StreamPartialFailureCounted(t *testing.T) {
 	in <- &sdkdto.TaskCreateResponse{TaskName: "ok-2", SiteWorkId: "w-2", Url: "http://x/3", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage}
 	close(in)
 
-	handler := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+	handler := &fakePluginWorkFetcher{create: func(string) (*sdkdto.TaskCreateResult, error) {
 		result := sdkdto.StreamResult(in)
 		result.SetReason("部分任务创建失败")
 		return result, nil
 	}}
 	svc, repo := newCreateByURLService(t,
-		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{"pub-a/ext-a": handler}},
+		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{"pub-a/ext-a": handler}},
 		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
 
 	resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
@@ -1274,15 +1274,15 @@ func TestCreateTaskByURL_StreamPartialFailureCounted(t *testing.T) {
 // 交互入口 CreateTaskByURLWithChoice 在候选多于一个且未显选时返回冲突载荷且不调用任何插件；
 // 程序化入口 CreateTaskByURL 无显选通道，恒按全键字典序尝试。
 
-// countingTaskHandlerGetter 记录 GetTaskHandler 调用次数，锚定「冲突路径不触达插件」。
-type countingTaskHandlerGetter struct {
-	inner *fakeTaskHandlerGetter
+// countingWorkFetchGetter 记录 GetWorkFetcher 调用次数，锚定「冲突路径不触达插件」。
+type countingWorkFetchGetter struct {
+	inner *fakeWorkFetchGetter
 	calls int
 }
 
-func (c *countingTaskHandlerGetter) GetTaskHandler(pluginPublicId, extensionId string) (sdkdto.TaskHandler, error) {
+func (c *countingWorkFetchGetter) GetWorkFetcher(pluginPublicId, extensionId string) (sdkdto.WorkFetcher, error) {
 	c.calls++
-	return c.inner.GetTaskHandler(pluginPublicId, extensionId)
+	return c.inner.GetWorkFetcher(pluginPublicId, extensionId)
 }
 
 // TestCreateTaskByURL_SingleCandidateNoConflict 单候选：交互入口与程序化入口同走该候选，
@@ -1290,7 +1290,7 @@ func (c *countingTaskHandlerGetter) GetTaskHandler(pluginPublicId, extensionId s
 func TestCreateTaskByURL_SingleCandidateNoConflict(t *testing.T) {
 	handler := viableHandler()
 	svc, repo := newCreateByURLService(t,
-		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{"pub-a/ext-a": handler}},
+		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{"pub-a/ext-a": handler}},
 		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
 
 	resp, err := svc.CreateTaskByURLWithChoice(context.Background(), "http://x/1", "", "")
@@ -1318,7 +1318,7 @@ func TestCreateTaskByURL_SingleCandidateNoConflict(t *testing.T) {
 // （按候选全键字典序，首位即默认选中项），不调用任何插件。
 func TestCreateTaskByURL_ConflictReturnsWithoutCallingPlugins(t *testing.T) {
 	handlerA, handlerB := viableHandler(), viableHandler()
-	getter := &countingTaskHandlerGetter{inner: &fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{
+	getter := &countingWorkFetchGetter{inner: &fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{
 		"pub-a/ext-a": handlerA,
 		"pub-b/ext-b": handlerB,
 	}}}
@@ -1359,12 +1359,12 @@ func TestCreateTaskByURL_ConflictReturnsWithoutCallingPlugins(t *testing.T) {
 // TestCreateTaskByURL_ChosenCandidateRoutesToItOnly 显选非默认候选：该候选置于路由首位，
 // 非被选候选不被调用（非被选者若被调用必失败，可反证尝试序）。
 func TestCreateTaskByURL_ChosenCandidateRoutesToItOnly(t *testing.T) {
-	handlerA := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+	handlerA := &fakePluginWorkFetcher{create: func(string) (*sdkdto.TaskCreateResult, error) {
 		return nil, errors.New("非被选候选被调用")
 	}}
 	handlerB := viableHandler()
 	svc, _ := newCreateByURLService(t,
-		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{
+		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{
 			"pub-a/ext-a": handlerA,
 			"pub-b/ext-b": handlerB,
 		}},
@@ -1397,7 +1397,7 @@ func TestCreateTaskByURL_ChosenFailureTerminates(t *testing.T) {
 	}
 	handlerB := viableHandler()
 	svc, _ := newCreateByURLService(t,
-		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{
+		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{
 			"pub-a/ext-a": handlerA,
 			"pub-b/ext-b": handlerB,
 		}},
@@ -1425,7 +1425,7 @@ func TestCreateTaskByURL_ChosenFailureTerminates(t *testing.T) {
 // ErrChosenCandidateInvalid 且不调用任何插件；插件键命中而扩展点键不符同样非法（两键联合匹配）。
 func TestCreateTaskByURL_ChosenCandidateNotInCandidatesFails(t *testing.T) {
 	handlerA, handlerB := viableHandler(), viableHandler()
-	getter := &countingTaskHandlerGetter{inner: &fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{
+	getter := &countingWorkFetchGetter{inner: &fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{
 		"pub-a/ext-a": handlerA,
 		"pub-b/ext-b": handlerB,
 	}}}
@@ -1453,11 +1453,11 @@ func TestCreateTaskByURL_ProgrammaticEntryUsesFullKeyOrder(t *testing.T) {
 	handlerA, handlerB := viableHandler(), viableHandler()
 	listenerSvc := pluginTaskUrlListener.NewService(pluginTaskUrlListener.NewManager())
 	listenerSvc.RegisterDeclared(namedListener("pub-b", "插件B", "ext-b").Plugin,
-		[]dto.TaskHandlerDeclaration{{ID: "ext-b", Name: "插件B", UrlPatterns: []string{"^http"}}})
+		[]dto.WorkFetchDeclaration{{ID: "ext-b", Name: "插件B", UrlPatterns: []string{"^http"}}})
 	listenerSvc.RegisterDeclared(namedListener("pub-a", "插件A", "ext-a").Plugin,
-		[]dto.TaskHandlerDeclaration{{ID: "ext-a", Name: "插件A", UrlPatterns: []string{"^http://x"}}})
+		[]dto.WorkFetchDeclaration{{ID: "ext-a", Name: "插件A", UrlPatterns: []string{"^http://x"}}})
 	svc, _ := newCreateByURLService(t,
-		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{
+		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{
 			"pub-a/ext-a": handlerA,
 			"pub-b/ext-b": handlerB,
 		}}, listenerSvc)

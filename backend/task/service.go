@@ -32,7 +32,7 @@ var (
 	ErrSiteKeyRequired   = &pkgerr.BusinessError{Code: 400, Message: "创建任务失败，插件返回的任务信息中缺少站点键"}
 	ErrSiteNotFound      = &pkgerr.BusinessError{Code: 400, Message: "创建任务失败，没有找到站点对应的信息"}
 	ErrPluginDataInvalid = &pkgerr.BusinessError{Code: 500, Message: "序列化插件保存的pluginData失败"}
-	ErrTaskHandlerFailed = &pkgerr.BusinessError{Code: 500, Message: "插件创建任务失败"}
+	ErrWorkFetchFailed   = &pkgerr.BusinessError{Code: 500, Message: "插件创建任务失败"}
 	// ErrChosenCandidateInvalid 交互面显选键未命中该 URL 的候选集（两键联合定位一个扩展点候选）
 	ErrChosenCandidateInvalid = &pkgerr.BusinessError{Code: 400, Message: "所选的插件扩展点不在该链接的候选集内"}
 )
@@ -168,22 +168,22 @@ func buildTaskProgressTree(pairs []*TaskWithWorkTask) []*dto.TaskProgressTreeDTO
 	return taskProgressTreeBuilder.BuildTree(dtos, setTaskProgressTreeChildren)
 }
 
-// TaskHandlerProvider 任务处理器提供者接口
-// 用于获取插件的任务处理器，解耦 task 模块对 plugin 模块的直接依赖
-type TaskHandlerProvider interface {
-	// GetTaskHandler 获取任务处理器
-	GetTaskHandler(pluginPublicId, extensionId string) (sdkdto.TaskHandler, error)
+// WorkFetchProvider 作品拉取提供者接口
+// 用于获取插件的作品拉取，解耦 task 模块对 plugin 模块的直接依赖
+type WorkFetchProvider interface {
+	// GetWorkFetcher 获取作品拉取
+	GetWorkFetcher(pluginPublicId, extensionId string) (sdkdto.WorkFetcher, error)
 }
 
-// ctxAwareTaskCreator 支持以调用方 ctx 为基创建任务的处理器扩展（TaskHandlerProxy 实现）。
-// SDK TaskHandler 接口的 Create 无 ctx 参数，调用方取消语义经此主程序内部接口传递
+// ctxAwareTaskCreator 支持以调用方 ctx 为基创建任务的处理器扩展（WorkFetchProxy 实现）。
+// SDK WorkFetcher 接口的 Create 无 ctx 参数，调用方取消语义经此主程序内部接口传递
 type ctxAwareTaskCreator interface {
 	CreateWithContext(ctx context.Context, url string) (*sdkdto.TaskCreateResult, error)
 }
 
 // createTaskWithContext 优先经 ctx 感知通道以调用方 ctx 为基创建任务（取消即终结插件流与
 // 接收泵），处理器不支持时回落 SDK 接口的无 ctx Create
-func createTaskWithContext(ctx context.Context, handler sdkdto.TaskHandler, url string) (*sdkdto.TaskCreateResult, error) {
+func createTaskWithContext(ctx context.Context, handler sdkdto.WorkFetcher, url string) (*sdkdto.TaskCreateResult, error) {
 	if creator, ok := handler.(ctxAwareTaskCreator); ok {
 		return creator.CreateWithContext(ctx, url)
 	}
@@ -216,27 +216,27 @@ const deleteStopWaitTimeout = 35 * time.Second
 
 // Service 任务服务
 type Service struct {
-	repo              Repository
-	transactor        Transactor
-	taskHandlerGetter TaskHandlerProvider
-	urlListener       *pluginTaskUrlListener.Service
-	siteSvc           *site.Service
-	memoryProvider    MemoryStateProvider
-	taskTypeRegistry  TaskTypeRegistry
-	runningStopper    RunningStopper
-	workDirGetter     func() string
+	repo             Repository
+	transactor       Transactor
+	workFetchGetter  WorkFetchProvider
+	urlListener      *pluginTaskUrlListener.Service
+	siteSvc          *site.Service
+	memoryProvider   MemoryStateProvider
+	taskTypeRegistry TaskTypeRegistry
+	runningStopper   RunningStopper
+	workDirGetter    func() string
 }
 
 // NewService 创建任务服务。workDirGetter 供删除链清理下载暂存目录取 workDir
 // （空串=未配置，清理函数容忍跳过）
-func NewService(repo Repository, transactor Transactor, taskHandlerGetter TaskHandlerProvider, urlListener *pluginTaskUrlListener.Service, siteSvc *site.Service, workDirGetter func() string) *Service {
+func NewService(repo Repository, transactor Transactor, workFetchGetter WorkFetchProvider, urlListener *pluginTaskUrlListener.Service, siteSvc *site.Service, workDirGetter func() string) *Service {
 	return &Service{
-		repo:              repo,
-		transactor:        transactor,
-		taskHandlerGetter: taskHandlerGetter,
-		urlListener:       urlListener,
-		siteSvc:           siteSvc,
-		workDirGetter:     workDirGetter,
+		repo:            repo,
+		transactor:      transactor,
+		workFetchGetter: workFetchGetter,
+		urlListener:     urlListener,
+		siteSvc:         siteSvc,
+		workDirGetter:   workDirGetter,
 	}
 }
 
@@ -971,7 +971,7 @@ func (s *Service) createTaskByURL(ctx context.Context, url string, entry taskEnt
 }
 
 // orderedRoutableCandidates 筛出可路由候选（扩展点粒度）并按候选全键字典序排列。缺插件 PublicID 的
-// 监听器条目无法定位插件与任务处理器，属注册数据缺陷而非插件运行结果，剔除。
+// 监听器条目无法定位插件与作品拉取，属注册数据缺陷而非插件运行结果，剔除。
 // 该序即冲突载荷的默认序，与基座路由序同源（同用 candidateOrderKey）。
 func orderedRoutableCandidates(listeners []*pluginTaskUrlListener.PluginWithExtension) []*pluginTaskUrlListener.PluginWithExtension {
 	candidates := make([]*pluginTaskUrlListener.PluginWithExtension, 0, len(listeners))
@@ -1046,23 +1046,23 @@ func (a *taskRouteAdapter) Describe(c *pluginTaskUrlListener.PluginWithExtension
 	return fmt.Sprintf("%s/%s", listenerPluginName(c), c.ExtensionID)
 }
 
-// Invoke 取候选的任务处理器并消费其返回：流与数组两路径统一落库，产出任务的候选即路由终点。
+// Invoke 取候选的作品拉取并消费其返回：流与数组两路径统一落库，产出任务的候选即路由终点。
 // 处理器不可用、传输层错误、消费失败与零任务均为真失败，响应文案经 candidateFailure 原样交回调用方。
 func (a *taskRouteAdapter) Invoke(ctx context.Context, c *pluginTaskUrlListener.PluginWithExtension) (*CreateTaskByURLResponse, route.Outcome, error) {
 	pluginPublicId := c.PublicID.String
 	pluginName := listenerPluginName(c)
 
-	// 获取任务处理器：失败即插件不可运行，终止
-	taskHandler, err := a.service.taskHandlerGetter.GetTaskHandler(pluginPublicId, c.ExtensionID)
+	// 获取作品拉取：失败即插件不可运行，终止
+	workFetcher, err := a.service.workFetchGetter.GetWorkFetcher(pluginPublicId, c.ExtensionID)
 	if err != nil {
-		logger.Log.Warnf("获取任务处理器失败 (plugin=%s, extensionId=%s): %v", pluginPublicId, c.ExtensionID, err)
-		return nil, route.Failed, failedCandidate(fmt.Sprintf("插件 %s 未激活或任务处理器不可用", pluginName))
+		logger.Log.Warnf("获取作品拉取失败 (plugin=%s, extensionId=%s): %v", pluginPublicId, c.ExtensionID, err)
+		return nil, route.Failed, failedCandidate(fmt.Sprintf("插件 %s 未激活或作品拉取不可用", pluginName))
 	}
 
 	// 调用插件的 create 方法。gRPC 层错误代表基础设施故障（进程崩溃/连接中断/传输异常）；
 	// 插件业务失败原因经结果对象的 reason 承载，不表现为 err。
 	// 经 ctx 感知通道继承调用方 ctx：取消可终结建流与接收泵
-	result, err := createTaskWithContext(ctx, taskHandler, a.url)
+	result, err := createTaskWithContext(ctx, workFetcher, a.url)
 	if err != nil {
 		logger.Log.Errorf("插件创建任务失败 (plugin=%s): %v", pluginPublicId, err)
 		return nil, route.Failed, failedCandidate(fmt.Sprintf("插件 %s 创建任务失败（异常退出或连接中断）：%v", pluginName, err))

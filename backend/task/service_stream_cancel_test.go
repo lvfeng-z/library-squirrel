@@ -39,11 +39,11 @@ func TestCreateTaskByURL_StreamConsumerReturnsOnCtxCancel(t *testing.T) {
 		}
 	}()
 
-	handler := &fakePluginTaskHandler{create: func(string) (*sdkdto.TaskCreateResult, error) {
+	handler := &fakePluginWorkFetcher{create: func(string) (*sdkdto.TaskCreateResult, error) {
 		return sdkdto.StreamResult(taskChan), nil
 	}}
 	svc, _ := newCreateByURLService(t,
-		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{"pub-a/ext-a": handler}},
+		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{"pub-a/ext-a": handler}},
 		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
 
 	go func() {
@@ -72,7 +72,7 @@ func TestCreateTaskByURL_StreamConsumerReturnsOnCtxCancel(t *testing.T) {
 // ctxAwareStreamHandler 同时实现 Create 与 CreateWithContext 的处理器替身：CreateWithContext
 // 返回随 ctx 取消关闭的流，Create 记录降级路径被使用（生产接线应经 ctx 感知通道）。
 type ctxAwareStreamHandler struct {
-	sdkdto.TaskHandler
+	sdkdto.WorkFetcher
 	usedFallback bool
 }
 
@@ -111,7 +111,7 @@ func TestCreateTaskByURL_RoutesThroughCtxAwareChannel(t *testing.T) {
 
 	handler := &ctxAwareStreamHandler{}
 	svc, _ := newCreateByURLService(t,
-		&fakeTaskHandlerGetter{handlers: map[string]sdkdto.TaskHandler{"pub-a/ext-a": handler}},
+		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{"pub-a/ext-a": handler}},
 		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
 
 	go func() {

@@ -22,7 +22,7 @@ import (
 // hangingTaskClient 建流即成功的客户端替身：流的 Recv 永久阻塞直至流 ctx 取消
 // （模拟插件 hang：连接活但不产出数据）。
 type hangingTaskClient struct {
-	gen.TaskHandlerServiceClient
+	gen.WorkFetchServiceClient
 }
 
 func (c *hangingTaskClient) Create(ctx context.Context, _ *gen.CreateRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[gen.CreateChunk], error) {
@@ -43,7 +43,7 @@ func (s *ctxBlockCreateStream) Recv() (*gen.CreateChunk, error) {
 // endlessTaskClient 建流即成功的客户端替身：首块声明流式模式，之后无限产出任务块直至流 ctx 取消
 // （模拟插件持续产出、消费方停止读取的泄漏场景）。
 type endlessTaskClient struct {
-	gen.TaskHandlerServiceClient
+	gen.WorkFetchServiceClient
 }
 
 func (c *endlessTaskClient) Create(ctx context.Context, _ *gen.CreateRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[gen.CreateChunk], error) {
@@ -71,7 +71,7 @@ func (s *endlessCreateStream) Recv() (*gen.CreateChunk, error) {
 
 // blockingPauseClient Pause 调用阻塞直至 ctx 取消的客户端替身（模拟插件 handler 卡死）
 type blockingPauseClient struct {
-	gen.TaskHandlerServiceClient
+	gen.WorkFetchServiceClient
 }
 
 func (c *blockingPauseClient) Pause(ctx context.Context, _ *gen.TaskResParamMessage, _ ...grpc.CallOption) (*gen.Empty, error) {
@@ -82,7 +82,7 @@ func (c *blockingPauseClient) Pause(ctx context.Context, _ *gen.TaskResParamMess
 // TestProxyCreate_FirstChunkIdleTimeout 插件建流后不产出（hang）：首块接收在空闲窗口内到期，
 // 返回超时错误而非无限阻塞。
 func TestProxyCreate_FirstChunkIdleTimeout(t *testing.T) {
-	proxy := newTaskHandlerProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{Task: &hangingTaskClient{}}}, "", "")
+	proxy := newWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &hangingTaskClient{}}}, "", "")
 	proxy.readerIdleTimeout = 40 * time.Millisecond
 
 	start := time.Now()
@@ -104,7 +104,7 @@ func TestProxyCreateStream_PumpExitsOnCallerCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	proxy := newTaskHandlerProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{Task: &endlessTaskClient{}}}, "", "")
+	proxy := newWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &endlessTaskClient{}}}, "", "")
 
 	result, err := proxy.CreateWithContext(ctx, "http://x")
 	if err != nil {
@@ -139,7 +139,7 @@ func TestProxyCreateStream_PumpExitsOnCallerCancel(t *testing.T) {
 // TestProxyPauseWithContext_CallerCancelBreaksWait unary 调用以调用方 ctx 为基：
 // 插件 handler 阻塞时调用方取消应立即打断等待（Background 基则须等满 UnaryRPCTimeout）。
 func TestProxyPauseWithContext_CallerCancelBreaksWait(t *testing.T) {
-	proxy := newTaskHandlerProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{Task: &blockingPauseClient{}}}, "", "")
+	proxy := newWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &blockingPauseClient{}}}, "", "")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

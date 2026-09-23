@@ -28,12 +28,12 @@ func listenerOf(listeners []*PluginWithExtension, publicId, extId string) *Plugi
 }
 
 // TestRegisterDeclaredBuildsIndex 派生登记：声明 urlPatterns 的条目逐模式入索引，未声明的
-// 条目跳过；命中产出带插件实体与条目 id，贡献点类型为 taskHandler
+// 条目跳过；命中产出带插件实体与条目 id，贡献点类型为 workFetch
 func TestRegisterDeclaredBuildsIndex(t *testing.T) {
 	m := NewManager()
 	plugin := declaredPlugin("com.example.a", "插件A")
 
-	m.RegisterDeclared(plugin, []dto.TaskHandlerDeclaration{
+	m.RegisterDeclared(plugin, []dto.WorkFetchDeclaration{
 		{ID: "main", Name: "主处理器", UrlPatterns: []string{`^https://example\.com/art/`, `^https://example\.net/`}},
 		{ID: "aux", Name: "辅助处理器"}, // 未声明 urlPatterns：不监听
 	})
@@ -42,8 +42,8 @@ func TestRegisterDeclaredBuildsIndex(t *testing.T) {
 	if len(art) != 1 || art[0].ExtensionID != "main" || art[0].PublicID.String != "com.example.a" {
 		t.Fatalf("example.com 命中应只有 main 条目, 实际 %+v", art)
 	}
-	if art[0].ExtensionKey != string(model.ExtensionTypeTaskHandler) {
-		t.Errorf("ExtensionKey = %q, 期望 taskHandler", art[0].ExtensionKey)
+	if art[0].ExtensionKey != string(model.ExtensionTypeWorkFetch) {
+		t.Errorf("ExtensionKey = %q, 期望 workFetch", art[0].ExtensionKey)
 	}
 	if art[0].Name.String != "插件A" {
 		t.Errorf("命中条目应携带插件实体, Name = %q", art[0].Name.String)
@@ -64,7 +64,7 @@ func TestRegisterDeclaredBuildsIndex(t *testing.T) {
 // （复合键 = 公开 ID + 条目 id，条目粒度登记）
 func TestRegisterDeclaredCompositeKeySamePattern(t *testing.T) {
 	m := NewManager()
-	m.RegisterDeclared(declaredPlugin("com.example.a", "插件A"), []dto.TaskHandlerDeclaration{
+	m.RegisterDeclared(declaredPlugin("com.example.a", "插件A"), []dto.WorkFetchDeclaration{
 		{ID: "main", Name: "主处理器", UrlPatterns: []string{"^https://x\\.com/"}},
 		{ID: "legacy", Name: "旧处理器", UrlPatterns: []string{"^https://x\\.com/"}},
 	})
@@ -79,7 +79,7 @@ func TestRegisterDeclaredCompositeKeySamePattern(t *testing.T) {
 // 该条目只产出一次（候选 = 清单条目，不是模式）
 func TestRegisterDeclaredMultiPatternSingleEntry(t *testing.T) {
 	m := NewManager()
-	m.RegisterDeclared(declaredPlugin("com.example.a", "插件A"), []dto.TaskHandlerDeclaration{
+	m.RegisterDeclared(declaredPlugin("com.example.a", "插件A"), []dto.WorkFetchDeclaration{
 		{ID: "main", Name: "主处理器", UrlPatterns: []string{"^https://x\\.com/", "^https://x\\.com/special/"}},
 	})
 
@@ -93,10 +93,10 @@ func TestRegisterDeclaredMultiPatternSingleEntry(t *testing.T) {
 // 其他插件的条目不受影响；条目级精细注销只摘对应条目
 func TestUnregisterClearsPluginEntries(t *testing.T) {
 	m := NewManager()
-	m.RegisterDeclared(declaredPlugin("com.example.a", "插件A"), []dto.TaskHandlerDeclaration{
+	m.RegisterDeclared(declaredPlugin("com.example.a", "插件A"), []dto.WorkFetchDeclaration{
 		{ID: "main", UrlPatterns: []string{"^https://x\\.com/"}},
 	})
-	m.RegisterDeclared(declaredPlugin("com.example.b", "插件B"), []dto.TaskHandlerDeclaration{
+	m.RegisterDeclared(declaredPlugin("com.example.b", "插件B"), []dto.WorkFetchDeclaration{
 		{ID: "main", UrlPatterns: []string{"^https://x\\.com/"}},
 	})
 
@@ -106,7 +106,7 @@ func TestUnregisterClearsPluginEntries(t *testing.T) {
 		t.Fatalf("整插件注销后应只剩插件B条目, 实际 %+v", got)
 	}
 
-	m.RegisterDeclared(declaredPlugin("com.example.b", "插件B"), []dto.TaskHandlerDeclaration{
+	m.RegisterDeclared(declaredPlugin("com.example.b", "插件B"), []dto.WorkFetchDeclaration{
 		{ID: "aux", UrlPatterns: []string{"^https://y\\.com/"}},
 	})
 	m.Unregister("com.example.b", "aux")

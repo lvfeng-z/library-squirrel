@@ -89,30 +89,30 @@ func invalidDeclarationCases() []struct {
 			wantText: `siteAuthorFetch[main].sites 含未注册站点键 "nosite"`,
 		},
 		{
-			name: "taskHandlers 条目缺 name",
+			name: "workFetch 条目缺 name",
 			build: func(publicId string) string {
-				return declarationManifestWith(publicId, `{"taskHandlers":[{"id":"main","options":["workOrderQuery"]}],`+frontendExtensionsField+`}`)
+				return declarationManifestWith(publicId, `{"workFetch":[{"id":"main","options":["workOrderQuery"]}],`+frontendExtensionsField+`}`)
 			},
-			wantText: "taskHandlers[main].name 为空",
+			wantText: "workFetch[main].name 为空",
 		},
 		{
 			name: "未识别 options",
 			build: func(publicId string) string {
-				return declarationManifestWith(publicId, `{"taskHandlers":[{"id":"main","name":"主处理器","options":["workOrderQuer"]}],`+frontendExtensionsField+`}`)
+				return declarationManifestWith(publicId, `{"workFetch":[{"id":"main","name":"主处理器","options":["workOrderQuer"]}],`+frontendExtensionsField+`}`)
 			},
-			wantText: `taskHandlers[main].options 含未识别的可选方法组 "workOrderQuer"`,
+			wantText: `workFetch[main].options 含未识别的可选方法组 "workOrderQuer"`,
 		},
 		{
 			name: "urlPatterns 空数组",
 			build: func(publicId string) string {
-				return declarationManifestWith(publicId, `{"taskHandlers":[{"id":"main","name":"主处理器","urlPatterns":[]}],`+frontendExtensionsField+`}`)
+				return declarationManifestWith(publicId, `{"workFetch":[{"id":"main","name":"主处理器","urlPatterns":[]}],`+frontendExtensionsField+`}`)
 			},
-			wantText: "taskHandlers[main].urlPatterns 为空数组",
+			wantText: "workFetch[main].urlPatterns 为空数组",
 		},
 		{
 			name: "urlPatterns 坏正则",
 			build: func(publicId string) string {
-				return declarationManifestWith(publicId, `{"taskHandlers":[{"id":"main","name":"主处理器","urlPatterns":["[invalid("]}],`+frontendExtensionsField+`}`)
+				return declarationManifestWith(publicId, `{"workFetch":[{"id":"main","name":"主处理器","urlPatterns":["[invalid("]}],`+frontendExtensionsField+`}`)
 			},
 			wantText: `含无法编译的正则 "[invalid("`,
 		},
@@ -138,14 +138,14 @@ func invalidDeclarationCases() []struct {
 	}
 }
 
-// validDeclarationManifest 声明面合格的清单（含 taskHandlers 条目（带 urlPatterns）、
+// validDeclarationManifest 声明面合格的清单（含 workFetch 条目（带 urlPatterns）、
 // siteAuthorFetch 条目与根级 settings 段）
 func validDeclarationManifest(publicId string) string {
 	return `{"id":"` + publicId + `","name":"测试插件","version":"1.0.0","author":"tester",` +
 		fmt.Sprintf(`"contractVersion":%d,`, pluginsdktransport.ContractVersion) +
 		`"activation":{"type":1},"entryFile":"plugin.exe",` +
 		`"settings":[{"key":"apiToken","type":"string","title":"访问令牌","default":"anon","encrypted":true}],` +
-		`"extensions":{"taskHandlers":[{"id":"main","name":"主处理器","options":["workOrderQuery"],"urlPatterns":["^https://www\\.bilibili\\.com/video/"]}],` +
+		`"extensions":{"workFetch":[{"id":"main","name":"主处理器","options":["workOrderQuery"],"urlPatterns":["^https://www\\.bilibili\\.com/video/"]}],` +
 		`"siteAuthorFetch":[{"id":"main","name":"作者源","sites":["bilibili"]}],` + frontendExtensionsField + `}}`
 }
 
@@ -185,7 +185,7 @@ func TestInstallFromPathAcceptsValidDeclarations(t *testing.T) {
 	}
 }
 
-// pureSiteAuthorFetchManifest 仅声明站点作者拉取能力包的清单（无任务处理器/站点浏览器/前端扩展）
+// pureSiteAuthorFetchManifest 仅声明站点作者拉取能力包的清单（无作品拉取/站点浏览器/前端扩展）
 func pureSiteAuthorFetchManifest(publicId, entryFile string) string {
 	return `{"id":"` + publicId + `","name":"拉取插件","version":"1.0.0","author":"tester",` +
 		fmt.Sprintf(`"contractVersion":%d,`, pluginsdktransport.ContractVersion) +

@@ -128,7 +128,7 @@ type App struct {
 	manifestIngestor importer.ManifestIngestor
 
 	// 扩展注册中心
-	TaskHandlerRegistry       *extension2.TaskHandlerRegistry
+	WorkFetchRegistry         *extension2.WorkFetchRegistry
 	SiteBrowserRegistry       *extension2.SiteBrowserRegistry
 	FrontendExtensionRegistry *extension2.FrontendExtensionRegistry
 
@@ -227,7 +227,7 @@ func NewApp() (*App, error) {
 	logger.Log.Infof("数据库迁移完成")
 
 	// 3. 初始化扩展注册中心
-	app.TaskHandlerRegistry = extension2.NewTaskHandlerRegistry()
+	app.WorkFetchRegistry = extension2.NewWorkFetchRegistry()
 	app.SiteBrowserRegistry = extension2.NewSiteBrowserRegistry()
 	app.FrontendExtensionRegistry = extension2.NewFrontendExtensionRegistry()
 	// FrontendExtensionPusher 会在 SetEventEmitter 中创建并接入 FrontendExtensionRegistry
@@ -414,7 +414,7 @@ func (app *App) loadInstalledPlugins() {
 		if manifest.Extensions != nil {
 			// 运行时判据与安装闸门（service.go parsePluginPackage 的声明11 修正）同源：
 			// siteAuthorFetch 的拉取 RPC 由插件进程承载，纯该段插件也是运行时插件
-			hasRuntime := len(manifest.Extensions.TaskHandlers) > 0 || len(manifest.Extensions.SiteBrowsers) > 0 ||
+			hasRuntime := len(manifest.Extensions.WorkFetch) > 0 || len(manifest.Extensions.SiteBrowsers) > 0 ||
 				len(manifest.Extensions.SiteAuthorFetch) > 0
 			if hasRuntime {
 				runtimeLoaded++
@@ -626,9 +626,9 @@ func (c taskStagingCleaner) CleanStagingByTaskIds(ctx context.Context, taskIds [
 	return task.CleanupStagingByTaskIds(c.workDirGetter(), taskIds)
 }
 
-// pluginExecFactoryAdapter 实现 download.PluginExecFactory：经任务处理器注册表取插件任务执行器
+// pluginExecFactoryAdapter 实现 download.PluginExecFactory：经作品拉取注册表取插件任务执行器
 type pluginExecFactoryAdapter struct {
-	registry *extension2.TaskHandlerRegistry
+	registry *extension2.WorkFetchRegistry
 }
 
 // Executor 按插件公开 ID 取执行器（执行器按注册表现取，插件身份在调用参数中携带）
@@ -1025,7 +1025,7 @@ func (app *App) initAdvancedServices() error {
 	app.PluginTaskUrlListenerSvc = pluginTaskUrlListener.NewService(pluginTaskUrlListenerManager)
 
 	// plugin 服务
-	app.pluginLoader = extension2.NewLoader(app.TaskHandlerRegistry, app.SiteBrowserRegistry)
+	app.pluginLoader = extension2.NewLoader(app.WorkFetchRegistry, app.SiteBrowserRegistry)
 	// URL 监听派生索引的清理回调：插件卸载/崩溃（进程表条目消失）时整插件注销其监听条目
 	app.pluginLoader.SetUrlListenerCleaner(func(pluginPublicId string) {
 		app.PluginTaskUrlListenerSvc.Unregister(pluginPublicId, "")
@@ -1063,7 +1063,7 @@ func (app *App) initAdvancedServices() error {
 	})
 	app.PluginService.SetRuntimeStatusProvider(&runtimeStatusAdapter{loader: app.pluginLoader})
 	app.PluginService.SetExtensionListProvider(&extensionListProviderAdapter{
-		taskHandlerRegistry:       app.TaskHandlerRegistry,
+		workFetchRegistry:         app.WorkFetchRegistry,
 		siteBrowserRegistry:       app.SiteBrowserRegistry,
 		frontendExtensionRegistry: app.FrontendExtensionRegistry,
 	})
@@ -1090,11 +1090,11 @@ func (app *App) initAdvancedServices() error {
 	// share 收件任务领域行存取（ShareService 创建早于 task 仓储，此处回填）
 	app.ShareService.SetShareTaskStore(app.shareTaskRepo)
 
-	// task 服务（依赖 TaskHandlerRegistry 作为 TaskHandlerProvider）
+	// task 服务（依赖 WorkFetchRegistry 作为 WorkFetchProvider）
 	app.TaskService = task.NewService(
 		app.taskRepo,
 		&dbTransactorAdapter{db: app.db}, // Transactor
-		app.TaskHandlerRegistry,          // 直接满足 TaskHandlerProvider 接口
+		app.WorkFetchRegistry,            // 直接满足 WorkFetchProvider 接口
 		app.PluginTaskUrlListenerSvc,
 		app.SiteService,
 		app.SettingsService.GetWorkDir, // 删除链清理下载暂存目录取 workDir（空串容忍跳过）
@@ -1144,7 +1144,7 @@ func (app *App) initAdvancedServices() error {
 	// 插件下载执行面策略（plugin-download 任务的执行面；依赖提供方与任务管理器共享同批服务实例）
 	pluginDownloadStrategy := download.NewPluginDownloadStrategy(&download.Deps{
 		WorkTasks:           app.workTaskRepo,
-		PluginExecFactory:   &pluginExecFactoryAdapter{registry: app.TaskHandlerRegistry},
+		PluginExecFactory:   &pluginExecFactoryAdapter{registry: app.WorkFetchRegistry},
 		WorkInfoSaver:       app.WorkService, // 实现 WorkInfoSaver 接口
 		WorkLocator:         app.WorkService, // 实现 WorkLocator 接口（续传会话按复合键定位作品）
 		ResourceSaver:       resourceSaverAdapter,
@@ -1227,9 +1227,9 @@ func (app *App) initAdvancedServices() error {
 	app.WorkService.SetRunningTaskStopper(app.TaskManagerService)
 
 	// 注入原站序获取能力（plugin 提供，work 作品入库后异步拉取写 site_sort_order；registry 已就绪）
-	app.WorkService.SetWorkSetOrderFetcher(extension2.NewWorkSetOrderFetcher(app.TaskHandlerRegistry, app.pluginLoader))
+	app.WorkService.SetWorkSetOrderFetcher(extension2.NewWorkSetOrderFetcher(app.WorkFetchRegistry, app.pluginLoader))
 	// 注入作品集父集关系获取能力（plugin 提供，work 作品入库后异步拉取建立层级 + 写 site_sort_order）
-	app.WorkService.SetWorkSetRelationFetcher(extension2.NewWorkSetRelationFetcher(app.TaskHandlerRegistry, app.pluginLoader))
+	app.WorkService.SetWorkSetRelationFetcher(extension2.NewWorkSetRelationFetcher(app.WorkFetchRegistry, app.pluginLoader))
 	// 注入站点作者信息拉取能力（plugin 能力桥提供，候选广播路由内嵌于实现侧）+ work 入库后自动触发面接线
 	app.AuthorInfoService.SetSiteAuthorFetcher(extension2.NewSiteAuthorFetcher(app.pluginLoader, app.pluginLoader, app.pluginLoader))
 	app.WorkService.SetSiteAuthorRefreshScheduler(app.AuthorInfoService)
@@ -1580,13 +1580,13 @@ func (app *App) onDomReady() {
 
 // extensionListProviderAdapter 聚合三个 Registry 的扩展点查询能力
 type extensionListProviderAdapter struct {
-	taskHandlerRegistry       *extension2.TaskHandlerRegistry
+	workFetchRegistry         *extension2.WorkFetchRegistry
 	siteBrowserRegistry       *extension2.SiteBrowserRegistry
 	frontendExtensionRegistry *extension2.FrontendExtensionRegistry
 }
 
-func (a *extensionListProviderAdapter) GetTaskHandlersByPlugin(pluginPublicId string) []plugin.ExtensionMeta {
-	exts, _ := a.taskHandlerRegistry.GetByPlugin(pluginPublicId)
+func (a *extensionListProviderAdapter) GetWorkFetchersByPlugin(pluginPublicId string) []plugin.ExtensionMeta {
+	exts, _ := a.workFetchRegistry.GetByPlugin(pluginPublicId)
 	result := make([]plugin.ExtensionMeta, 0, len(exts))
 	for _, ext := range exts {
 		result = append(result, plugin.ExtensionMeta{ID: ext.Metadata.ID, Name: ext.Metadata.Name, Description: ext.Metadata.Description})
@@ -1692,9 +1692,9 @@ func (p *frontendExtensionParticipant) OnStopped(ctx context.Context, pluginPubl
 }
 
 // pluginProcessParticipant 插件进程生命周期参与者：激活相位组装插件信息与宿主上下文并
-// 启动运行时子进程（进程 Activate 就绪后按清单声明派生注册任务处理器/站点浏览器代理，
-// 子进程加载成功后按清单 taskHandlers 条目 urlPatterns 登记 URL 监听派生索引）；
-// 停用相位停止子进程并清理其所属运行时注册表（任务处理器/站点浏览器/URL 监听）。
+// 启动运行时子进程（进程 Activate 就绪后按清单声明派生注册作品拉取/站点浏览器代理，
+// 子进程加载成功后按清单 workFetch 条目 urlPatterns 登记 URL 监听派生索引）；
+// 停用相位停止子进程并清理其所属运行时注册表（作品拉取/站点浏览器/URL 监听）。
 // 激活相位依赖的 TaskService 等服务与 mainHWND 均在本参与者构造后才绪，
 // 统一经 *App 惰性读取（激活只发生在装配完成与窗口就绪后）
 type pluginProcessParticipant struct {
@@ -1732,7 +1732,7 @@ func (p *pluginProcessParticipant) Activate(ctx context.Context, plugin *entity2
 		PluginInfo: pluginInfo,
 		RootPath:   rootPath,
 		Storage:    app.PluginStorageService,
-		TaskCreate:          &taskCreateAdapter{svc: app.TaskService},
+		TaskCreate: &taskCreateAdapter{svc: app.TaskService},
 		FrontendEvent: &wailsFrontendEventProvider{
 			emitterFunc: func() extension2.WailsEventEmitter { return app.taskProgressEmitter },
 			onEventFunc: func() func(topic string, callback func(data any)) func() { return app.frontendEventOn },
@@ -1751,7 +1751,7 @@ func (p *pluginProcessParticipant) Activate(ctx context.Context, plugin *entity2
 
 	// URL 监听派生索引随进程表登记而立：任务创建候选枚举的数据源，条目键 = 插件公开 ID +
 	// 清单条目 id；停用/崩溃随进程表条目消失经清理回调整插件注销
-	app.PluginTaskUrlListenerSvc.RegisterDeclared(plugin, manifest.Extensions.TaskHandlers)
+	app.PluginTaskUrlListenerSvc.RegisterDeclared(plugin, manifest.Extensions.WorkFetch)
 	return nil
 }
 
@@ -1827,7 +1827,7 @@ func (app *App) shutdownPlugins() {
 
 	// 关机直清不经生命周期状态机：主进程即将退出，前端注销事件推送无接收方、
 	// 停用否决也无意义，直接停进程并清注册表即可
-	// UnloadAll 返回已卸载的插件 ID 列表，并已注销 TaskHandler/SiteBrowser
+	// UnloadAll 返回已卸载的插件 ID 列表，并已注销 WorkFetch/SiteBrowser
 	ids := app.pluginLoader.UnloadAll()
 
 	// 逐个清理静态资源和前端扩展（复用卸载时的 onUnload 逻辑）

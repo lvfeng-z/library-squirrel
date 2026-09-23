@@ -96,7 +96,7 @@ func NewPluginManifest() *PluginManifest {
 // PluginExtensions 插件扩展点集合（plugin.json 的 extensions 段）；
 // 每段 = 插件对外提供的一个能力包，包内的可选项与作用域声明在包内条目上
 type PluginExtensions struct {
-	TaskHandlers       []TaskHandlerDeclaration       `json:"taskHandlers,omitempty"`
+	WorkFetch          []WorkFetchDeclaration         `json:"workFetch,omitempty"`
 	SiteBrowsers       []SiteBrowserDeclaration       `json:"siteBrowsers,omitempty"`
 	SiteAuthorFetch    []SiteAuthorFetchDeclaration   `json:"siteAuthorFetch,omitempty"`
 	ResourceTypes      []ResourceTypeDeclaration      `json:"resourceTypes,omitempty"`
@@ -133,8 +133,8 @@ type SettingOption struct {
 	Value string `json:"value"`
 }
 
-// TaskHandlerDeclaration 任务处理器声明
-type TaskHandlerDeclaration struct {
+// WorkFetchDeclaration 作品拉取声明
+type WorkFetchDeclaration struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"` // 显示名（派生注册表元数据的唯一源）
 	Description string   `json:"description,omitempty"`

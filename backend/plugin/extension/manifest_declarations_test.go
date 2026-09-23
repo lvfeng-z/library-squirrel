@@ -22,7 +22,7 @@ func parseManifest(t *testing.T, raw string) *dto.PluginManifest {
 	return &manifest
 }
 
-// manifestWithAllPackages 一份声明了四个能力包的清单：任务处理器（含两个可选方法组与 URL 监听模式）、
+// manifestWithAllPackages 一份声明了四个能力包的清单：作品拉取（含两个可选方法组与 URL 监听模式）、
 // 站点浏览器（单个条目）、站点作者拉取（单个实例条目、两个归属站点）、自定义资源类型（一个）。
 const manifestWithAllPackages = `{
   "id": "com.example.plugin_a",
@@ -30,7 +30,7 @@ const manifestWithAllPackages = `{
   "version": "1.0.0",
   "contractVersion": 11,
   "extensions": {
-    "taskHandlers": [
+    "workFetch": [
       {"id": "main", "name": "主处理器", "options": ["workOrderQuery", "workSetRelationQuery"], "urlPatterns": ["^https://www\\.example\\.com/"]}
     ],
     "siteBrowsers": [
@@ -48,26 +48,26 @@ const manifestWithAllPackages = `{
 }`
 
 // TestApplyManifestDeclarationsCarriesPackages 四个能力包在激活期内存结构中逐字段可达：
-// taskHandlers 条目的 options 与 urlPatterns、siteBrowsers 条目的 id/name/description、
+// workFetch 条目的 options 与 urlPatterns、siteBrowsers 条目的 id/name/description、
 // siteAuthorFetch 条目的 id/name/sites、resourceTypes 的声明字段
 func TestApplyManifestDeclarationsCarriesPackages(t *testing.T) {
 	info := &PluginInfo{PublicID: "com.example.plugin_a"}
 	ApplyManifestDeclarations(info, parseManifest(t, manifestWithAllPackages))
 
 	// options 与 urlPatterns：条目级声明逐项可达
-	if len(info.TaskHandlers) != 1 {
-		t.Fatalf("taskHandlers 条目数 = %d, 期望 1", len(info.TaskHandlers))
+	if len(info.WorkFetch) != 1 {
+		t.Fatalf("workFetch 条目数 = %d, 期望 1", len(info.WorkFetch))
 	}
-	handler := info.TaskHandlers[0]
+	handler := info.WorkFetch[0]
 	if handler.ID != "main" {
-		t.Errorf("taskHandlers[0].ID = %q, 期望 main", handler.ID)
+		t.Errorf("workFetch[0].ID = %q, 期望 main", handler.ID)
 	}
 	wantOptions := []string{CapabilityWorkOrderQuery, CapabilityWorkSetRelationQuery}
 	if !slices.Equal(handler.Options, wantOptions) {
-		t.Errorf("taskHandlers[0].options = %v, 期望 %v", handler.Options, wantOptions)
+		t.Errorf("workFetch[0].options = %v, 期望 %v", handler.Options, wantOptions)
 	}
 	if !slices.Equal(handler.UrlPatterns, []string{`^https://www\.example\.com/`}) {
-		t.Errorf("taskHandlers[0].urlPatterns = %v, 期望 [^https://www\\.example\\.com/]", handler.UrlPatterns)
+		t.Errorf("workFetch[0].urlPatterns = %v, 期望 [^https://www\\.example\\.com/]", handler.UrlPatterns)
 	}
 
 	// siteBrowsers：条目 id/name/description 逐字段可达（激活期派生注册的元数据源）
@@ -113,11 +113,11 @@ func TestApplyManifestDeclarationsCarriesPackages(t *testing.T) {
 // TestDeriveCapabilitiesMatchesLegacyDeclaration 对照组：旧声明面（顶层 capabilities 段）与新声明面
 // （extensions 内）描述同一插件时，激活期内存结构派生出的可选能力集合一致。
 // 该断言锚定的是声明面迁移的映射忠实性——siteAuthorFetch 段在场对应旧 siteAuthorFetch 能力、
-// taskHandlers[].options 各项对应旧同名能力；旧通行证 resourceTypeProvider 无派生对应物
+// workFetch[].options 各项对应旧同名能力；旧通行证 resourceTypeProvider 无派生对应物
 // （自定义类型注册由 resourceTypes 段在场承担），故不在期望集合中。
 func TestDeriveCapabilitiesMatchesLegacyDeclaration(t *testing.T) {
 	// 对照组：旧清单声明 capabilities: ["siteAuthorFetch","workOrderQuery","workSetRelationQuery","resourceTypeProvider"]
-	// + 顶层 resourceTypes 段；迁移后前三项分别落 siteAuthorFetch 段与 taskHandlers[].options
+	// + 顶层 resourceTypes 段；迁移后前三项分别落 siteAuthorFetch 段与 workFetch[].options
 	legacyCapabilities := []string{CapabilitySiteAuthorFetch, CapabilityWorkOrderQuery, CapabilityWorkSetRelationQuery}
 
 	info := &PluginInfo{PublicID: "com.example.plugin_a"}

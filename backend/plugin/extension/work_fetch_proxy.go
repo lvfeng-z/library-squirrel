@@ -15,8 +15,8 @@ import (
 	transport "github.com/lvfeng-z/library-squirrel-sdk/transport"
 )
 
-// TaskHandlerProxy 通过 gRPC 代理到子进程的 TaskHandler
-type TaskHandlerProxy struct {
+// WorkFetchProxy 通过 gRPC 代理到子进程的 WorkFetcher
+type WorkFetchProxy struct {
 	serviceAccessor ServiceAccessor
 	pluginPublicId  string
 	extensionId     string
@@ -25,11 +25,11 @@ type TaskHandlerProxy struct {
 	readerIdleTimeout time.Duration
 }
 
-var _ pluginsdkdto.TaskHandler = (*TaskHandlerProxy)(nil)
+var _ pluginsdkdto.WorkFetcher = (*WorkFetchProxy)(nil)
 
-// newTaskHandlerProxy 构造任务处理器代理；流式接收空闲超时取 SDK 权威常量
-func newTaskHandlerProxy(serviceAccessor ServiceAccessor, pluginPublicId, extensionId string) *TaskHandlerProxy {
-	return &TaskHandlerProxy{
+// newWorkFetchProxy 构造作品拉取代理；流式接收空闲超时取 SDK 权威常量
+func newWorkFetchProxy(serviceAccessor ServiceAccessor, pluginPublicId, extensionId string) *WorkFetchProxy {
+	return &WorkFetchProxy{
 		serviceAccessor:   serviceAccessor,
 		pluginPublicId:    pluginPublicId,
 		extensionId:       extensionId,
@@ -37,17 +37,17 @@ func newTaskHandlerProxy(serviceAccessor ServiceAccessor, pluginPublicId, extens
 	}
 }
 
-func (p *TaskHandlerProxy) getTaskClient() (gen.TaskHandlerServiceClient, error) {
+func (p *WorkFetchProxy) getWorkFetchClient() (gen.WorkFetchServiceClient, error) {
 	services, ok := p.serviceAccessor.GetServices(p.pluginPublicId)
 	if !ok {
 		return nil, fmt.Errorf("plugin %s not found", p.pluginPublicId)
 	}
-	return services.Task, nil
+	return services.WorkFetch, nil
 }
 
-// Create 创建任务。SDK TaskHandler 接口未携带 ctx（跨仓契约），以 Background 为基；
+// Create 创建任务。SDK WorkFetcher 接口未携带 ctx（跨仓契约），以 Background 为基；
 // 主程序内部调用方经 CreateWithContext 承接调用方取消语义
-func (p *TaskHandlerProxy) Create(url string) (*pluginsdkdto.TaskCreateResult, error) {
+func (p *WorkFetchProxy) Create(url string) (*pluginsdkdto.TaskCreateResult, error) {
 	return p.CreateWithContext(context.Background(), url)
 }
 
@@ -55,8 +55,8 @@ func (p *TaskHandlerProxy) Create(url string) (*pluginsdkdto.TaskCreateResult, e
 // 首块接收受空闲超时约束——插件建流后不产出（hang）表现为超时错误而非无限阻塞。
 // 流式模式的流收尾责任归接收泵（EOF/错误/ctx 取消任一退出，退出时取消流 ctx 并关闭结果 channel）；
 // 批量模式与错误路径在本函数内就地收尾
-func (p *TaskHandlerProxy) CreateWithContext(ctx context.Context, url string) (*pluginsdkdto.TaskCreateResult, error) {
-	client, err := p.getTaskClient()
+func (p *WorkFetchProxy) CreateWithContext(ctx context.Context, url string) (*pluginsdkdto.TaskCreateResult, error) {
+	client, err := p.getWorkFetchClient()
 	if err != nil {
 		return nil, err
 	}
@@ -154,14 +154,14 @@ func (p *TaskHandlerProxy) CreateWithContext(ctx context.Context, url string) (*
 	return result, nil
 }
 
-func (p *TaskHandlerProxy) CreateWorkInfo(task *pluginsdkdto.TaskDTO) (*pluginsdkdto.WorkResponse, error) {
+func (p *WorkFetchProxy) CreateWorkInfo(task *pluginsdkdto.TaskDTO) (*pluginsdkdto.WorkResponse, error) {
 	return p.CreateWorkInfoWithContext(context.Background(), task)
 }
 
 // CreateWorkInfoWithContext 以调用方 ctx 为基生成作品信息：调用方取消立即打断 gRPC 等待，
 // UnaryRPCTimeout 仍作为插件 handler 卡死的超时上限
-func (p *TaskHandlerProxy) CreateWorkInfoWithContext(ctx context.Context, task *pluginsdkdto.TaskDTO) (*pluginsdkdto.WorkResponse, error) {
-	client, err := p.getTaskClient()
+func (p *WorkFetchProxy) CreateWorkInfoWithContext(ctx context.Context, task *pluginsdkdto.TaskDTO) (*pluginsdkdto.WorkResponse, error) {
+	client, err := p.getWorkFetchClient()
 	if err != nil {
 		return nil, err
 	}
@@ -179,8 +179,8 @@ func (p *TaskHandlerProxy) CreateWorkInfoWithContext(ctx context.Context, task *
 
 // Start 开始任务:bidi 流,首帧 StartRequest,之后主程序按需 PullRequest 拉取。
 // reader.Read 由主程序 copyLoop 驱动,reader 不领先主程序落盘
-func (p *TaskHandlerProxy) Start(ctx context.Context, task *pluginsdkdto.TaskDTO, storeRoles []string) ([]*pluginsdkdto.StoreSpec, *pluginsdkdto.WorkResponse, error) {
-	client, err := p.getTaskClient()
+func (p *WorkFetchProxy) Start(ctx context.Context, task *pluginsdkdto.TaskDTO, storeRoles []string) ([]*pluginsdkdto.StoreSpec, *pluginsdkdto.WorkResponse, error) {
+	client, err := p.getWorkFetchClient()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -210,8 +210,8 @@ func (p *TaskHandlerProxy) Start(ctx context.Context, task *pluginsdkdto.TaskDTO
 	)
 }
 
-func (p *TaskHandlerProxy) Retry(task *pluginsdkdto.TaskDTO) (*pluginsdkdto.WorkResponse, error) {
-	client, err := p.getTaskClient()
+func (p *WorkFetchProxy) Retry(task *pluginsdkdto.TaskDTO) (*pluginsdkdto.WorkResponse, error) {
+	client, err := p.getWorkFetchClient()
 	if err != nil {
 		return nil, err
 	}
@@ -228,8 +228,8 @@ func (p *TaskHandlerProxy) Retry(task *pluginsdkdto.TaskDTO) (*pluginsdkdto.Work
 }
 
 // QueryWorkSetOrder 查询作品集内作品的原站顺序（主程序作品入库后拉取，仅写 site_sort_order）
-func (p *TaskHandlerProxy) QueryWorkSetOrder(ctx context.Context, siteId int64, siteWorkSetId string) ([]*pluginsdkdto.WorkOrderEntry, error) {
-	client, err := p.getTaskClient()
+func (p *WorkFetchProxy) QueryWorkSetOrder(ctx context.Context, siteId int64, siteWorkSetId string) ([]*pluginsdkdto.WorkOrderEntry, error) {
+	client, err := p.getWorkFetchClient()
 	if err != nil {
 		return nil, err
 	}
@@ -258,8 +258,8 @@ func workOrderEntriesFromProto(entries []*gen.WorkOrderEntry) []*pluginsdkdto.Wo
 }
 
 // QueryWorkSetRelations 查询本作品集的父集关系 + 在各父集下的原站序（主程序作品入库后拉取，仅写 site_sort_order）
-func (p *TaskHandlerProxy) QueryWorkSetRelations(ctx context.Context, siteId int64, siteWorkSetId string) ([]*pluginsdkdto.WorkSetRelationEntry, error) {
-	client, err := p.getTaskClient()
+func (p *WorkFetchProxy) QueryWorkSetRelations(ctx context.Context, siteId int64, siteWorkSetId string) ([]*pluginsdkdto.WorkSetRelationEntry, error) {
+	client, err := p.getWorkFetchClient()
 	if err != nil {
 		return nil, err
 	}
@@ -288,14 +288,14 @@ func workSetRelationEntriesFromProto(entries []*gen.WorkSetRelationEntry) []*plu
 	return result
 }
 
-func (p *TaskHandlerProxy) Pause(param *pluginsdkdto.TaskResParam) error {
+func (p *WorkFetchProxy) Pause(param *pluginsdkdto.TaskResParam) error {
 	return p.PauseWithContext(context.Background(), param)
 }
 
 // PauseWithContext 以调用方 ctx 为基暂停任务：调用方取消立即打断 gRPC 等待，
 // UnaryRPCTimeout 仍作为插件 handler 卡死的超时上限
-func (p *TaskHandlerProxy) PauseWithContext(ctx context.Context, param *pluginsdkdto.TaskResParam) error {
-	client, err := p.getTaskClient()
+func (p *WorkFetchProxy) PauseWithContext(ctx context.Context, param *pluginsdkdto.TaskResParam) error {
+	client, err := p.getWorkFetchClient()
 	if err != nil {
 		return err
 	}
@@ -308,14 +308,14 @@ func (p *TaskHandlerProxy) PauseWithContext(ctx context.Context, param *pluginsd
 	return err
 }
 
-func (p *TaskHandlerProxy) Stop(param *pluginsdkdto.TaskResParam) error {
+func (p *WorkFetchProxy) Stop(param *pluginsdkdto.TaskResParam) error {
 	return p.StopWithContext(context.Background(), param)
 }
 
 // StopWithContext 以调用方 ctx 为基停止任务：调用方取消立即打断 gRPC 等待，
 // UnaryRPCTimeout 仍作为插件 handler 卡死的超时上限
-func (p *TaskHandlerProxy) StopWithContext(ctx context.Context, param *pluginsdkdto.TaskResParam) error {
-	client, err := p.getTaskClient()
+func (p *WorkFetchProxy) StopWithContext(ctx context.Context, param *pluginsdkdto.TaskResParam) error {
+	client, err := p.getWorkFetchClient()
 	if err != nil {
 		return err
 	}
@@ -329,8 +329,8 @@ func (p *TaskHandlerProxy) StopWithContext(ctx context.Context, param *pluginsdk
 }
 
 // Resume 恢复任务:bidi 流,首帧 TaskResumeParamMessage,之后按需 PullRequest
-func (p *TaskHandlerProxy) Resume(ctx context.Context, param *pluginsdkdto.TaskResumeParam) ([]*pluginsdkdto.StoreSpec, *pluginsdkdto.WorkResponse, error) {
-	client, err := p.getTaskClient()
+func (p *WorkFetchProxy) Resume(ctx context.Context, param *pluginsdkdto.TaskResumeParam) ([]*pluginsdkdto.StoreSpec, *pluginsdkdto.WorkResponse, error) {
+	client, err := p.getWorkFetchClient()
 	if err != nil {
 		return nil, nil, err
 	}

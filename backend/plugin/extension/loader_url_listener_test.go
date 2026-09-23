@@ -12,7 +12,7 @@ import (
 // urlListenerFixture 组装 URL 监听派生索引与 Loader 清理链的最小装置：
 // cleaner 接线与 app.go 装配一致（整插件注销其监听条目）
 func urlListenerFixture() (*Loader, *pluginTaskUrlListener.Service) {
-	loader := NewLoader(NewTaskHandlerRegistry(), NewSiteBrowserRegistry())
+	loader := NewLoader(NewWorkFetchRegistry(), NewSiteBrowserRegistry())
 	svc := pluginTaskUrlListener.NewService(pluginTaskUrlListener.NewManager())
 	loader.SetUrlListenerCleaner(func(pluginPublicId string) {
 		svc.Unregister(pluginPublicId, "")
@@ -20,13 +20,13 @@ func urlListenerFixture() (*Loader, *pluginTaskUrlListener.Service) {
 	return loader, svc
 }
 
-// registerUrlListenerEntry 按生产输入形态（清单任务处理器条目声明）登记一个监听条目
+// registerUrlListenerEntry 按生产输入形态（清单作品拉取条目声明）登记一个监听条目
 func registerUrlListenerEntry(t *testing.T, svc *pluginTaskUrlListener.Service, publicId string) {
 	t.Helper()
 	plugin := domain.NewPlugin()
 	plugin.PublicID = sql.NullString{String: publicId, Valid: true}
 	plugin.Name = sql.NullString{String: "插件" + publicId, Valid: true}
-	svc.RegisterDeclared(plugin, []dto.TaskHandlerDeclaration{
+	svc.RegisterDeclared(plugin, []dto.WorkFetchDeclaration{
 		{ID: "main", Name: "主处理器", UrlPatterns: []string{`^https://x\.com/`}},
 	})
 }

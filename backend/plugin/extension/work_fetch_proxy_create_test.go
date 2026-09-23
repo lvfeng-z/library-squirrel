@@ -37,7 +37,7 @@ func (s *fakeCreateStream) Recv() (*gen.CreateChunk, error) {
 
 // fakeTaskClient 仅实现 Create 的任务服务客户端替身（其余方法经接口嵌入满足签名）。
 type fakeTaskClient struct {
-	gen.TaskHandlerServiceClient
+	gen.WorkFetchServiceClient
 	stream *fakeCreateStream
 }
 
@@ -58,9 +58,9 @@ func (a *fakeServiceAccessor) GetServices(string) (*transport.GRPCPluginClient, 
 }
 
 // newCreateProxy 构造以预置块序列为 Create 流的代理。
-func newCreateProxy(chunks ...*gen.CreateChunk) *TaskHandlerProxy {
-	return newTaskHandlerProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{
-		Task: &fakeTaskClient{stream: &fakeCreateStream{chunks: chunks}},
+func newCreateProxy(chunks ...*gen.CreateChunk) *WorkFetchProxy {
+	return newWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{
+		WorkFetch: &fakeTaskClient{stream: &fakeCreateStream{chunks: chunks}},
 	}}, "", "")
 }
 
@@ -171,7 +171,7 @@ func TestProxyCreate_RecvErrorReturned(t *testing.T) {
 		},
 		err: io.ErrUnexpectedEOF,
 	}}
-	proxy := newTaskHandlerProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{Task: client}}, "", "")
+	proxy := newWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: client}}, "", "")
 
 	if _, err := proxy.Create("http://x"); err == nil {
 		t.Fatal("gRPC 层收流错误应原样返回，得到 nil")

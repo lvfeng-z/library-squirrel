@@ -16,7 +16,7 @@ type PluginWithExtension struct {
 	ExtensionID  string // 贡献点ID
 }
 
-// Manager URL 监听派生索引：激活期按清单任务处理器条目的 urlPatterns 登记，
+// Manager URL 监听派生索引：激活期按清单作品拉取条目的 urlPatterns 登记，
 // 停用/崩溃随插件清理回调整插件注销。纯内存态，无持久化。
 type Manager struct {
 	mu        sync.RWMutex
@@ -58,9 +58,9 @@ func (m *Manager) ListListener(url string) []*PluginWithExtension {
 	return result
 }
 
-// RegisterDeclared 按清单声明的任务处理器条目登记派生索引：条目键 = 插件公开 ID + 条目 id
+// RegisterDeclared 按清单声明的作品拉取条目登记派生索引：条目键 = 插件公开 ID + 条目 id
 // 复合键，逐条目的 urlPatterns 各模式入索引；未声明 urlPatterns 的条目不监听、跳过。
-func (m *Manager) RegisterDeclared(plugin *domain.Plugin, handlers []dto.TaskHandlerDeclaration) {
+func (m *Manager) RegisterDeclared(plugin *domain.Plugin, handlers []dto.WorkFetchDeclaration) {
 	if plugin == nil {
 		return
 	}
@@ -89,7 +89,7 @@ func (m *Manager) RegisterDeclared(plugin *domain.Plugin, handlers []dto.TaskHan
 			if !found {
 				m.listeners[pattern] = append(plugins, &PluginWithExtension{
 					Plugin:       plugin,
-					ExtensionKey: string(model.ExtensionTypeTaskHandler),
+					ExtensionKey: string(model.ExtensionTypeWorkFetch),
 					ExtensionID:  handler.ID,
 				})
 			}

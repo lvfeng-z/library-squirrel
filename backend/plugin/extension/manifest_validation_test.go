@@ -18,7 +18,7 @@ func declarationManifest(extensions string) string {
 
 // TestValidateManifestDeclarationsRejectsMatrix 拒收矩阵：不合格形态逐种被点名拒收
 // （siteAuthorFetch 空数组/条目缺 id/条目 id 重复/条目缺 name/缺 sites/空 sites/未注册站点键/
-// taskHandlers 条目缺 name/未识别 options/urlPatterns 空数组/空模式串/坏正则/siteBrowsers 条目缺
+// workFetch 条目缺 name/未识别 options/urlPatterns 空数组/空模式串/坏正则/siteBrowsers 条目缺
 // name/残留顶层 capabilities 键/extensions 内 settings 键），合格声明与无 extensions 段的清单放行。
 // 输入一律为清单原文（顶层残留学段无承载字段，只能就原文探测）
 func TestValidateManifestDeclarationsRejectsMatrix(t *testing.T) {
@@ -79,32 +79,32 @@ func TestValidateManifestDeclarationsRejectsMatrix(t *testing.T) {
 			wantText: "cannot unmarshal",
 		},
 		{
-			name:     "taskHandlers 条目缺 name",
-			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","options":["workOrderQuery"]}]}`),
+			name:     "workFetch 条目缺 name",
+			manifest: declarationManifest(`{"workFetch":[{"id":"main","options":["workOrderQuery"]}]}`),
 			wantErr:  true,
-			wantText: "taskHandlers[main].name 为空",
+			wantText: "workFetch[main].name 为空",
 		},
 		{
 			name:     "未识别 options",
-			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","name":"主处理器","options":["workSetRelationQuer"]}]}`),
+			manifest: declarationManifest(`{"workFetch":[{"id":"main","name":"主处理器","options":["workSetRelationQuer"]}]}`),
 			wantErr:  true,
-			wantText: `taskHandlers[main].options 含未识别的可选方法组 "workSetRelationQuer"`,
+			wantText: `workFetch[main].options 含未识别的可选方法组 "workSetRelationQuer"`,
 		},
 		{
 			name:     "urlPatterns 空数组",
-			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","name":"主处理器","urlPatterns":[]}]}`),
+			manifest: declarationManifest(`{"workFetch":[{"id":"main","name":"主处理器","urlPatterns":[]}]}`),
 			wantErr:  true,
-			wantText: "taskHandlers[main].urlPatterns 为空数组",
+			wantText: "workFetch[main].urlPatterns 为空数组",
 		},
 		{
 			name:     "urlPatterns 空模式串",
-			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","name":"主处理器","urlPatterns":["^https://example\\.com/", ""]}]}`),
+			manifest: declarationManifest(`{"workFetch":[{"id":"main","name":"主处理器","urlPatterns":["^https://example\\.com/", ""]}]}`),
 			wantErr:  true,
 			wantText: "urlPatterns[1] 为空串",
 		},
 		{
 			name:     "urlPatterns 坏正则",
-			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","name":"主处理器","urlPatterns":["[invalid("]}]}`),
+			manifest: declarationManifest(`{"workFetch":[{"id":"main","name":"主处理器","urlPatterns":["[invalid("]}]}`),
 			wantErr:  true,
 			wantText: `含无法编译的正则 "[invalid("`,
 		},
@@ -144,12 +144,12 @@ func TestValidateManifestDeclarationsRejectsMatrix(t *testing.T) {
 		},
 		{
 			name: "合格声明（多 siteAuthorFetch 条目 + urlPatterns）",
-			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","name":"主处理器","options":["workOrderQuery","workSetRelationQuery"],"urlPatterns":["^https://www\\.bilibili\\.com/video/"]}],` +
+			manifest: declarationManifest(`{"workFetch":[{"id":"main","name":"主处理器","options":["workOrderQuery","workSetRelationQuery"],"urlPatterns":["^https://www\\.bilibili\\.com/video/"]}],` +
 				`"siteAuthorFetch":[{"id":"main","name":"作者源","sites":["bilibili","pixiv","local"]},{"id":"alt","name":"备用源","sites":["bilibili"]}]}`),
 		},
 		{
 			name:     "合格声明（urlPatterns 缺省放行）",
-			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","name":"主处理器"}]}`),
+			manifest: declarationManifest(`{"workFetch":[{"id":"main","name":"主处理器"}]}`),
 		},
 		{
 			name: "根级 settings 放行",
@@ -163,7 +163,7 @@ func TestValidateManifestDeclarationsRejectsMatrix(t *testing.T) {
 		},
 		{
 			name:     "siteAuthorFetch 键 null 值等同未声明",
-			manifest: declarationManifest(`{"taskHandlers":[{"id":"main","name":"主处理器"}],"siteAuthorFetch":null}`),
+			manifest: declarationManifest(`{"workFetch":[{"id":"main","name":"主处理器"}],"siteAuthorFetch":null}`),
 		},
 	}
 	for _, tc := range cases {
@@ -257,34 +257,34 @@ func TestRegisterPluginResourceTypesStoreStandardsOptional(t *testing.T) {
 
 // newTestLoaderWithDeclarations 构造载有指定声明的 Loader（进程表填入声明条目——本组测试只验门控与
 // 声明查询，不启子进程）
-func newTestLoaderWithDeclarations(publicId string, handlers []dto.TaskHandlerDeclaration) *Loader {
-	loader := NewLoader(NewTaskHandlerRegistry(), NewSiteBrowserRegistry())
-	loader.processes[publicId] = &pluginEntry{info: &PluginInfo{PublicID: publicId, TaskHandlers: handlers}}
+func newTestLoaderWithDeclarations(publicId string, handlers []dto.WorkFetchDeclaration) *Loader {
+	loader := NewLoader(NewWorkFetchRegistry(), NewSiteBrowserRegistry())
+	loader.processes[publicId] = &pluginEntry{info: &PluginInfo{PublicID: publicId, WorkFetch: handlers}}
 	return loader
 }
 
-// TestHasTaskHandlerOptionIsPerEntry 条目级声明查询：同一插件两条处理器条目，各自的可选方法组
+// TestHasWorkFetchOptionIsPerEntry 条目级声明查询：同一插件两条处理器条目，各自的可选方法组
 // 互不串味（未声明者、未知条目、未加载插件一律 false）
-func TestHasTaskHandlerOptionIsPerEntry(t *testing.T) {
+func TestHasWorkFetchOptionIsPerEntry(t *testing.T) {
 	const publicId = "com.example.plugin_a"
-	loader := newTestLoaderWithDeclarations(publicId, []dto.TaskHandlerDeclaration{
+	loader := newTestLoaderWithDeclarations(publicId, []dto.WorkFetchDeclaration{
 		{ID: "with-order", Options: []string{CapabilityWorkOrderQuery}},
 		{ID: "without-option"},
 	})
 
-	if !loader.HasTaskHandlerOption(publicId, "with-order", CapabilityWorkOrderQuery) {
+	if !loader.HasWorkFetchOption(publicId, "with-order", CapabilityWorkOrderQuery) {
 		t.Error("声明了 workOrderQuery 的条目查询应为 true")
 	}
-	if loader.HasTaskHandlerOption(publicId, "with-order", CapabilityWorkSetRelationQuery) {
+	if loader.HasWorkFetchOption(publicId, "with-order", CapabilityWorkSetRelationQuery) {
 		t.Error("同插件另条目声明的 workSetRelationQuery 不应记在 with-order 条目上")
 	}
-	if loader.HasTaskHandlerOption(publicId, "without-option", CapabilityWorkOrderQuery) {
+	if loader.HasWorkFetchOption(publicId, "without-option", CapabilityWorkOrderQuery) {
 		t.Error("未声明任何方法组的条目查询应为 false")
 	}
-	if loader.HasTaskHandlerOption(publicId, "no-such-entry", CapabilityWorkOrderQuery) {
+	if loader.HasWorkFetchOption(publicId, "no-such-entry", CapabilityWorkOrderQuery) {
 		t.Error("未知条目查询应为 false")
 	}
-	if loader.HasTaskHandlerOption("com.example.plugin_b", "with-order", CapabilityWorkOrderQuery) {
+	if loader.HasWorkFetchOption("com.example.plugin_b", "with-order", CapabilityWorkOrderQuery) {
 		t.Error("未加载插件查询应为 false")
 	}
 }
@@ -293,8 +293,8 @@ func TestHasTaskHandlerOptionIsPerEntry(t *testing.T) {
 // 条目在门控处短路（即便 registry 中无该条目也不报查找失败），声明了的条目过门控后进 registry 查找
 func TestWorkSetOrderFetcherGatesPerEntry(t *testing.T) {
 	const publicId = "com.example.plugin_a"
-	registry := NewTaskHandlerRegistry()
-	fetcher := NewWorkSetOrderFetcher(registry, newTestLoaderWithDeclarations(publicId, []dto.TaskHandlerDeclaration{
+	registry := NewWorkFetchRegistry()
+	fetcher := NewWorkSetOrderFetcher(registry, newTestLoaderWithDeclarations(publicId, []dto.WorkFetchDeclaration{
 		{ID: "with-order", Options: []string{CapabilityWorkOrderQuery}},
 		{ID: "without-option"},
 	}))
@@ -307,7 +307,7 @@ func TestWorkSetOrderFetcherGatesPerEntry(t *testing.T) {
 
 	// 声明条目：过门控后进 registry 查找，条目缺失故报查找失败——反证门控按条目放行
 	if _, err := fetcher.QueryWorkSetOrder(context.Background(), publicId, "with-order", 1, "ws"); err == nil ||
-		!strings.Contains(err.Error(), "查找插件 TaskHandler 失败") {
+		!strings.Contains(err.Error(), "查找插件作品拉取扩展失败") {
 		t.Errorf("声明条目应过门控并进 registry 查找, 实际 err=%v", err)
 	}
 }
@@ -315,7 +315,7 @@ func TestWorkSetOrderFetcherGatesPerEntry(t *testing.T) {
 // TestWorkSetRelationFetcherGatesPerEntry 同型断言：父集关系获取器亦按（插件, 扩展点）条目级门控
 func TestWorkSetRelationFetcherGatesPerEntry(t *testing.T) {
 	const publicId = "com.example.plugin_a"
-	fetcher := NewWorkSetRelationFetcher(NewTaskHandlerRegistry(), newTestLoaderWithDeclarations(publicId, []dto.TaskHandlerDeclaration{
+	fetcher := NewWorkSetRelationFetcher(NewWorkFetchRegistry(), newTestLoaderWithDeclarations(publicId, []dto.WorkFetchDeclaration{
 		{ID: "with-relation", Options: []string{CapabilityWorkSetRelationQuery}},
 		{ID: "without-option"},
 	}))
@@ -326,7 +326,7 @@ func TestWorkSetRelationFetcherGatesPerEntry(t *testing.T) {
 	}
 
 	if _, err := fetcher.QueryWorkSetRelations(context.Background(), publicId, "with-relation", 1, "ws"); err == nil ||
-		!strings.Contains(err.Error(), "查找插件 TaskHandler 失败") {
+		!strings.Contains(err.Error(), "查找插件作品拉取扩展失败") {
 		t.Errorf("声明条目应过门控并进 registry 查找, 实际 err=%v", err)
 	}
 }

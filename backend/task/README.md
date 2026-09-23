@@ -45,5 +45,5 @@
 
 ## 依赖关系
 
-- 依赖：URL 监听派生索引（`urlListener.ListListener`，派生源为插件清单 `extensions.taskHandlers[].urlPatterns`，宿主激活期按清单条目派生登记、条目级粒度＝插件公开 ID + 条目 id）、多候选路由基座（`backend/route`，URL 监听器候选经其按全键字典序逐个尝试）、站点 / 作品集查询、事务执行器（Transactor，删除链编排用）、workDir 读取（`workDirGetter func() string`，删除链清下载暂存目录用）、resource.task_id 引用清理（repository 层原生 UPDATE，删任务前置义务）
+- 依赖：URL 监听派生索引（`urlListener.ListListener`，派生源为插件清单 `extensions.workFetch[].urlPatterns`，宿主激活期按清单条目派生登记、条目级粒度＝插件公开 ID + 条目 id）、多候选路由基座（`backend/route`，URL 监听器候选经其按全键字典序逐个尝试）、站点 / 作品集查询、事务执行器（Transactor，删除链编排用）、workDir 读取（`workDirGetter func() string`，删除链清下载暂存目录用）、resource.task_id 引用清理（repository 层原生 UPDATE，删任务前置义务）
 - 被依赖：**taskManager**（消费 TaskStatusEnum 与任务树核心行查询 ListTaskTreeCore，并实现本模块定义的 `RunningStopper` 运行态停止器；板块选择写行/活跃插件计数投影经 download 模块仓储、work 删除链下载暂存清理经本模块暂存基建 `CleanupStagingByTaskIds` 适配）、前端任务管理页（CRUD + 查询）、site（TaskSiteRefCounter：站点删除守卫的任务引用计数，仓储 `CountBySiteId`）、share（收件侧经 `BuiltinTaskControl` 能力接口创建/启动内置任务树 + `ShareTaskStore` 窄接口读写 share_task 领域行，app.go 装配）、export（经 `TaskControl` 能力接口两步创建/启动/回滚删除导出任务，app.go 装配）、download（`SectionRecorder` 写行展开子成员用 `ListChildrenTask`，app.go 装配）

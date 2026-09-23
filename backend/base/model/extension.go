@@ -1,11 +1,11 @@
 package model
 
-// ExtensionType 扩展点类型（顶层笼统抽象：taskHandler/siteBrowser/frontendExtension 三类并列）
+// ExtensionType 扩展点类型（顶层笼统抽象：workFetch/siteBrowser/frontendExtension 三类并列）
 type ExtensionType string
 
 const (
-	// ExtensionTypeTaskHandler 任务处理器
-	ExtensionTypeTaskHandler ExtensionType = "taskHandler"
+	// ExtensionTypeWorkFetch 作品拉取
+	ExtensionTypeWorkFetch ExtensionType = "workFetch"
 	// ExtensionTypeSiteBrowser 站点浏览器
 	ExtensionTypeSiteBrowser ExtensionType = "siteBrowser"
 	// ExtensionTypeFrontendExtension 前端扩展（面向前端 UI 的扩展点：embed/view/replaceView/menu/siteBrowserList/dialog/resourceViewer 七种平级）

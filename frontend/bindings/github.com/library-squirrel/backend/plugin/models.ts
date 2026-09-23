@@ -231,7 +231,7 @@ export class PluginStatusDTO {
     /**
      * 扩展点列表
      */
-    "taskHandlers": ExtensionInfo[];
+    "workFetch": ExtensionInfo[];
     "siteBrowsers": ExtensionInfo[];
     "frontendExtensions": FrontendExtensionInfo[];
 
@@ -257,8 +257,8 @@ export class PluginStatusDTO {
         if (!("activatedAt" in $$source)) {
             this["activatedAt"] = 0;
         }
-        if (!("taskHandlers" in $$source)) {
-            this["taskHandlers"] = [];
+        if (!("workFetch" in $$source)) {
+            this["workFetch"] = [];
         }
         if (!("siteBrowsers" in $$source)) {
             this["siteBrowsers"] = [];
@@ -282,8 +282,8 @@ export class PluginStatusDTO {
         const $$createField7_0 = $$createType6;
         const $$createField8_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("taskHandlers" in $$parsedSource) {
-            $$parsedSource["taskHandlers"] = $$createField5_0($$parsedSource["taskHandlers"]);
+        if ("workFetch" in $$parsedSource) {
+            $$parsedSource["workFetch"] = $$createField5_0($$parsedSource["workFetch"]);
         }
         if ("siteBrowsers" in $$parsedSource) {
             $$parsedSource["siteBrowsers"] = $$createField6_0($$parsedSource["siteBrowsers"]);

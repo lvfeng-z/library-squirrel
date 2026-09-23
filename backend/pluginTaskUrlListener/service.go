@@ -22,8 +22,8 @@ func (s *Service) ListListener(url string) []*PluginWithExtension {
 	return s.manager.ListListener(url)
 }
 
-// RegisterDeclared 按清单声明的任务处理器条目登记派生索引（激活期调用）
-func (s *Service) RegisterDeclared(plugin *domain.Plugin, handlers []dto.TaskHandlerDeclaration) {
+// RegisterDeclared 按清单声明的作品拉取条目登记派生索引（激活期调用）
+func (s *Service) RegisterDeclared(plugin *domain.Plugin, handlers []dto.WorkFetchDeclaration) {
 	s.manager.RegisterDeclared(plugin, handlers)
 }
 

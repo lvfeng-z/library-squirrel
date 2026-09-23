@@ -144,15 +144,15 @@ function formatTime(timestamp: number | undefined): string {
         border
         size="small"
       >
-        <el-descriptions-item label="TaskHandler">
-          <template v-if="status.taskHandlers && status.taskHandlers.length > 0">
+        <el-descriptions-item label="作品拉取">
+          <template v-if="status.workFetch && status.workFetch.length > 0">
             <el-tag
-              v-for="th in status.taskHandlers"
-              :key="th.id"
+              v-for="wf in status.workFetch"
+              :key="wf.id"
               size="small"
               class="status-tag"
             >
-              {{ th.name || th.id }}
+              {{ wf.name || wf.id }}
             </el-tag>
           </template>
           <span
@@ -160,7 +160,7 @@ function formatTime(timestamp: number | undefined): string {
             class="text-muted"
           >无</span>
         </el-descriptions-item>
-        <el-descriptions-item label="SiteBrowser">
+        <el-descriptions-item label="站点浏览器">
           <template v-if="status.siteBrowsers && status.siteBrowsers.length > 0">
             <el-tag
               v-for="sb in status.siteBrowsers"
@@ -177,7 +177,7 @@ function formatTime(timestamp: number | undefined): string {
             class="text-muted"
           >无</span>
         </el-descriptions-item>
-        <el-descriptions-item label="Slot">
+        <el-descriptions-item label="前端扩展">
           <template v-if="status.frontendExtensions && status.frontendExtensions.length > 0">
             <el-tag
               v-for="s in status.frontendExtensions"
