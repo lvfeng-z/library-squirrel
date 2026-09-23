@@ -4,10 +4,12 @@ package authorInfo
 // 权威域白名单列）→ 判定需落字节（来源 URL 变化或行无引用）→ 换头像先删旧 → 头像字节写暂存
 // （尺寸上限）→ 四调用入库 → 业务事务内建行 + 同事务写 site_author.avatar_store_id → 作用域
 // 回收。两触发面（作品入库后自动带开关、手动单条/批量）共用同一拉取序列与在途去重集合）；
-// 手动面在任何插件调用前先按行解析站点键、再按站点做候选冲突检测（该站点多候选未显选即返回冲突
-// 载荷，批量按站点分组整批交回；显选键按 (插件, 条目) 两键定位候选条目）；local 侧头像手动导入/
+// 手动面在任何插件调用前先按行解析站点键、再按站点做候选冲突检测（该站点多候选未显选时先查
+// 冲突显选的粘性记忆——同站点同候选组合命中即按记忆直接路由不再询问；未命中才返回冲突载荷，
+// 批量按站点分组整批交回；显选键按 (插件, 条目) 两键定位候选条目，勾选「记住此选择」且该站点
+// 拉取成功后显选落粘性记忆）；local 侧头像手动导入/
 // 移除；siteAuthor/localAuthor 删除联动的头像行清理（AvatarFileCleaner，行面入调用方删除事务、
-// 文件面在事务提交后清理）。
+// 文件面在事务提交后清理）。自动触发面不做冲突检测，恒不读写粘性记忆。
 
 import (
 	"context"
@@ -68,6 +70,8 @@ type Service struct {
 	fetchCfg     AuthorFetchSettings
 	workDir      WorkDirProvider
 	transactor   Transactor
+	// memory 候选冲突显选的粘性记忆（手动面冲突分支读、该站点拉取成功且勾选记住后写）
+	memory DisambiguationMemory
 
 	// fetcher 站点作者信息拉取能力桥（plugin 模块实现）。plugin 模块在本服务之后初始化
 	// （能力桥依赖插件加载器就绪），经 SetSiteAuthorFetcher 延迟注入；nil 时两触发面均跳过
@@ -87,6 +91,7 @@ func NewService(
 	fetchCfg AuthorFetchSettings,
 	workDir WorkDirProvider,
 	transactor Transactor,
+	memory DisambiguationMemory,
 ) *Service {
 	return &Service{
 		siteAuthors:  siteAuthors,
@@ -96,6 +101,7 @@ func NewService(
 		fetchCfg:     fetchCfg,
 		workDir:      workDir,
 		transactor:   transactor,
+		memory:       memory,
 		inFlight:     make(map[int64]struct{}),
 	}
 }
@@ -143,8 +149,10 @@ type SiteAuthorFetchResponse struct {
 }
 
 // resolveFetchSelection 候选冲突检测与显选校验/解析：候选依赖站点键（站点不同则候选集不同），故
-// 调用方须先解析目标行拿站点键。按本次触发的站点键逐站枚举候选——未显选且该站点候选多于一个即
-// 记一组冲突（同站点只记一组），调用方据此询问用户后带显选重发；显选键（插件公开 ID + 条目 id）
+// 调用方须先解析目标行拿站点键。按本次触发的站点键逐站枚举候选——未显选且该站点候选多于一个时
+// 先查冲突显选的粘性记忆（本函数仅手动拉取入口调用，自动触发面不在本链）：命中且记住的候选仍在
+// 当前候选集内即把记忆值补全为条目级显选直填、不记冲突；未命中才记一组冲突（同站点只记一组），
+// 调用方据此询问用户后带显选重发；显选键（插件公开 ID + 条目 id）
 // 解析为该站点候选集内的具体条目，未命中或无法定位报错。返回按站点键索引的已解析显选（未显选的
 // 站点不在表内，条目 id 恒补全为命中条目的 id）。siteKeys 为本次触发的站点键（去重保序）；
 // chosen 中站点键不在 siteKeys 内的条目不参与本次触发（本次触发没有该站点的目标行）。
@@ -168,6 +176,11 @@ func (s *Service) resolveFetchSelection(ctx context.Context, siteKeys []string,
 			continue
 		}
 		if len(candidates) >= 2 {
+			// 粘性记忆命中即按记忆显选直接路由，冲突不再交回询问
+			if remembered := s.recallRememberedChoice(ctx, siteKey, candidates); remembered != nil {
+				resolved[siteKey] = remembered
+				continue
+			}
 			conflicts = append(conflicts, &dto.SiteAuthorFetchConflict{
 				Conflict:   true,
 				SiteKey:    siteKey,
@@ -190,7 +203,8 @@ func chosenOf(chosen []*dto.SiteAuthorFetchChoice, siteKey string) *dto.SiteAuth
 
 // resolveChosenCandidate 显选键解析为该站点候选集内的具体条目：带条目 id 时两键联合命中；
 // 条目 id 缺省时该插件在候选集内须恰有一个条目（单实例插件的显选不歧义，补全为该条目；
-// 同插件多条目命中即无法定位）。命中返回条目 id 补全后的显选，未命中/无法定位返回 false
+// 同插件多条目命中即无法定位）。命中返回条目 id 补全后的显选（「记住此选择」勾选态随补全
+// 保留，供拉取成功后的记忆写入取用），未命中/无法定位返回 false
 func resolveChosenCandidate(candidates []*dto.PluginCandidate, choice *dto.SiteAuthorFetchChoice) (*dto.SiteAuthorFetchChoice, bool) {
 	if choice.ExtensionId != "" {
 		for _, candidate := range candidates {
@@ -217,6 +231,7 @@ func resolveChosenCandidate(candidates []*dto.PluginCandidate, choice *dto.SiteA
 		SiteKey:        choice.SiteKey,
 		PluginPublicId: hit.PluginPublicId,
 		ExtensionId:    hit.ExtensionId,
+		Remember:       choice.Remember,
 	}, true
 }
 
@@ -350,7 +365,8 @@ func (s *Service) resolveTarget(ctx context.Context, siteAuthorId int64) (*dto.S
 
 // fetchSiteAuthor 单作者拉取序列（调用方须已持有在途去重）：广播定位插件条目 → 流式首块 meta
 // 回写元数据 → 资源轨道（按需：换头像删旧 → 暂存字节 → 四调用入库 → 同事务写引用列）。
-// chosen 为该站点的已解析显选（nil = 未显选），显选两键经能力桥置于候选序首位。失败上抛不留
+// chosen 为该站点的已解析显选（nil = 未显选），显选两键经能力桥置于候选序首位；显选带
+// 「记住此选择」勾选且本站点拉取成功后落粘性记忆（失败不写）。失败上抛不留
 // 半成品——元数据回写与资源落库各自独立成功，头像缺省是合法态
 func (s *Service) fetchSiteAuthor(ctx context.Context, target *dto.SiteAuthorFetchTarget, chosen *dto.SiteAuthorFetchChoice) error {
 	if err := settings.RefuseIfUnconfigured(s.workDir.GetWorkDir(), "authorInfo"); err != nil {
@@ -372,7 +388,12 @@ func (s *Service) fetchSiteAuthor(ctx context.Context, target *dto.SiteAuthorFet
 		return err
 	}
 	// 字节已在暂存（拉取阶段完成），提交点不再受拉取超时约束——超时竞态不应作废已下载字节
-	return session.commitIngest(context.Background())
+	if err := session.commitIngest(context.Background()); err != nil {
+		return err
+	}
+	// 该站点拉取成功，按勾选把显选落粘性记忆（记忆写入同属成功后的收尾，不受拉取超时约束）
+	s.rememberFetchChoice(context.Background(), target.SiteKey, chosen)
+	return nil
 }
 
 // avatarFetchSession 单作者一次拉取的资源轨道状态：meta 到达后按需建暂存作用域并逐块落

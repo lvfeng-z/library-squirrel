@@ -1464,6 +1464,13 @@ export class SiteAuthorFetchChoice {
     "pluginPublicId": string;
     "extensionId": string;
 
+    /**
+     * Remember 记住此选择（冲突弹窗勾选态随显选带回）：该站点本次拉取成功后把显选落
+     * 粘性记忆，同站点同候选组合的后续冲突按记忆直接路由不再询问；缺省 false 不落表。
+     * 仅手动交互面携带本字段——自动触发面不经冲突显选，恒不写记忆
+     */
+    "remember": boolean;
+
     /** Creates a new SiteAuthorFetchChoice instance. */
     constructor($$source: Partial<SiteAuthorFetchChoice> = {}) {
         if (!("siteKey" in $$source)) {
@@ -1474,6 +1481,9 @@ export class SiteAuthorFetchChoice {
         }
         if (!("extensionId" in $$source)) {
             this["extensionId"] = "";
+        }
+        if (!("remember" in $$source)) {
+            this["remember"] = false;
         }
 
         Object.assign(this, $$source);
@@ -1760,6 +1770,126 @@ export class SiteTagLocalRelateDTO {
 }
 
 /**
+ * StickyMemoryCandidateDTO 粘性记忆条目里的候选展示项：记忆键内候选全键拆解出的
+ * 插件/条目身份加上解析出的显示名。条目显示名唯一来源 = 清单条目声明（workFetch /
+ * siteAuthorFetch 段条目的 name 字段），插件未加载（停用/卸载）取不到时回落原始条目 id，
+ * 不因显示名缺失阻塞管理列表
+ */
+export class StickyMemoryCandidateDTO {
+    "pluginPublicId": string;
+    "pluginName": string;
+    "extensionId": string;
+    "extensionName": string;
+
+    /**
+     * DisplayName 条目展示名：清单条目显示名优先，取不到回落条目 id
+     */
+    "displayName": string;
+
+    /** Creates a new StickyMemoryCandidateDTO instance. */
+    constructor($$source: Partial<StickyMemoryCandidateDTO> = {}) {
+        if (!("pluginPublicId" in $$source)) {
+            this["pluginPublicId"] = "";
+        }
+        if (!("pluginName" in $$source)) {
+            this["pluginName"] = "";
+        }
+        if (!("extensionId" in $$source)) {
+            this["extensionId"] = "";
+        }
+        if (!("extensionName" in $$source)) {
+            this["extensionName"] = "";
+        }
+        if (!("displayName" in $$source)) {
+            this["displayName"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new StickyMemoryCandidateDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): StickyMemoryCandidateDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new StickyMemoryCandidateDTO($$parsedSource as Partial<StickyMemoryCandidateDTO>);
+    }
+}
+
+/**
+ * StickyMemoryEntryDTO 粘性记忆管理列表条目：记忆行的上下文键与显选值拆解为站点域、
+ * 候选名单与当前选中者后的富化展示形态（管理面只读展示 + 删除，无编辑）
+ */
+export class StickyMemoryEntryDTO {
+    "id": number;
+    "domain": string;
+    "domainLabel": string;
+
+    /**
+     * SiteDomain 记忆归属的站点域（交互面判定粒度：清单声明的站点键或回落任务 URL host）
+     */
+    "siteDomain": string;
+
+    /**
+     * Candidates 该条记忆对应的候选组合（触发冲突时的全部候选，按记忆键内序）
+     */
+    "candidates": (StickyMemoryCandidateDTO | null)[];
+
+    /**
+     * Selected 用户显选并记住的候选（显示名解析规则同候选名单；候选不在名单内时仅含身份字段）
+     */
+    "selected": StickyMemoryCandidateDTO | null;
+    "createTime": number;
+    "updateTime": number;
+
+    /** Creates a new StickyMemoryEntryDTO instance. */
+    constructor($$source: Partial<StickyMemoryEntryDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("domain" in $$source)) {
+            this["domain"] = "";
+        }
+        if (!("domainLabel" in $$source)) {
+            this["domainLabel"] = "";
+        }
+        if (!("siteDomain" in $$source)) {
+            this["siteDomain"] = "";
+        }
+        if (!("candidates" in $$source)) {
+            this["candidates"] = [];
+        }
+        if (!("selected" in $$source)) {
+            this["selected"] = null;
+        }
+        if (!("createTime" in $$source)) {
+            this["createTime"] = 0;
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new StickyMemoryEntryDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): StickyMemoryEntryDTO {
+        const $$createField4_0 = $$createType21;
+        const $$createField5_0 = $$createType20;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("candidates" in $$parsedSource) {
+            $$parsedSource["candidates"] = $$createField4_0($$parsedSource["candidates"]);
+        }
+        if ("selected" in $$parsedSource) {
+            $$parsedSource["selected"] = $$createField5_0($$parsedSource["selected"]);
+        }
+        return new StickyMemoryEntryDTO($$parsedSource as Partial<StickyMemoryEntryDTO>);
+    }
+}
+
+/**
  * TaskProgressDTO 任务进度DTO（组合 TaskDTO + 进度/站点名称/进度百分比字段）
  */
 export class TaskProgressDTO {
@@ -1783,7 +1913,7 @@ export class TaskProgressDTO {
      * Creates a new TaskProgressDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): TaskProgressDTO {
-        const $$createField0_0 = $$createType20;
+        const $$createField0_0 = $$createType23;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("task" in $$parsedSource) {
             $$parsedSource["task"] = $$createField0_0($$parsedSource["task"]);
@@ -1811,8 +1941,8 @@ export class TaskProgressTreeDTO {
      * Creates a new TaskProgressTreeDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): TaskProgressTreeDTO {
-        const $$createField0_0 = $$createType22;
-        const $$createField1_0 = $$createType25;
+        const $$createField0_0 = $$createType25;
+        const $$createField1_0 = $$createType28;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("taskProgress" in $$parsedSource) {
             $$parsedSource["taskProgress"] = $$createField0_0($$parsedSource["taskProgress"]);
@@ -1855,7 +1985,7 @@ export class TreeDataPageDTO {
      * Creates a new TreeDataPageDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): TreeDataPageDTO {
-        const $$createField3_0 = $$createType25;
+        const $$createField3_0 = $$createType28;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tasks" in $$parsedSource) {
             $$parsedSource["tasks"] = $$createField3_0($$parsedSource["tasks"]);
@@ -1881,8 +2011,8 @@ export class WorkAuthorDTO {
      * Creates a new WorkAuthorDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkAuthorDTO {
-        const $$createField0_0 = $$createType28;
-        const $$createField1_0 = $$createType31;
+        const $$createField0_0 = $$createType31;
+        const $$createField1_0 = $$createType34;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("localAuthors" in $$parsedSource) {
             $$parsedSource["localAuthors"] = $$createField0_0($$parsedSource["localAuthors"]);
@@ -1915,8 +2045,8 @@ export class WorkAuthorsResultDTO {
      * Creates a new WorkAuthorsResultDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkAuthorsResultDTO {
-        const $$createField1_0 = $$createType28;
-        const $$createField2_0 = $$createType31;
+        const $$createField1_0 = $$createType31;
+        const $$createField2_0 = $$createType34;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("localAuthors" in $$parsedSource) {
             $$parsedSource["localAuthors"] = $$createField1_0($$parsedSource["localAuthors"]);
@@ -1954,13 +2084,13 @@ export class WorkFullDTO {
      * Creates a new WorkFullDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkFullDTO {
-        const $$createField0_0 = $$createType33;
-        const $$createField1_0 = $$createType28;
-        const $$createField2_0 = $$createType31;
+        const $$createField0_0 = $$createType36;
+        const $$createField1_0 = $$createType31;
+        const $$createField2_0 = $$createType34;
         const $$createField3_0 = $$createType16;
-        const $$createField4_0 = $$createType34;
-        const $$createField5_0 = $$createType37;
-        const $$createField6_0 = $$createType39;
+        const $$createField4_0 = $$createType37;
+        const $$createField5_0 = $$createType40;
+        const $$createField6_0 = $$createType42;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("work" in $$parsedSource) {
             $$parsedSource["work"] = $$createField0_0($$parsedSource["work"]);
@@ -2029,9 +2159,9 @@ export class WorkSetWithCoverDTO {
      * Creates a new WorkSetWithCoverDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkSetWithCoverDTO {
-        const $$createField0_0 = $$createType41;
-        const $$createField1_0 = $$createType33;
-        const $$createField2_0 = $$createType39;
+        const $$createField0_0 = $$createType44;
+        const $$createField1_0 = $$createType36;
+        const $$createField2_0 = $$createType42;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSet" in $$parsedSource) {
             $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
@@ -2066,8 +2196,8 @@ export class WorkSetWithWorksResultDTO {
      * Creates a new WorkSetWithWorksResultDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): WorkSetWithWorksResultDTO {
-        const $$createField0_0 = $$createType41;
-        const $$createField1_0 = $$createType44;
+        const $$createField0_0 = $$createType44;
+        const $$createField1_0 = $$createType47;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workSet" in $$parsedSource) {
             $$parsedSource["workSet"] = $$createField0_0($$parsedSource["workSet"]);
@@ -2099,29 +2229,32 @@ const $$createType15 = gen$0.SiteDTO.createFrom;
 const $$createType16 = $Create.Nullable($$createType15);
 const $$createType17 = SiteTagDTO.createFrom;
 const $$createType18 = $Create.Nullable($$createType17);
-const $$createType19 = gen$0.Task.createFrom;
+const $$createType19 = StickyMemoryCandidateDTO.createFrom;
 const $$createType20 = $Create.Nullable($$createType19);
-const $$createType21 = TaskProgressDTO.createFrom;
-const $$createType22 = $Create.Nullable($$createType21);
-const $$createType23 = TaskProgressTreeDTO.createFrom;
-const $$createType24 = $Create.Nullable($$createType23);
-const $$createType25 = $Create.Array($$createType24);
-const $$createType26 = RankedLocalAuthor.createFrom;
+const $$createType21 = $Create.Array($$createType20);
+const $$createType22 = gen$0.Task.createFrom;
+const $$createType23 = $Create.Nullable($$createType22);
+const $$createType24 = TaskProgressDTO.createFrom;
+const $$createType25 = $Create.Nullable($$createType24);
+const $$createType26 = TaskProgressTreeDTO.createFrom;
 const $$createType27 = $Create.Nullable($$createType26);
 const $$createType28 = $Create.Array($$createType27);
-const $$createType29 = RankedSiteAuthor.createFrom;
+const $$createType29 = RankedLocalAuthor.createFrom;
 const $$createType30 = $Create.Nullable($$createType29);
 const $$createType31 = $Create.Array($$createType30);
-const $$createType32 = gen$0.Work.createFrom;
+const $$createType32 = RankedSiteAuthor.createFrom;
 const $$createType33 = $Create.Nullable($$createType32);
-const $$createType34 = $Create.Array($$createType2);
-const $$createType35 = SiteTagFullDTO.createFrom;
+const $$createType34 = $Create.Array($$createType33);
+const $$createType35 = gen$0.Work.createFrom;
 const $$createType36 = $Create.Nullable($$createType35);
-const $$createType37 = $Create.Array($$createType36);
-const $$createType38 = ResourceFullDTO.createFrom;
+const $$createType37 = $Create.Array($$createType2);
+const $$createType38 = SiteTagFullDTO.createFrom;
 const $$createType39 = $Create.Nullable($$createType38);
-const $$createType40 = gen$0.WorkSet.createFrom;
-const $$createType41 = $Create.Nullable($$createType40);
-const $$createType42 = WorkFullDTO.createFrom;
-const $$createType43 = $Create.Nullable($$createType42);
-const $$createType44 = $Create.Array($$createType43);
+const $$createType40 = $Create.Array($$createType39);
+const $$createType41 = ResourceFullDTO.createFrom;
+const $$createType42 = $Create.Nullable($$createType41);
+const $$createType43 = gen$0.WorkSet.createFrom;
+const $$createType44 = $Create.Nullable($$createType43);
+const $$createType45 = WorkFullDTO.createFrom;
+const $$createType46 = $Create.Nullable($$createType45);
+const $$createType47 = $Create.Array($$createType46);

@@ -77,13 +77,15 @@ export async function taskSetTreeStatus(
  * 显选键（插件公开 ID + 扩展点 ID）联合定位一个扩展点候选，两者均留空 = 未显选。
  * URL 命中多个候选且未显选时，响应为冲突载荷（外层成功、data.conflict 为真、data.conflictCandidates 为候选清单，
  * 首位即默认选中项，候选清单顺序由后端给定不再重排），此时后端未调用任何插件，由调用方弹出插件选择器后带键重发。
+ * remember 为显选附带的「记住此选择」勾选态：路由成功后把该显选落进粘性记忆，同站点相同候选组合不再询问。
  */
 export async function taskCreateByUrl(
   url: string,
   chosenPluginPublicId: string,
-  chosenExtensionId: string
+  chosenExtensionId: string,
+  remember: boolean
 ): Promise<ApiResult<CreateTaskByURLResponse>> {
-  const request = new CreateTaskByURLRequest({ url, chosenPluginPublicId, chosenExtensionId })
+  const request = new CreateTaskByURLRequest({ url, chosenPluginPublicId, chosenExtensionId, remember })
   return requireResponse(await TaskHandler.CreateTaskByURL(request), '创建任务')
 }
 

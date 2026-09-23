@@ -19,6 +19,7 @@ import (
 	"github.com/library-squirrel/backend/pluginTaskUrlListener"
 	"github.com/library-squirrel/backend/route"
 	"github.com/library-squirrel/backend/site"
+	"github.com/library-squirrel/backend/stickymemory"
 	"github.com/library-squirrel/backend/util"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"gorm.io/gorm"
@@ -210,6 +211,16 @@ type RunningStopper interface {
 	StopAndWaitTerminal(ctx context.Context, taskIds []int64, timeout time.Duration) error
 }
 
+// DisambiguationMemory 交互冲突面显选的粘性记忆读写接口（stickymemory.Service 实现）：
+// 多候选冲突时先查记忆，命中即免问直路由；显选且路由成功后按「记住此选择」落记忆。
+// 仅交互入口触达，程序化入口不查不写
+type DisambiguationMemory interface {
+	// Recall 取回一次记忆：命中返回 (显选候选全键, true)，未命中或读取失败返回 ("", false)
+	Recall(ctx context.Context, domain, contextKey string) (string, bool)
+	// Remember 记住一次显选（同 domain 与 contextKey 重写覆盖）
+	Remember(ctx context.Context, domain, contextKey, value string) error
+}
+
 // deleteStopWaitTimeout 删除链「先停后删」的停止等待上限（与控制命令 ack 有界等待同量级：
 // 任务主体逐文件检查点退出 + 终态即时落盘，正常路径远低于此值）
 const deleteStopWaitTimeout = 35 * time.Second
@@ -225,11 +236,12 @@ type Service struct {
 	taskTypeRegistry TaskTypeRegistry
 	runningStopper   RunningStopper
 	workDirGetter    func() string
+	disambigMemory   DisambiguationMemory
 }
 
 // NewService 创建任务服务。workDirGetter 供删除链清理下载暂存目录取 workDir
-// （空串=未配置，清理函数容忍跳过）
-func NewService(repo Repository, transactor Transactor, workFetchGetter WorkFetchProvider, urlListener *pluginTaskUrlListener.Service, siteSvc *site.Service, workDirGetter func() string) *Service {
+// （空串=未配置，清理函数容忍跳过）；disambigMemory 为交互面消歧记忆（冲突免问直路由）
+func NewService(repo Repository, transactor Transactor, workFetchGetter WorkFetchProvider, urlListener *pluginTaskUrlListener.Service, siteSvc *site.Service, workDirGetter func() string, disambigMemory DisambiguationMemory) *Service {
 	return &Service{
 		repo:            repo,
 		transactor:      transactor,
@@ -237,6 +249,7 @@ func NewService(repo Repository, transactor Transactor, workFetchGetter WorkFetc
 		urlListener:     urlListener,
 		siteSvc:         siteSvc,
 		workDirGetter:   workDirGetter,
+		disambigMemory:  disambigMemory,
 	}
 }
 
@@ -871,6 +884,9 @@ type CreateTaskByURLRequest struct {
 	// 均空 = 未显选（程序化入口恒为此态）
 	ChosenPluginPublicId string `json:"chosenPluginPublicId"`
 	ChosenExtensionId    string `json:"chosenExtensionId"`
+	// Remember 为真表示本次显选路由成功后把该选择记进粘性记忆（冲突弹窗「记住此选择」
+	// 勾选态；缺省 false = 本次不记）。仅携带显选键时有意义
+	Remember bool `json:"remember,omitempty"`
 }
 
 // CreateTaskByURLResponse 根据URL创建任务的响应
@@ -894,10 +910,12 @@ const (
 	taskEntryInteractive
 )
 
-// taskChoice 交互面的显选键：两键联合定位候选集内的一个扩展点候选
+// taskChoice 交互面的显选键：两键联合定位候选集内的一个扩展点候选；remember 为真时
+// 路由成功后把该显选落进粘性记忆（冲突弹窗「记住此选择」勾选态）
 type taskChoice struct {
 	PluginPublicId string
 	ExtensionId    string
+	remember       bool
 }
 
 // hasSelection 本次触发是否携带显选键（两键均空 = 未显选）
@@ -915,13 +933,16 @@ func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskB
 }
 
 // CreateTaskByURLWithChoice 交互触发（前端手动建任务）的建任务入口：携带显选键时该扩展点候选置于
-// 路由首位；未携带且候选多于一个时返回冲突载荷（Conflict=true + 候选清单）且不调用任何插件。
-func (s *Service) CreateTaskByURLWithChoice(ctx context.Context, url, chosenPluginPublicId, chosenExtensionId string) (*CreateTaskByURLResponse, error) {
-	choice := taskChoice{PluginPublicId: chosenPluginPublicId, ExtensionId: chosenExtensionId}
+// 路由首位；未携带且候选多于一个时先查消歧记忆（命中即等价显选直路由），仍未定则返回冲突载荷
+// （Conflict=true + 候选清单）且不调用任何插件。remember 为显选附带「记住此选择」勾选态，
+// 仅在显选有效且路由成功时落记忆。
+func (s *Service) CreateTaskByURLWithChoice(ctx context.Context, url, chosenPluginPublicId, chosenExtensionId string, remember bool) (*CreateTaskByURLResponse, error) {
+	choice := taskChoice{PluginPublicId: chosenPluginPublicId, ExtensionId: chosenExtensionId, remember: remember}
 	return s.createTaskByURL(ctx, url, taskEntryInteractive, choice)
 }
 
-// createTaskByURL 两入口共用的执行核：发现候选 → 交互面显选校验与冲突收口 → 经路由基座按序尝试。
+// createTaskByURL 两入口共用的执行核：发现候选 → 交互面显选校验、消歧记忆命中与冲突收口 →
+// 经路由基座按序尝试。
 func (s *Service) createTaskByURL(ctx context.Context, url string, entry taskEntry, choice taskChoice) (*CreateTaskByURLResponse, error) {
 	listeners := s.urlListener.ListListener(url)
 	logger.Log.Infof("[CreateTaskByURL] url=%s 匹配监听器 %d 个", url, len(listeners))
@@ -944,13 +965,20 @@ func (s *Service) createTaskByURL(ctx context.Context, url string, entry taskEnt
 					fmt.Errorf("plugin=%s extensionId=%s", choice.PluginPublicId, choice.ExtensionId))
 			}
 		case len(candidates) >= 2:
-			return &CreateTaskByURLResponse{
-				Succeed:            false,
-				AddedQuantity:      0,
-				Msg:                "该链接可由多个插件处理，请选择插件",
-				Conflict:           true,
-				ConflictCandidates: toPluginCandidates(candidates),
-			}, nil
+			// 消歧记忆命中且记住的候选仍在候选集内：等价用户显选该候选，静默直路由，
+			// 不返回冲突载荷；未命中或候选不在场（插件停用/卸载）→ 照常冲突载荷交用户显选。
+			// 记忆查询只存在于交互分支内——程序化入口不查不写是既定边界
+			if remembered, ok := s.recallDisambiguationChoice(ctx, candidates, url); ok {
+				choice = remembered
+			} else {
+				return &CreateTaskByURLResponse{
+					Succeed:            false,
+					AddedQuantity:      0,
+					Msg:                "该链接可由多个插件处理，请选择插件",
+					Conflict:           true,
+					ConflictCandidates: toPluginCandidates(candidates),
+				}, nil
+			}
 		}
 	}
 
@@ -967,7 +995,66 @@ func (s *Service) createTaskByURL(ctx context.Context, url string, entry taskEnt
 			Msg:           fmt.Sprintf("尝试了所有插件均未成功，url: %s", url),
 		}, nil
 	}
+	// 交互面显选且本次路由成功：把显选落进粘性记忆（「记住此选择」勾选态）。显选有效性已由
+	// 交互分支的候选集校验保证；程序化入口无显选与勾选通道，条件不成立恒不写。失败的选择
+	// 不入记忆——用户下次仍会被问、可改选
+	if entry == taskEntryInteractive && choice.hasSelection() && choice.remember && resp.Succeed {
+		s.rememberDisambiguationChoice(ctx, candidates, url, choice)
+	}
 	return resp, nil
+}
+
+// recallDisambiguationChoice 查任务 URL 冲突的消歧记忆：站点域求值（候选声明 siteKey 一致
+// 取声明值，否则退 URL host 兜底）失败时本轮不查；命中值拆解为候选键后必须仍在当前候选集内
+// （候选组合变化或所选候选消失时记忆视为未命中）。命中返回等价显选键。
+func (s *Service) recallDisambiguationChoice(ctx context.Context, candidates []*pluginTaskUrlListener.PluginWithExtension, rawURL string) (taskChoice, bool) {
+	siteDomain, ok := stickymemory.ResolveTaskSiteDomain(candidateSiteKeys(candidates), rawURL)
+	if !ok {
+		return taskChoice{}, false
+	}
+	contextKey := stickymemory.BuildContextKey(siteDomain, candidateFullKeys(candidates))
+	remembered, hit := s.disambigMemory.Recall(ctx, entity.DomainTaskURLDisambiguation, contextKey)
+	if !hit {
+		return taskChoice{}, false
+	}
+	pluginPublicId, extensionId := stickymemory.SplitCandidateFullKey(remembered)
+	choice := taskChoice{PluginPublicId: pluginPublicId, ExtensionId: extensionId}
+	if !containsCandidate(candidates, choice) {
+		return taskChoice{}, false
+	}
+	return choice, true
+}
+
+// rememberDisambiguationChoice 把交互面显选落进粘性记忆：键与读取点同一构造（站点域 + 候选组合）。
+// 站点域求值失败不写；写入失败仅记日志不影响本次结果——记忆是消歧优化，不是正确性依赖
+func (s *Service) rememberDisambiguationChoice(ctx context.Context, candidates []*pluginTaskUrlListener.PluginWithExtension, rawURL string, choice taskChoice) {
+	siteDomain, ok := stickymemory.ResolveTaskSiteDomain(candidateSiteKeys(candidates), rawURL)
+	if !ok {
+		return
+	}
+	contextKey := stickymemory.BuildContextKey(siteDomain, candidateFullKeys(candidates))
+	value := stickymemory.CandidateFullKey(choice.PluginPublicId, choice.ExtensionId)
+	if err := s.disambigMemory.Remember(ctx, entity.DomainTaskURLDisambiguation, contextKey, value); err != nil {
+		logger.Log.Warnf("[CreateTaskByURL] 写入消歧记忆失败: %v", err)
+	}
+}
+
+// candidateSiteKeys 候选监听条目各自声明的站点域清单（站点域求值输入）
+func candidateSiteKeys(candidates []*pluginTaskUrlListener.PluginWithExtension) []string {
+	keys := make([]string, len(candidates))
+	for i, candidate := range candidates {
+		keys[i] = candidate.SiteKey
+	}
+	return keys
+}
+
+// candidateFullKeys 全部候选的全键清单（消歧记忆上下文键编码输入；顺序无关，编码侧排序归一）
+func candidateFullKeys(candidates []*pluginTaskUrlListener.PluginWithExtension) []string {
+	keys := make([]string, len(candidates))
+	for i, candidate := range candidates {
+		keys[i] = stickymemory.CandidateFullKey(candidate.PublicID.String, candidate.ExtensionID)
+	}
+	return keys
 }
 
 // orderedRoutableCandidates 筛出可路由候选（扩展点粒度）并按候选全键字典序排列。缺插件 PublicID 的

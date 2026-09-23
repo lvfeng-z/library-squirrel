@@ -25,6 +25,12 @@ export class CreateTaskByURLRequest {
     "chosenPluginPublicId": string;
     "chosenExtensionId": string;
 
+    /**
+     * Remember 为真表示本次显选路由成功后把该选择记进粘性记忆（冲突弹窗「记住此选择」
+     * 勾选态；缺省 false = 本次不记）。仅携带显选键时有意义
+     */
+    "remember"?: boolean;
+
     /** Creates a new CreateTaskByURLRequest instance. */
     constructor($$source: Partial<CreateTaskByURLRequest> = {}) {
         if (!("url" in $$source)) {

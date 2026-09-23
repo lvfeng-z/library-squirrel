@@ -22,6 +22,19 @@ import (
 	"gorm.io/gorm"
 )
 
+// noopDisambiguationMemory 消歧记忆 no-op 替身：本链只走删除联动的头像清理轨道，不触
+// 手动拉取面；authorInfo 生产代码对 memory 依赖无 nil 守卫，传 nil 留静默 panic 风险，
+// 故以恒未命中替身占位（Recall 恒未命中即回落冲突询问语义，Remember 零行为）
+type noopDisambiguationMemory struct{}
+
+func (noopDisambiguationMemory) Remember(context.Context, string, string, string) error {
+	return nil
+}
+
+func (noopDisambiguationMemory) Recall(context.Context, string, string) (string, bool) {
+	return "", false
+}
+
 // newAvatarLinkageEnv 内存库（外键强制 + 完整迁移）+ 临时工作目录 + 真实 authorInfo 清理
 // 提供方接线（本链不触 local 头像导入轨道，authorInfo 的 site 轨道以完整 siteAuthor 服务参与）
 func newAvatarLinkageEnv(t *testing.T) (*Service, *gorm.DB, string) {
@@ -48,7 +61,7 @@ func newAvatarLinkageEnv(t *testing.T) (*Service, *gorm.DB, string) {
 	)
 	psSvc := persistentStore.NewService(persistentStore.NewRepository(db), nil, func() string { return workDir })
 	saSvc := siteAuthor.NewService(siteAuthor.NewRepository(db), nil, nil, &txTransactor{db: db}, reWorkAuthorSvc)
-	aiSvc := authorInfo.NewService(saSvc, svc, psSvc, psSvc, settingsSvc, settingsSvc, &txTransactor{db: db})
+	aiSvc := authorInfo.NewService(saSvc, svc, psSvc, psSvc, settingsSvc, settingsSvc, &txTransactor{db: db}, noopDisambiguationMemory{})
 	svc.SetAvatarFileCleaner(aiSvc)
 	return svc, db, workDir
 }

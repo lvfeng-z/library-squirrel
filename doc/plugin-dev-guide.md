@@ -120,7 +120,7 @@ type MyWorkFetcher struct{}
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `workFetch` | `[{id, name, description?, options?, urlPatterns?}]` | 三选一 | 作品拉取声明（清单声明 + 宿主激活期派生注册）；`name` **必填**（派生注册表元数据唯一源）；`options` 为该条目启用的可选方法组（内置枚举，见「能力声明」）；`urlPatterns` 为该条目的 URL 监听模式（正则串数组，可选，见下「校验规则」） |
+| `workFetch` | `[{id, name, description?, options?, siteKey?, urlPatterns?}]` | 三选一 | 作品拉取声明（清单声明 + 宿主激活期派生注册）；`name` **必填**（派生注册表元数据唯一源）；`options` 为该条目启用的可选方法组（内置枚举，见「能力声明」）；`siteKey` 为条目级可选的站点域声明（自由串，见「能力声明」）；`urlPatterns` 为该条目的 URL 监听模式（正则串数组，可选，见下「校验规则」） |
 | `siteBrowsers` | `[{id, name, description?}]` | 三选一 | SiteBrowser 声明（清单声明 + 宿主激活期派生注册）；`name` **必填** |
 | `siteAuthorFetch` | `[{id, name, sites}]` | 否 | 站点作者信息拉取能力包（**数组，一插件可多实例**）；`id` 插件内唯一、`name` 必填（冲突选择器展示「插件名 · 条目名」）、`sites` 为该条目服务的站点键清单（作用域 = 归属），见「能力声明」 |
 | `resourceTypes` | `[ResourceTypeDeclaration]` | 否 | 自定义资源类型声明（自契约 v9 起住本段，段存在即启用，见「自定义资源类型声明」） |
@@ -234,9 +234,16 @@ type MyWorkFetcher struct{}
 | `workOrderQuery` | `extensions.workFetch[].options` | 包内**条目级**可选方法组，对应 `WorkOrderQuerier`（实现该接口的 workFetch 条目声明此值，如 pixiv） |
 | `workSetRelationQuery` | `extensions.workFetch[].options` | 同上，对应 `WorkSetRelationQuerier` |
 | （无对应旧值） | `extensions.workFetch[].urlPatterns` | 契约 v11 起 URL 监听迁清单：条目级正则模式串数组（可选；在场须非空且逐项可编译），匹配的 URL 创建任务时路由到该条目；条目级粒度与旧 `RegisterUrlListener(extensionId, …)` 一致 |
+| （无对应旧值） | `extensions.workFetch[].siteKey` | 条目级可选的站点域声明，取值为自由字符串、无枚举校验（见下文「siteKey 站点域声明」） |
 | `resourceTypeProvider` | **取消** | `resourceTypes` 迁入 `extensions` 段后「段存在即启用」，一把锁不再需要两把钥匙 |
 
 `options` 的合法取值 = 内置封闭枚举（当前 `workOrderQuery`、`workSetRelationQuery`，见 `backend/plugin/extension/loader.go:64-74`）；非法值安装期与加载期均拒。**门控粒度为条目级**——（插件, 扩展点条目）粒度判定，未声明某 `options` 项的 workFetch 条目不经该条目被调用（`backend/plugin/extension/loader.go:125-146`）。
+
+### siteKey 站点域声明（workFetch 条目级可选）
+
+`extensions.workFetch[].siteKey` 声明该监听条目归属的**站点域**：条目级可选字段，取值为自由字符串，无枚举与格式校验，缺省即空。语义上**约定复用身份域的站点串**——即该条目所服务站点在 SDK 站点注册表中的站点键（如 `pixiv`、`bilibili`），使同一站点的不同 URL 形态归到同一站点域。
+
+宿主在任务创建出现多个候选条目、需要用户显选时，按「站点域 + 候选组合」归组记忆用户的选择（同站点域的同组冲突不再重复询问）：同批候选声明的 `siteKey` 全部一致且非空时，以该声明值为站点域；任一条目缺省或候选间声明不一致时，退回按任务 URL 的 host 兜底判定。不写该字段完全合法——只影响站点域判定走 host 兜底，不影响 URL 监听与路由行为。
 
 顶层 `capabilities` 键在场（值恰为 `null` 亦然）即视为**未迁移**：安装时拒收、加载时跳过（校验入口 `backend/plugin/extension/loader.go:233-241`；安装闸门 `backend/plugin/service.go:345`、加载闸门 `backend/plugin/service.go:146`）。能力不单独版本化，演进由全局 `contractVersion` 兜底。
 

@@ -75,6 +75,11 @@ export class PluginWithExtension {
      */
     "ExtensionID": string;
 
+    /**
+     * 条目声明的站点域（清单 workFetch[].siteKey，登记时去首尾空白；缺省空 = 消费方按任务 URL host 兜底判定站点域）
+     */
+    "SiteKey": string;
+
     /** Creates a new PluginWithExtension instance. */
     constructor($$source: Partial<PluginWithExtension> = {}) {
         if (!("id" in $$source)) {
@@ -151,6 +156,9 @@ export class PluginWithExtension {
         }
         if (!("ExtensionID" in $$source)) {
             this["ExtensionID"] = "";
+        }
+        if (!("SiteKey" in $$source)) {
+            this["SiteKey"] = "";
         }
 
         Object.assign(this, $$source);

@@ -38,7 +38,8 @@ export function CreateTask(req: dto$0.CreateTaskRequest | null): $CancellablePro
 
 /**
  * CreateTaskByURL 根据传入的url创建任务（交互面：请求携带显选键时该扩展点候选置于路由首位；
- * 命中多个候选且未显选时响应为冲突载荷且未调用任何插件，由前端选择后带键重发）
+ * 命中多个候选且未显选时先查消歧记忆，命中直路由，否则响应为冲突载荷且未调用任何插件，
+ * 由前端选择后带键重发；Remember 为显选附带「记住此选择」勾选态，路由成功后落记忆）
  */
 export function CreateTaskByURL(req: $models.CreateTaskByURLRequest | null): $CancellablePromise<model$0.ApiResponse<$models.CreateTaskByURLResponse | null> | null> {
     return $Call.ByID(871230313, req).then(($result: any) => {

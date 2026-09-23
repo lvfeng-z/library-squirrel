@@ -126,7 +126,7 @@ func newTestService(t *testing.T) (*Service, *fakeTaskRepo) {
 	t.Helper()
 	repo := newFakeTaskRepo()
 	siteSvc := site.NewService(fakeSiteRepo{}) // 站点服务仅消费查询（创建路径）
-	svc := NewService(repo, fakeTransactor{}, nil, nil, siteSvc, nil)
+	svc := NewService(repo, fakeTransactor{}, nil, nil, siteSvc, nil, nil)
 	return svc, repo
 }
 
@@ -556,7 +556,7 @@ func TestCreateTaskFKColumnsOnFKDB(t *testing.T) {
 	// 经生产构造函数组装（真实 task 仓储 + 真事务执行器 + 真实 site 服务）
 	siteSvc := site.NewService(site.NewRepository(db))
 	wtStore := newTestWorkTaskStore(db)
-	svc := NewService(NewRepository(db, wtStore, wtStore), &testTransactor{db: db}, nil, nil, siteSvc, nil)
+	svc := NewService(NewRepository(db, wtStore, wtStore), &testTransactor{db: db}, nil, nil, siteSvc, nil, nil)
 	ctx := context.Background()
 
 	// 入口一/二：CreateTask——req.Pid=0 落 NULL=根级；req.Pid=父 落父 ID
@@ -670,7 +670,7 @@ func TestCreateBuiltinTaskColumns(t *testing.T) {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
 	wtStore := newTestWorkTaskStore(db)
-	svc := NewService(NewRepository(db, wtStore, wtStore), nil, nil, nil, nil, nil)
+	svc := NewService(NewRepository(db, wtStore, wtStore), nil, nil, nil, nil, nil, nil)
 	ctx := context.Background()
 
 	if _, err := svc.CreateBuiltinTask(ctx, "  ", "空类型"); err == nil {
@@ -803,7 +803,7 @@ func TestCreateBuiltinTaskTreeColumns(t *testing.T) {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
 	wtStore := newTestWorkTaskStore(db)
-	svc := NewService(NewRepository(db, wtStore, wtStore), &testTransactor{db: db}, nil, nil, nil, nil)
+	svc := NewService(NewRepository(db, wtStore, wtStore), &testTransactor{db: db}, nil, nil, nil, nil, nil)
 	ctx := context.Background()
 
 	parent, err := svc.CreateBuiltinTaskTree(ctx, "share-receive", "拉取分享", []BuiltinTaskChild{
@@ -882,7 +882,7 @@ func TestCreateBuiltinTaskTreeRollback(t *testing.T) {
 	// 父=call1，第一个子任务（call2）注入失败
 	wtStore := newTestWorkTaskStore(db)
 	failRepo := &failOnNthCreateRepo{TaskRepository: NewRepository(db, wtStore, wtStore), failAt: 2}
-	svc := NewService(failRepo, &testTransactor{db: db}, nil, nil, nil, nil)
+	svc := NewService(failRepo, &testTransactor{db: db}, nil, nil, nil, nil, nil)
 	ctx := context.Background()
 
 	if _, err := svc.CreateBuiltinTaskTree(ctx, "share-receive", "拉取分享", []BuiltinTaskChild{
@@ -924,7 +924,7 @@ func TestTaskCreateResolvesSiteByKey(t *testing.T) {
 
 	siteSvc := site.NewService(site.NewRepository(db))
 	wtStore := newTestWorkTaskStore(db)
-	svc := NewService(NewRepository(db, wtStore, wtStore), &testTransactor{db: db}, nil, nil, siteSvc, nil)
+	svc := NewService(NewRepository(db, wtStore, wtStore), &testTransactor{db: db}, nil, nil, siteSvc, nil, nil)
 
 	responses := []*sdkdto.TaskCreateResponse{
 		{TaskName: "leaf-1", SiteWorkId: "k-1", Url: "http://x/1", SiteKey: testSiteKey, ResourceType: entity.ResourceTypeImage},
@@ -962,7 +962,7 @@ func (nilSiteRepo) GetByKey(_ context.Context, _ string) (*entity.Site, error) {
 // ErrSiteNotFound 同型错误；键缺失报 ErrSiteKeyRequired。失败在字段填充阶段前置暴露，任务不落盘。
 func TestTaskCreateUnknownKeyFails(t *testing.T) {
 	siteSvc := site.NewService(nilSiteRepo{})
-	svc := NewService(newFakeTaskRepo(), fakeTransactor{}, nil, nil, siteSvc, nil)
+	svc := NewService(newFakeTaskRepo(), fakeTransactor{}, nil, nil, siteSvc, nil, nil)
 	siteCache := make(map[string]int)
 
 	// 键查不到行：ErrSiteNotFound 同型错误（leaf 路径）
@@ -1035,11 +1035,12 @@ func newURLListenerService(entries ...*pluginTaskUrlListener.PluginWithExtension
 }
 
 // newCreateByURLService 经生产构造函数组装带处理器提供者与监听器服务的 Service（fake 落库）。
+// 消歧记忆注入恒未命中替身——不关心记忆的既有用例保持「无记忆时冲突照常」的行为基线。
 func newCreateByURLService(t *testing.T, getter WorkFetchProvider, listenerSvc *pluginTaskUrlListener.Service) (*Service, *fakeTaskRepo) {
 	t.Helper()
 	repo := newFakeTaskRepo()
 	siteSvc := site.NewService(fakeSiteRepo{})
-	svc := NewService(repo, fakeTransactor{}, getter, listenerSvc, siteSvc, nil)
+	svc := NewService(repo, fakeTransactor{}, getter, listenerSvc, siteSvc, nil, missDisambigMemory{})
 	return svc, repo
 }
 
@@ -1293,7 +1294,7 @@ func TestCreateTaskByURL_SingleCandidateNoConflict(t *testing.T) {
 		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{"pub-a/ext-a": handler}},
 		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
 
-	resp, err := svc.CreateTaskByURLWithChoice(context.Background(), "http://x/1", "", "")
+	resp, err := svc.CreateTaskByURLWithChoice(context.Background(), "http://x/1", "", "", false)
 	if err != nil {
 		t.Fatalf("CreateTaskByURLWithChoice 返回错误: %v", err)
 	}
@@ -1328,7 +1329,7 @@ func TestCreateTaskByURL_ConflictReturnsWithoutCallingPlugins(t *testing.T) {
 		namedListener("pub-a", "插件A", "ext-a"),
 	))
 
-	resp, err := svc.CreateTaskByURLWithChoice(context.Background(), "http://x/1", "", "")
+	resp, err := svc.CreateTaskByURLWithChoice(context.Background(), "http://x/1", "", "", false)
 	if err != nil {
 		t.Fatalf("CreateTaskByURLWithChoice 返回错误: %v", err)
 	}
@@ -1373,7 +1374,7 @@ func TestCreateTaskByURL_ChosenCandidateRoutesToItOnly(t *testing.T) {
 			namedListener("pub-b", "插件B", "ext-b"),
 		))
 
-	resp, err := svc.CreateTaskByURLWithChoice(context.Background(), "http://x/1", "pub-b", "ext-b")
+	resp, err := svc.CreateTaskByURLWithChoice(context.Background(), "http://x/1", "pub-b", "ext-b", false)
 	if err != nil {
 		t.Fatalf("CreateTaskByURLWithChoice 返回错误: %v", err)
 	}
@@ -1406,7 +1407,7 @@ func TestCreateTaskByURL_ChosenFailureTerminates(t *testing.T) {
 			namedListener("pub-b", "插件B", "ext-b"),
 		))
 
-	resp, err := svc.CreateTaskByURLWithChoice(context.Background(), "http://x/1", "pub-a", "ext-a")
+	resp, err := svc.CreateTaskByURLWithChoice(context.Background(), "http://x/1", "pub-a", "ext-a", false)
 	if err != nil {
 		t.Fatalf("CreateTaskByURLWithChoice 返回错误: %v", err)
 	}
@@ -1435,10 +1436,10 @@ func TestCreateTaskByURL_ChosenCandidateNotInCandidatesFails(t *testing.T) {
 	))
 	ctx := context.Background()
 
-	if _, err := svc.CreateTaskByURLWithChoice(ctx, "http://x/1", "pub-c", "ext-c"); !errors.Is(err, ErrChosenCandidateInvalid) {
+	if _, err := svc.CreateTaskByURLWithChoice(ctx, "http://x/1", "pub-c", "ext-c", false); !errors.Is(err, ErrChosenCandidateInvalid) {
 		t.Fatalf("插件键不匹配候选集应报 ErrChosenCandidateInvalid，得到 %v", err)
 	}
-	if _, err := svc.CreateTaskByURLWithChoice(ctx, "http://x/1", "pub-a", "ext-z"); !errors.Is(err, ErrChosenCandidateInvalid) {
+	if _, err := svc.CreateTaskByURLWithChoice(ctx, "http://x/1", "pub-a", "ext-z", false); !errors.Is(err, ErrChosenCandidateInvalid) {
 		t.Fatalf("扩展点键不匹配候选集应报 ErrChosenCandidateInvalid，得到 %v", err)
 	}
 	if getter.calls != 0 || handlerA.createCalls != 0 || handlerB.createCalls != 0 {

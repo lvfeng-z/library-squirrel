@@ -26,13 +26,16 @@ const props = withDefaults(defineProps<{
 
 // 事件
 const emits = defineEmits<{
-  (e: 'confirm', candidate: PluginCandidate): void
+  (e: 'confirm', candidate: PluginCandidate, remember: boolean): void
   (e: 'cancel'): void
 }>()
 
 // 变量
 // 选中项下标（候选清单内位置，不参与重排）
 const selectedIndex: Ref<number> = ref(0)
+// 「记住此选择」勾选态：每次打开默认勾选（本次不勾选只影响本次不写入，不清除既有记忆）；
+// 确认时随选中候选一并带出，写入时机与作用面由调用方决定
+const rememberChoice: Ref<boolean> = ref(true)
 // 确认关闭标记：确认已带出选择，随后的关闭事件不再上报取消
 let confirmed = false
 
@@ -48,17 +51,19 @@ function candidateName(candidate: PluginCandidate): string {
   return isNotBlank(candidate.pluginName) ? candidate.pluginName : candidate.pluginPublicId
 }
 
-// 每次打开重置选中的候选（首位即默认选中项）与确认标记：连续询问多组时确认后随即再次打开，
-// 关闭事件的到达可能落在再次打开之后，标记一律在打开时清零
+// 每次打开重置选中的候选（首位即默认选中项）、「记住此选择」勾选态（默认勾选）与确认
+// 标记：连续询问多组时确认后随即再次打开，关闭事件的到达可能落在再次打开之后，标记一律
+// 在打开时清零
 watch(state, (visible) => {
   if (!visible) {
     return
   }
   selectedIndex.value = 0
+  rememberChoice.value = true
   confirmed = false
 })
 
-// 确认：带出选中候选并关闭
+// 确认：带出选中候选与「记住此选择」勾选态并关闭
 function handleConfirm() {
   const candidate = selectedCandidate.value
   if (isNullish(candidate)) {
@@ -66,7 +71,7 @@ function handleConfirm() {
   }
   confirmed = true
   state.value = false
-  emits('confirm', candidate)
+  emits('confirm', candidate, rememberChoice.value)
 }
 
 // 取消：仅关闭，由调用方收口（不重发）
@@ -112,6 +117,15 @@ function handleClosed() {
         >{{ candidate.extensionId }}</span>
       </el-radio>
     </el-radio-group>
+    <div class="plugin-candidate-select-remember">
+      <el-checkbox v-model="rememberChoice">
+        记住此选择
+      </el-checkbox>
+      <span
+        v-if="rememberChoice"
+        class="plugin-candidate-select-remember-tip"
+      >记住后同站点相同候选不再询问，可在 设置 → 记住的选择 中清除</span>
+    </div>
     <template #footer>
       <el-button @click="handleCancel">
         取消
@@ -155,6 +169,17 @@ function handleClosed() {
 /* 扩展点标识：同插件多扩展点分列候选时供区分 */
 .plugin-candidate-select-extension {
   margin-left: 8px;
+  font-size: 12px;
+  color: var(--app-text-secondary);
+}
+
+/* 「记住此选择」勾选行：勾选框与清除入口提示同行排布 */
+.plugin-candidate-select-remember {
+  margin-top: 4px;
+}
+
+.plugin-candidate-select-remember-tip {
+  margin-left: 4px;
   font-size: 12px;
   color: var(--app-text-secondary);
 }

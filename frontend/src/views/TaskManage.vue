@@ -107,19 +107,22 @@ function createTaskFromSource() {
   sourceUrl.value = ''
   // 移除url支持情况文本
   supportStatus.value = ''
-  void createTaskByUrlWithChoice(url, '', '', notificationId)
+  void createTaskByUrlWithChoice(url, '', '', false, notificationId)
 }
 
 // 显选键（插件公开 ID 与扩展点 ID）均空 = 未显选；响应为冲突载荷时后端未调用任何插件，
-// 转为弹插件选择器、由用户点名后带两键重发；单候选时后端不返回冲突，不会弹选择器
+// 转为弹插件选择器、由用户点名后带两键重发；单候选时后端不返回冲突，不会弹选择器。
+// remember 为弹窗「记住此选择」勾选态：显选路由成功后把该选择落进粘性记忆，同站点相同
+// 候选组合的后续冲突按记忆直接路由不再询问（未显选首发恒为 false）
 async function createTaskByUrlWithChoice(
   url: string,
   chosenPluginPublicId: string,
   chosenExtensionId: string,
+  remember: boolean,
   notificationId: string
 ) {
   try {
-    const response = await taskApi.taskCreateByUrl(url, chosenPluginPublicId, chosenExtensionId)
+    const response = await taskApi.taskCreateByUrl(url, chosenPluginPublicId, chosenExtensionId, remember)
     const data = response.data
     taskListRef.value.doSearch()
     if (data.conflict) {
@@ -143,14 +146,14 @@ async function createTaskByUrlWithChoice(
   }
 }
 
-// 选择器确认：带插件与扩展点两键重发（联合定位用户点名的扩展点候选）
-function handlePluginChosen(candidate: PluginCandidate) {
+// 选择器确认：带插件与扩展点两键及「记住此选择」勾选态重发（联合定位用户点名的扩展点候选）
+function handlePluginChosen(candidate: PluginCandidate, remember: boolean) {
   if (isNullish(pendingCreate)) {
     return
   }
   const pending = pendingCreate
   pendingCreate = null
-  void createTaskByUrlWithChoice(pending.url, candidate.pluginPublicId, candidate.extensionId, pending.notificationId)
+  void createTaskByUrlWithChoice(pending.url, candidate.pluginPublicId, candidate.extensionId, remember, pending.notificationId)
 }
 
 // 选择器取消：不重发、不视为创建失败，冲突挂起的通知按已取消收口

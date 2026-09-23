@@ -51,7 +51,7 @@ func TestQueryWithWorkTaskJoin(t *testing.T) {
 	}
 	wtStore := newTestWorkTaskStore(db)
 	repo := NewRepository(db, wtStore, wtStore)
-	svc := NewService(repo, &testTransactor{db: db}, nil, nil, nil, nil)
+	svc := NewService(repo, &testTransactor{db: db}, nil, nil, nil, nil, nil)
 	ctx := context.Background()
 
 	// 站点种子（work_task.site_id 外键防线）

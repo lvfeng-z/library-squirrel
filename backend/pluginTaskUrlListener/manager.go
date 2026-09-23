@@ -2,6 +2,7 @@ package pluginTaskUrlListener
 
 import (
 	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/library-squirrel/backend/base/model"
@@ -14,6 +15,7 @@ type PluginWithExtension struct {
 	*domain.Plugin
 	ExtensionKey string // 贡献点类型
 	ExtensionID  string // 贡献点ID
+	SiteKey      string // 条目声明的站点域（清单 workFetch[].siteKey，登记时去首尾空白；缺省空 = 消费方按任务 URL host 兜底判定站点域）
 }
 
 // Manager URL 监听派生索引：激活期按清单作品拉取条目的 urlPatterns 登记，
@@ -60,6 +62,7 @@ func (m *Manager) ListListener(url string) []*PluginWithExtension {
 
 // RegisterDeclared 按清单声明的作品拉取条目登记派生索引：条目键 = 插件公开 ID + 条目 id
 // 复合键，逐条目的 urlPatterns 各模式入索引；未声明 urlPatterns 的条目不监听、跳过。
+// 条目声明的站点域（siteKey）随候选存入，任务面在候选上直接可读、无需回查清单。
 func (m *Manager) RegisterDeclared(plugin *domain.Plugin, handlers []dto.WorkFetchDeclaration) {
 	if plugin == nil {
 		return
@@ -91,6 +94,7 @@ func (m *Manager) RegisterDeclared(plugin *domain.Plugin, handlers []dto.WorkFet
 					Plugin:       plugin,
 					ExtensionKey: string(model.ExtensionTypeWorkFetch),
 					ExtensionID:  handler.ID,
+					SiteKey:      strings.TrimSpace(handler.SiteKey),
 				})
 			}
 		}

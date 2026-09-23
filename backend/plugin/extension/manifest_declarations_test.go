@@ -110,6 +110,45 @@ func TestApplyManifestDeclarationsCarriesPackages(t *testing.T) {
 	}
 }
 
+// TestParseManifestWithoutSiteKey 老清单（workFetch 条目未声明 siteKey）解析照常：
+// 条目其余字段逐项可达，siteKey 缺省空串——可选字段不构成兼容性变化
+func TestParseManifestWithoutSiteKey(t *testing.T) {
+	const legacyManifest = `{
+  "id": "com.example.plugin_a",
+  "name": "插件甲",
+  "version": "1.0.0",
+  "contractVersion": 12,
+  "extensions": {
+    "workFetch": [
+      {"id": "main", "name": "主处理器", "options": ["workOrderQuery"], "urlPatterns": ["^https://www\\.example\\.com/"]}
+    ]
+  },
+  "activation": {"type": 1},
+  "entryFile": "plugin.exe"
+}`
+
+	manifest := parseManifest(t, legacyManifest)
+	if len(manifest.Extensions.WorkFetch) != 1 {
+		t.Fatalf("workFetch 条目数 = %d, 期望 1", len(manifest.Extensions.WorkFetch))
+	}
+	handler := manifest.Extensions.WorkFetch[0]
+	if handler.ID != "main" || handler.Name != "主处理器" ||
+		!slices.Equal(handler.Options, []string{CapabilityWorkOrderQuery}) ||
+		!slices.Equal(handler.UrlPatterns, []string{`^https://www\.example\.com/`}) {
+		t.Errorf("老清单条目基础字段应照常解析, 实际 %+v", handler)
+	}
+	if handler.SiteKey != "" {
+		t.Errorf("未声明 siteKey 的老清单应缺省空串, 实际 %q", handler.SiteKey)
+	}
+
+	// 激活期声明套用走整切片直赋，老清单条目在内存结构中同样可达
+	info := &PluginInfo{PublicID: "com.example.plugin_a"}
+	ApplyManifestDeclarations(info, manifest)
+	if len(info.WorkFetch) != 1 || info.WorkFetch[0].SiteKey != "" {
+		t.Errorf("激活期内存结构中老清单条目 siteKey 应缺省空串, 实际 %+v", info.WorkFetch)
+	}
+}
+
 // TestDeriveCapabilitiesMatchesLegacyDeclaration 对照组：旧声明面（顶层 capabilities 段）与新声明面
 // （extensions 内）描述同一插件时，激活期内存结构派生出的可选能力集合一致。
 // 该断言锚定的是声明面迁移的映射忠实性——siteAuthorFetch 段在场对应旧 siteAuthorFetch 能力、

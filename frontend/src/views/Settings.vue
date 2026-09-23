@@ -4,15 +4,16 @@ import { computed, nextTick, onBeforeMount, onBeforeUnmount, onMounted, Ref, ref
 import { useRoute, useRouter } from 'vue-router'
 import lodash from 'lodash'
 import ApiUtil from '@renderer/utils/ApiUtil.ts'
-import { arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
+import { arrayIsEmpty, arrayNotEmpty, isNullish, notNullish } from '@renderer/utils/CommonUtil.ts'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ResFileNameFormatEnum from '@renderer/constants/ResFileNameFormatEnum.ts'
 import HighlightRing from '@renderer/components/common/HighlightRing.vue'
 import { useTourTargets } from '@renderer/composables/useTourTargets'
 import { useTourCenterStore } from '@renderer/store/UseTourCenterStore'
-import { settingsApi, fileSysUtilApi, fsmonitorApi, workdirGuardApi } from '@renderer/apis/http'
+import { settingsApi, fileSysUtilApi, fsmonitorApi, workdirGuardApi, stickyMemoryApi } from '@renderer/apis/http'
 import { shareProtocolStatus, shareUnregisterProtocol } from '@renderer/apis/http/wrappers/share'
 import type { ShareProtocolRegStatus } from '@bindings/github.com/library-squirrel/backend/share/models'
+import type { StickyMemoryEntryDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import type { Settings } from '@bindings/github.com/library-squirrel/backend/settings/models'
 import { emptySettings } from '@renderer/model/util/Settings.js'
 import { useThemeStore } from '@renderer/store/UseThemeStore.ts'
@@ -26,6 +27,7 @@ import type { GuardInfoResponse } from '@bindings/github.com/library-squirrel/ba
 onBeforeMount(() => {
   loadSettings()
   void loadProtocolStatus()
+  void loadStickyMemories()
 })
 
 // 变量
@@ -100,6 +102,45 @@ async function handleUnregisterProtocol(): Promise<void> {
 }
 // 导出文件命名格式对话框开关
 const exportFileNameFormatDialogState: Ref<boolean> = ref(false)
+// 记住的选择（粘性记忆管理列表：多插件冲突时记住的显选，只删除不编辑；删除后同冲突自然重新询问）
+const stickyMemories: Ref<StickyMemoryEntryDTO[]> = ref([])
+// 加载记住的选择列表（设置页挂载时拉取；加载失败提示错误不阻塞其余设置项）
+async function loadStickyMemories(): Promise<void> {
+  try {
+    const response = await stickyMemoryApi.stickyMemoryListMemories()
+    stickyMemories.value = response.data
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  }
+}
+// 删除一条记住的选择（删除后即时刷新列表）
+async function deleteStickyMemory(id: number): Promise<void> {
+  try {
+    await stickyMemoryApi.stickyMemoryDeleteMemory(id)
+    await loadStickyMemories()
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  }
+}
+// 候选名单摘要：各候选条目展示名以顿号连接（展示名后端已解析，插件未加载时为条目 id）
+function stickyMemoryCandidateSummary(entry: StickyMemoryEntryDTO): string {
+  return entry.candidates
+    .filter(notNullish)
+    .map((candidate) => candidate.displayName)
+    .join('、')
+}
+// 当前选中者展示名（后端解析失败或行缺失时回落横杠占位）
+function stickyMemorySelectedName(entry: StickyMemoryEntryDTO): string {
+  const selected = entry.selected
+  if (isNullish(selected)) {
+    return '—'
+  }
+  return isNotBlank(selected.displayName) ? selected.displayName : '—'
+}
+// 记住时间（本地化展示）
+function stickyMemoryTime(timestamp: number): string {
+  return timestamp > 0 ? new Date(timestamp).toLocaleString() : '—'
+}
 // 路由实例
 const router = useRouter()
 const route = useRoute()
@@ -431,6 +472,10 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
             <el-anchor-link
               href="#pluginSettings"
               title="插件"
+            />
+            <el-anchor-link
+              href="#stickyMemorySettings"
+              title="记住的选择"
             />
             <el-anchor-link
               href="#recycleBinSettings"
@@ -926,6 +971,43 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                   </div>
                 </div>
               </div>
+              <div id="stickyMemorySettings">
+              <el-text class="settings-section-title">
+                记住的选择
+              </el-text>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">插件冲突的选择记忆</span>
+                  </div>
+                  <div
+                    v-for="entry in stickyMemories"
+                    :key="entry.id"
+                    class="settings-sticky-memory-row"
+                  >
+                    <span class="settings-sticky-memory-domain">{{ entry.domainLabel }}</span>
+                    <span class="settings-sticky-memory-site">{{ entry.siteDomain }}</span>
+                    <span class="settings-sticky-memory-candidates">候选：{{ stickyMemoryCandidateSummary(entry) }}</span>
+                    <span class="settings-sticky-memory-selected">当前使用：{{ stickyMemorySelectedName(entry) }}</span>
+                    <span class="settings-sticky-memory-time">{{ stickyMemoryTime(entry.updateTime) }}</span>
+                    <el-button
+                      type="danger"
+                      class="tone-fail"
+                      size="small"
+                      @click="deleteStickyMemory(entry.id)"
+                    >
+                      删除
+                    </el-button>
+                  </div>
+                  <el-text
+                    v-if="arrayIsEmpty(stickyMemories)"
+                    type="info"
+                    size="small"
+                    class="settings-sticky-memory-empty"
+                  >
+                    暂无记住的选择
+                  </el-text>
+                </div>
+              </div>
               <div id="recycleBinSettings">
               <el-text class="settings-section-title">
                 回收站
@@ -1269,6 +1351,35 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
   font-size: var(--el-font-size-medium);
   font-weight: 500;
   color: var(--app-text-regular);
+}
+/* 记住的选择列表行：域标签 + 站点域 + 候选摘要 + 当前选中者 + 记住时间 + 删除按钮，
+   窄容器下允许折行（候选摘要可能较长） */
+.settings-sticky-memory-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 6px 0;
+}
+.settings-sticky-memory-domain {
+  font-weight: 500;
+  color: var(--app-text-primary);
+}
+.settings-sticky-memory-site,
+.settings-sticky-memory-candidates,
+.settings-sticky-memory-selected,
+.settings-sticky-memory-time {
+  font-size: 13px;
+  color: var(--app-text-regular);
+}
+.settings-sticky-memory-time {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--app-text-secondary);
+}
+.settings-sticky-memory-empty {
+  display: block;
+  padding: 6px 0;
 }
 .export-file-name-format-button {
   margin-bottom: 10px;

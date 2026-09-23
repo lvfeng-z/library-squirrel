@@ -89,6 +89,31 @@ func TestRegisterDeclaredMultiPatternSingleEntry(t *testing.T) {
 	}
 }
 
+// TestRegisterDeclaredCarriesSiteKey 条目声明的站点域（siteKey）随候选入派生索引：
+// ListListener 产出上直接可读，登记时去首尾空白；未声明的条目缺省空串
+func TestRegisterDeclaredCarriesSiteKey(t *testing.T) {
+	m := NewManager()
+	m.RegisterDeclared(declaredPlugin("com.example.a", "插件A"), []dto.WorkFetchDeclaration{
+		{ID: "main", Name: "主处理器", SiteKey: " pixiv ", UrlPatterns: []string{"^https://x\\.com/"}},
+	})
+
+	got := m.ListListener("https://x.com/1")
+	if len(got) != 1 {
+		t.Fatalf("应命中一个候选, 实际 %+v", got)
+	}
+	if got[0].SiteKey != "pixiv" {
+		t.Errorf("候选 siteKey = %q, 期望 pixiv（登记时去首尾空白）", got[0].SiteKey)
+	}
+
+	m.RegisterDeclared(declaredPlugin("com.example.b", "插件B"), []dto.WorkFetchDeclaration{
+		{ID: "main", Name: "主处理器", UrlPatterns: []string{"^https://y\\.com/"}}, // 未声明 siteKey
+	})
+	gotB := m.ListListener("https://y.com/1")
+	if len(gotB) != 1 || gotB[0].SiteKey != "" {
+		t.Fatalf("未声明 siteKey 的条目应缺省空串, 实际 %+v", gotB)
+	}
+}
+
 // TestUnregisterClearsPluginEntries 整插件注销清空其全部条目（卸载/崩溃清理路径），
 // 其他插件的条目不受影响；条目级精细注销只摘对应条目
 func TestUnregisterClearsPluginEntries(t *testing.T) {

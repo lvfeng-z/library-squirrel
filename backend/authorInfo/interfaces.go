@@ -88,3 +88,16 @@ type WorkDirProvider interface {
 type Transactor interface {
 	ExecInTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
+
+// DisambiguationMemory 拉取候选冲突显选的粘性记忆窄接口（stickymemory.Service 实现）：
+// 手动拉取面同站点多候选冲突时取回用户上次的显选（命中即直接路由不再询问），显选方随
+// 「记住此选择」勾选且拉取成功后记入。记忆是消歧优化而非正确性依赖——读取未命中（含
+// 读取失败）即回落冲突询问，写入失败不影响拉取结果。读写均只在手动交互路径发生：
+// 自动触发面不做冲突检测，既不查询也不写入
+type DisambiguationMemory interface {
+	// Remember 记住一次显选（upsert 幂等）：domain 为记忆域常量，contextKey 为站点域与
+	// 候选组合的编码串，value 为显选候选全键
+	Remember(ctx context.Context, domain, contextKey, value string) error
+	// Recall 按域与上下文键取回显选值，命中返回 (显选候选全键, true)
+	Recall(ctx context.Context, domain, contextKey string) (string, bool)
+}

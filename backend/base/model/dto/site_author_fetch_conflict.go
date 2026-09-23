@@ -18,4 +18,8 @@ type SiteAuthorFetchChoice struct {
 	SiteKey        string `json:"siteKey"`
 	PluginPublicId string `json:"pluginPublicId"`
 	ExtensionId    string `json:"extensionId"`
+	// Remember 记住此选择（冲突弹窗勾选态随显选带回）：该站点本次拉取成功后把显选落
+	// 粘性记忆，同站点同候选组合的后续冲突按记忆直接路由不再询问；缺省 false 不落表。
+	// 仅手动交互面携带本字段——自动触发面不经冲突显选，恒不写记忆
+	Remember bool `json:"remember"`
 }

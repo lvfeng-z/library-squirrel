@@ -34,6 +34,8 @@ export {
     SiteTagDTO,
     SiteTagFullDTO,
     SiteTagLocalRelateDTO,
+    StickyMemoryCandidateDTO,
+    StickyMemoryEntryDTO,
     TaskProgressDTO,
     TaskProgressTreeDTO,
     TreeDataPageDTO,

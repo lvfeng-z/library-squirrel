@@ -51,7 +51,7 @@ func TestDeleteTaskCleansStagingDirs(t *testing.T) {
 	workDir := t.TempDir()
 	wtStore := newTestWorkTaskStore(db)
 	repo := NewRepository(db, wtStore, wtStore)
-	svc := NewService(repo, &testTransactor{db: db}, nil, nil, nil, func() string { return workDir })
+	svc := NewService(repo, &testTransactor{db: db}, nil, nil, nil, func() string { return workDir }, nil)
 
 	newTask := func(name string, pid int64) *domain.Task {
 		tk := domain.NewTask()
@@ -113,7 +113,7 @@ func TestDeleteTaskClearsResourceTaskId(t *testing.T) {
 	}
 	wtStore := newTestWorkTaskStore(db)
 	repo := NewRepository(db, wtStore, wtStore)
-	svc := NewService(repo, &testTransactor{db: db}, nil, nil, nil, nil)
+	svc := NewService(repo, &testTransactor{db: db}, nil, nil, nil, nil, nil)
 
 	// 主任务 + 子任务 + 对照组任务（各配同 id 作品领域行——resource.task_id 引用防线）
 	newSeededTask := func(name string, pid int64) *domain.Task {
@@ -249,7 +249,7 @@ func newDeleteOrchestrationEnv(t *testing.T) (*Service, *fakeRunningStopper, *do
 	}
 	wtStore := newTestWorkTaskStore(db)
 	repo := NewRepository(db, wtStore, wtStore)
-	svc := NewService(repo, &testTransactor{db: db}, nil, nil, nil, nil)
+	svc := NewService(repo, &testTransactor{db: db}, nil, nil, nil, nil, nil)
 	stopper := &fakeRunningStopper{}
 	svc.SetRunningStopper(stopper)
 

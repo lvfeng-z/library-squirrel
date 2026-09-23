@@ -358,12 +358,15 @@ function askNextConflictGroup() {
   pluginSelectCandidates.value = group.candidates.filter(notNullish)
   pluginSelectState.value = true
 }
-// 选择器确认：记下本组站点键的显选来源（插件与条目两键联合定位一个候选条目），继续问下一组站点
-function handlePluginChosen(candidate: PluginCandidate) {
+// 选择器确认：记下本组站点键的显选来源（插件与条目两键联合定位一个候选条目），继续问下一组
+// 站点；remember 为弹窗「记住此选择」勾选态（每次打开默认勾选），随本站点显选逐条带回——
+// 该站点拉取成功后落粘性记忆，同站点相同候选组合不再询问
+function handlePluginChosen(candidate: PluginCandidate, remember: boolean) {
   pendingFetchChoices.push(new SiteAuthorFetchChoice({
     siteKey: pluginSelectSiteKey,
     pluginPublicId: candidate.pluginPublicId,
-    extensionId: candidate.extensionId
+    extensionId: candidate.extensionId,
+    remember
   }))
   askNextConflictGroup()
 }

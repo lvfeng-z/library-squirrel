@@ -138,7 +138,8 @@ type WorkFetchDeclaration struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"` // 显示名（派生注册表元数据的唯一源）
 	Description string   `json:"description,omitempty"`
-	Options     []string `json:"options,omitempty"`     // 本条目启用的可选方法组（内置枚举见 extension 包 Capability* 常量）
+	Options     []string `json:"options,omitempty"` // 本条目启用的可选方法组（内置枚举见 extension 包 Capability* 常量）
+	SiteKey     string   `json:"siteKey,omitempty"` // 条目声明的站点域（可选自由串，无枚举校验，约定复用身份域站点串；缺省或同批候选间不一致时，站点域判定退任务 URL host 兜底）
 	UrlPatterns []string `json:"urlPatterns,omitempty"` // URL 监听模式（正则模式串数组；匹配的 URL 创建任务时路由到本条目，缺省=不监听）
 }
 

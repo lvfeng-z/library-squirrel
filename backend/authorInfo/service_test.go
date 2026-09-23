@@ -232,6 +232,8 @@ type fetchTestEnv struct {
 	saSvc    *siteAuthor.Service
 	laSvc    *localAuthor.Service
 	trace    *orderTrace
+	// memory 粘性记忆替身（手动面冲突显选的读写断言载体）
+	memory *recordingMemory
 }
 
 func newFetchTestEnv(t *testing.T) *fetchTestEnv {
@@ -252,6 +254,7 @@ func newFetchTestEnv(t *testing.T) *fetchTestEnv {
 	laSvc := localAuthor.NewService(localAuthor.NewRepository(db), &txTransactor{db: db}, nil, nil, nil)
 	psSvc := persistentStore.NewService(persistentStore.NewRepository(db), nil, func() string { return workDir })
 	trace := &orderTrace{}
+	memory := newRecordingMemory(nil)
 	fetcher := &scriptedFetcher{
 		plan: map[string]fetchScript{},
 		candidatesBySite: map[string][]*dto.PluginCandidate{
@@ -259,9 +262,9 @@ func newFetchTestEnv(t *testing.T) *fetchTestEnv {
 		},
 		trace: trace,
 	}
-	svc := NewService(&tracingSiteAuthorStore{Service: saSvc, trace: trace}, laSvc, psSvc, psSvc, settingsSvc, settingsSvc, &txTransactor{db: db})
+	svc := NewService(&tracingSiteAuthorStore{Service: saSvc, trace: trace}, laSvc, psSvc, psSvc, settingsSvc, settingsSvc, &txTransactor{db: db}, memory)
 	svc.SetSiteAuthorFetcher(fetcher)
-	return &fetchTestEnv{svc: svc, db: db, workDir: workDir, settings: settingsSvc, fetcher: fetcher, saSvc: saSvc, laSvc: laSvc, trace: trace}
+	return &fetchTestEnv{svc: svc, db: db, workDir: workDir, settings: settingsSvc, fetcher: fetcher, saSvc: saSvc, laSvc: laSvc, trace: trace, memory: memory}
 }
 
 // fetchChoice 构造单站点显选键（extensionId 空串 = 条目键缺省，由编排侧按候选集解析）
@@ -543,7 +546,7 @@ func TestCommitIngestRollsBackStoreRowWhenRefUpdateFails(t *testing.T) {
 	wrapped := &refFailingSiteAuthorStore{Service: env.saSvc, failRefUpdate: true}
 	svc := NewService(wrapped, env.laSvc, persistentStore.NewService(persistentStore.NewRepository(env.db), nil, func() string { return env.workDir }),
 		persistentStore.NewService(persistentStore.NewRepository(env.db), nil, func() string { return env.workDir }),
-		env.settings, env.settings, &txTransactor{db: env.db})
+		env.settings, env.settings, &txTransactor{db: env.db}, env.memory)
 	svc.SetSiteAuthorFetcher(env.fetcher)
 
 	newRel := "store/avatar/site/2e/pixiv_12345.jpg"

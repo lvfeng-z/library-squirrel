@@ -30,7 +30,8 @@ site_author/local_author 元数据与引用列写入、persistentStore 入库事
   上限）→ persistentStore 四调用入库（撤回处置恒丢弃）→ 业务事务内建 store 行 + 同事务写
   `site_author.avatar_store_id` → 作用域回收。
 - **能力广播路由**：候选=声明 `extensions.siteAuthorFetch` 条目、且该条目 `sites` 含本次请求站点键、插件有可用服务客户端的 (插件, 条目) 对（条目级消费面，候选粒度=条目）。候选在发现侧即按站点归属收窄，故**候选集恒等于归属集**，插件不自判归属、「调用后才知不归属」态不复存在。经 `backend/route` 基座按候选全键（插件公开 ID 与条目 id 的 NUL 拼接）字典序逐个调用（拉取请求携带候选条目 id，插件侧按条目分派），命中一个即止、任一候选失败即终止并点名候选（单极，无不适配顺延）；零候选单态收口报「无插件覆盖该站点」（实现在 plugin/extension 的 `site_author_fetcher.go`）。
-- **候选冲突前置检测**：两个手动拉取入口在任何插件调用之前先经 `resolveFetchSelection` 做冲突检测与显选解析——候选按站点收窄，故须**先解析目标行拿站点键**再做检测；按本次触发的站点键逐站枚举候选，未显选且该站点候选 ≥2 即记一组冲突（同站点只记一组，返回冲突载荷且未调用任何插件），显选键（插件公开 ID + 条目 id 两键）解析为该站点候选集内的具体条目——条目 id 缺省时该插件在候选集内须恰有一个条目（单实例插件显选补全为该条目），未命中或无法定位报 `ErrChosenPluginInvalid`。批量拉取**按站点分组整批问一次**（非逐作者问）。候选清单经 `SiteAuthorFetcher.ListSiteAuthorFetchCandidates` 枚举面取得（按候选全键字典序，首位即默认选中项；展示名=「插件名 · 条目名」）。
+- **候选冲突前置检测**：两个手动拉取入口在任何插件调用之前先经 `resolveFetchSelection` 做冲突检测与显选解析——候选按站点收窄，故须**先解析目标行拿站点键**再做检测；按本次触发的站点键逐站枚举候选，未显选且该站点候选 ≥2 时先查**冲突显选粘性记忆**（域=作者拉取消歧、站点域=站点键、候选组合=候选全键字典序）：命中且记住的候选仍在当前候选集内即按记忆值补全为条目级显选直接路由（不记冲突），未命中或候选不在场才记一组冲突（同站点只记一组，返回冲突载荷且未调用任何插件），显选键（插件公开 ID + 条目 id 两键）解析为该站点候选集内的具体条目——条目 id 缺省时该插件在候选集内须恰有一个条目（单实例插件显选补全为该条目），未命中或无法定位报 `ErrChosenPluginInvalid`。批量拉取**按站点分组整批问一次**（非逐作者问）。候选清单经 `SiteAuthorFetcher.ListSiteAuthorFetchCandidates` 枚举面取得（按候选全键字典序，首位即默认选中项；展示名=「插件名 · 条目名」）。
+- **冲突显选粘性记忆（仅手动面）**：显选携带「记住此选择」勾选（`SiteAuthorFetchChoice.Remember`）且该站点拉取成功后把显选落记忆（键与读取点同构、值=显选候选全键；粒度=站点级）；未勾选或拉取失败不写。自动触发面不做冲突检测，既不查询也不写入记忆。
 - **两触发面共用在途去重**：mutex + map 的作者 DB ID 集合；在途时再次手动拒绝（409）、批量记
   跳过、自动触发静默跳过。开关 `authorSettings.autoFetchInfo`（默认开）只控制自动触发面。
 - **失败语义**：meta 回写与资源落库各自独立成功（头像缺省是合法态）；流中断/入库失败不留
@@ -51,7 +52,8 @@ site_author/local_author 元数据与引用列写入、persistentStore 入库事
   siteAuthor（`SiteAuthorStore`：目标行 JOIN site 反查 / 元数据回写 upsert / 引用列更新）、
   localAuthor（`LocalAuthorStore`：行查询 / 引用列更新）、persistentStore（`StoreIngestor` 四
   调用入库 + `AvatarStoreOps` 行查询与事务内物理删）、settings（`AuthorFetchSettings` 开关 +
-  `WorkDirProvider`）、database 事务执行器、staging（`OwnerAuthorInfo` 作用域）、storeRegistry
+  `WorkDirProvider`）、stickymemory（`DisambiguationMemory`：手动面冲突显选的记忆读写）、
+  database 事务执行器、staging（`OwnerAuthorInfo` 作用域）、storeRegistry
   （文件删除的操作抑制登记）。
 - 被依赖：work（入库后自动触发面）、siteAuthor / localAuthor（删除联动 `AvatarFileCleaner`）、
   前端站点作者管理页（手动拉取入口）与本地作者管理页（头像导入/移除入口，前端展示属后续阶段）。

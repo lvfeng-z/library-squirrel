@@ -60,6 +60,7 @@ import (
 	"github.com/library-squirrel/backend/siteBrowser"
 	"github.com/library-squirrel/backend/siteTag"
 	"github.com/library-squirrel/backend/staging"
+	"github.com/library-squirrel/backend/stickymemory"
 	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/tagNamespace"
 	"github.com/library-squirrel/backend/task"
@@ -109,6 +110,7 @@ type App struct {
 	SiteBrowserService      *siteBrowser.Service
 	PersistentStoreService  *persistentStore.Service
 	AuthorInfoService       *authorInfo.Service
+	StickyMemoryService     *stickymemory.Service
 	ExportService           *export.Service
 	ShareService            *share.Service
 	ShareLockRegistry       shareLock.ShareLockRegistry
@@ -177,6 +179,7 @@ type App struct {
 	FrontendLogHandler           *frontendLog.Handler
 	PluginHandler                *plugin.Handler
 	PluginSettingHandler         *plugin.SettingHandler
+	StickyMemoryHandler          *stickymemory.Handler
 	TaskHandler                  *task.Handler
 	TaskManagerHandler           *taskManager.Handler
 	FrontendExtensionHandler     *extension2.FrontendExtensionHandler
@@ -758,6 +761,10 @@ func (app *App) initBaseServices() {
 	settingsFilePath := filepath.Join(rootPath, "config/settings.json")
 	app.SettingsService = settings.NewService(settingsFilePath)
 
+	// 粘性记忆服务（交互冲突面显选的记/取；authorInfo 手动拉取面与 task 任务 URL 创建面
+	// 共用同一实例，后续冲突面按同接口接入）
+	app.StickyMemoryService = stickymemory.NewService(stickymemory.NewRepository(app.db))
+
 	// authorInfo 服务（作者个人信息编排：site 侧拉取主链元数据回写+头像四调用入库、local 侧
 	// 头像导入/移除、作者删除联动头像清理）。拉取能力桥依赖插件加载器，经 SetSiteAuthorFetcher
 	// 在插件装配段延迟注入
@@ -769,6 +776,7 @@ func (app *App) initBaseServices() {
 		app.SettingsService,        // AuthorFetchSettings
 		app.SettingsService,        // WorkDirProvider
 		&dbTransactorAdapter{db: app.db},
+		app.StickyMemoryService, // DisambiguationMemory（手动拉取冲突显选的记忆读写）
 	)
 	// 删除联动接线：siteAuthor/localAuthor 删除编排经窄接口清理被删作者的头像行与文件
 	app.SiteAuthorService.SetAvatarFileCleaner(app.AuthorInfoService)
@@ -1090,6 +1098,9 @@ func (app *App) initAdvancedServices() error {
 	// share 收件任务领域行存取（ShareService 创建早于 task 仓储，此处回填）
 	app.ShareService.SetShareTaskStore(app.shareTaskRepo)
 
+	// 粘性记忆服务已在 initBaseServices 建立（authorInfo 手动拉取面先消费），任务 URL 创建面共用
+	stickyMemorySvc := app.StickyMemoryService
+
 	// task 服务（依赖 WorkFetchRegistry 作为 WorkFetchProvider）
 	app.TaskService = task.NewService(
 		app.taskRepo,
@@ -1098,6 +1109,7 @@ func (app *App) initAdvancedServices() error {
 		app.PluginTaskUrlListenerSvc,
 		app.SiteService,
 		app.SettingsService.GetWorkDir, // 删除链清理下载暂存目录取 workDir（空串容忍跳过）
+		stickyMemorySvc,                // 交互面消歧记忆（冲突免问直路由）
 	)
 
 	// taskManager 服务
@@ -1536,6 +1548,8 @@ func (app *App) initHandlers() {
 	app.FrontendLogHandler = frontendLog.NewHandler(app.FrontendLogService)
 	app.PluginHandler = plugin.NewHandler(app.PluginService)
 	app.PluginSettingHandler = plugin.NewSettingHandler(app.PluginSettingService)
+	// 粘性记忆管理面：列表展示的候选显示名从插件加载器的清单条目声明解析（插件未加载回落原始 id）
+	app.StickyMemoryHandler = stickymemory.NewHandler(app.StickyMemoryService, app.pluginLoader)
 	app.TaskHandler = task.NewHandler(app.TaskService)
 	// 板块重执行选择写行（download 提供；重下载 handler 两步编排的第一步——父任务请求展开到全部子成员）
 	app.TaskManagerHandler = taskManager.NewHandler(app.TaskManagerService,

@@ -103,6 +103,18 @@ type ActivePluginLister interface {
 	ListActivePlugins() []ActivePlugin
 }
 
+// WorkFetchEntries 返回插件声明的作品拉取条目清单（各条目 id/name 原样；未加载/未声明
+// 该段返回 nil）。消费方只读使用，不改动返回切片
+func (l *Loader) WorkFetchEntries(pluginPublicId string) []dto.WorkFetchDeclaration {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	entry, ok := l.processes[pluginPublicId]
+	if !ok || entry.info == nil {
+		return nil
+	}
+	return entry.info.WorkFetch
+}
+
 // SiteAuthorFetchEntries 返回插件声明的站点作者拉取能力包条目清单（各条目 id/name/sites 原样；
 // 未加载/未声明该能力包返回 nil）。消费方只读使用，不改动返回切片
 func (l *Loader) SiteAuthorFetchEntries(pluginPublicId string) []dto.SiteAuthorFetchDeclaration {
