@@ -4,7 +4,12 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 )
 
-// ApiResponse 统一API响应格式（匹配前端 ApiResponse.ts）
+// ApiResponse 统一API响应格式（匹配前端 ApiResponse.ts）。
+// 语义单向不变量：Success 为 false ⇔ 纯失败——操作未达成，Msg 为用户可读原因，Data 无意义（恒零值，
+// 只经 Error/HandleError/HandleResult 构造，禁止手工构造携带 Data 的失败响应）；一切非失败的业务
+// 分支态（候选冲突待用户显选、批量逐条结果、降级成功）住 Success 为 true 的 Data 载荷内，由载荷
+// 自带标志表达。Msg 在成功时为附注说明（默认 "success"，降级/引导文案经 SuccessWithMsg），不承载
+// 调用方的分支判定
 type ApiResponse[T any] struct {
 	Success bool   `json:"success"` // 是否成功
 	Msg     string `json:"msg"`     // 消息
@@ -30,7 +35,7 @@ func SuccessWithMsg[T any](data T, msg string) *ApiResponse[T] {
 	}
 }
 
-// Error 错误响应
+// Error 错误响应（纯失败：Data 恒零值，与 ApiResponse 的单向不变量一致）
 func Error[T any](message string) *ApiResponse[T] {
 	var zero T
 	return &ApiResponse[T]{

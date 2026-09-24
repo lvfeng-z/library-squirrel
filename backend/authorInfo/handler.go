@@ -9,7 +9,8 @@ import (
 	"github.com/library-squirrel/backend/base/model/dto"
 )
 
-// siteAuthorFetchConflictMsg 候选冲突的引导文案（前端据此提示用户选择拉取来源后带显选键重发）。
+// siteAuthorFetchConflictMsg 候选冲突的引导文案，随冲突响应的 msg 附注下发（说明该响应处于
+// 冲突待显选态；前端冲突弹窗文案为组件自带，不读此值）。
 // 冲突既可能来自多个插件、也可能来自同一插件的多个作者源条目，文案取两态通用的「拉取来源」表述
 const siteAuthorFetchConflictMsg = "该作者信息可由多个拉取来源获取，请选择本次使用的来源"
 
@@ -23,14 +24,11 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// conflictResponse 候选冲突响应：Success=false + 引导文案，候选清单经数据载荷交回前端（按站点
-// 分组，同一站点恒一组）（与任务创建面的冲突响应同形：冲突不是失败，但按失败响应下发以复用前端提示面）
+// conflictResponse 候选冲突响应：外层成功 + 引导文案作 msg 附注，候选清单经数据载荷交回前端（按站点
+// 分组，同一站点恒一组）。冲突不是失败——与任务创建面的冲突响应同形（外层 success=true，冲突标志与
+// 候选清单都在数据载荷内），前端响应守门人正常放行，由调用方读载荷的 conflicts 分流
 func conflictResponse(resp *SiteAuthorFetchResponse) *model.ApiResponse[*SiteAuthorFetchResponse] {
-	return &model.ApiResponse[*SiteAuthorFetchResponse]{
-		Success: false,
-		Msg:     siteAuthorFetchConflictMsg,
-		Data:    resp,
-	}
+	return model.SuccessWithMsg(resp, siteAuthorFetchConflictMsg)
 }
 
 // FetchSiteAuthorInfo 手动拉取单个站点作者信息（前端行操作，loading 态由前端按调用挂起）。

@@ -4,29 +4,9 @@
  */
 
 import { Handler as AuthorInfoHandler, SiteAuthorFetchResponse } from '@bindings/github.com/library-squirrel/backend/authorInfo'
-import type { ApiResponse as WailsApiResponse } from '@bindings/github.com/library-squirrel/backend/base/model'
 import type { SiteAuthorFetchChoice } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import type { ApiResult } from '@renderer/apis/http/types'
 import { requireResponse } from '@renderer/apis/http/types'
-import { arrayIsEmpty, notNullish } from '@renderer/utils/CommonUtil.ts'
-
-// ========== 内部工具 ==========
-
-/**
- * 拉取响应收口：候选冲突态由后端以外层失败表达（msg 为引导语，未调用任何插件），
- * 而 requireResponse 遇失败即抛错并丢弃数据载荷，故冲突态把载荷原样交回调用方，
- * 由其弹出插件选择器后带显选键重发；其余形态照旧走 requireResponse。
- */
-function resolveFetchResponse(
-  response: WailsApiResponse<SiteAuthorFetchResponse | null> | null,
-  operation: string
-): ApiResult<SiteAuthorFetchResponse> {
-  const payload = response?.data
-  if (notNullish(payload) && !arrayIsEmpty(payload.conflicts?.filter(notNullish) ?? [])) {
-    return { success: true, msg: response?.msg ?? '', data: payload }
-  }
-  return requireResponse(response, operation)
-}
 
 // ========== API 方法 ==========
 
@@ -34,15 +14,15 @@ function resolveFetchResponse(
  * 手动拉取单个站点作者信息（行操作，loading 态由调用方挂起）
  *
  * chosenPlugins 为交互面显选（站点键 → 插件与条目两键联合定位一个候选条目，空 = 未显选）：
- * 候选按站点收窄，该站点候选多于一个且未显选时载荷的 conflicts 非空——至多一组，candidates
- * 为该站点的候选清单（插件 × 条目对，展示名为后端拼好的「插件名 · 条目名」全键展示名；
- * 首位即默认选中项，顺序由后端给定不再重排）
+ * 候选按站点收窄，该站点候选多于一个且未显选时响应为冲突态（外层成功，载荷的 conflicts 非空，
+ * 未调用任何插件）——至多一组，candidates 为该站点的候选清单（插件 × 条目对，展示名为后端拼好的
+ * 「插件名 · 条目名」全键展示名；首位即默认选中项，顺序由后端给定不再重排），由调用方读载荷分流
  */
 export async function authorInfoFetchSiteAuthorInfo(
   siteAuthorId: number,
   chosenPlugins: SiteAuthorFetchChoice[]
 ): Promise<ApiResult<SiteAuthorFetchResponse>> {
-  return resolveFetchResponse(
+  return requireResponse(
     await AuthorInfoHandler.FetchSiteAuthorInfo(siteAuthorId, chosenPlugins),
     '拉取站点作者信息'
   )
@@ -56,7 +36,7 @@ export async function authorInfoFetchSiteAuthorsInfo(
   siteAuthorIds: number[],
   chosenPlugins: SiteAuthorFetchChoice[]
 ): Promise<ApiResult<SiteAuthorFetchResponse>> {
-  return resolveFetchResponse(
+  return requireResponse(
     await AuthorInfoHandler.FetchSiteAuthorsInfo(siteAuthorIds, chosenPlugins),
     '批量拉取站点作者信息'
   )
