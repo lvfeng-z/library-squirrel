@@ -50,6 +50,9 @@ export const STATUS_REGISTRY: Record<string, StatusMeta> = {
   'plugin-activating': { key: 'plugin-activating', label: '激活中', category: 'plugin' },
   'plugin-active': { key: 'plugin-active', label: '运行中', category: 'plugin' },
   'plugin-stopping': { key: 'plugin-stopping', label: '停用中', category: 'plugin' },
+  // —— 插件声明条目参与度（管理页状态抽屉行内徽标：声明 = 清单条目，状态 = 真相层参与度） ——
+  'plugin-entry-active': { key: 'plugin-entry-active', label: '参与中', category: 'plugin' },
+  'plugin-entry-disabled': { key: 'plugin-entry-disabled', label: '已停用', category: 'plugin' },
   // —— 备份引用态（有主=被业务行引用，由回收站/插件流程管理；无主=可清理） ——
   'backup-referenced': { key: 'backup-referenced', label: '有主', category: 'backup' },
   'backup-orphaned': { key: 'backup-orphaned', label: '无主', category: 'backup' },

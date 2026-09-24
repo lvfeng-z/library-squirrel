@@ -7,6 +7,7 @@
 ## 边界
 
 - 与 **plugin/extension**：本模块（`backend/plugin`）管插件记录与生命周期入口；`extension/` 子包管运行时扩展点加载（WorkFetcher / SiteBrowser / 前端扩展的注册与桥接）。
+- 与 **plugin/participation、plugin/settingresolver**：`participation/` 为参与度真相层（声明集 ⊕ resolver 覆盖表 + 求值编排，见「核心概念」）；`settingresolver/` 为 resolver 脚本求值运行器（受限 JS 运行时、超时中断、输出 shape 校验）。本模块经安装闸门与设置落库触发点接线两者。
 - 与 **plugin.md rules**：rules 讲"插件系统怎么设计"（协议、时序、前端扩展数据流），本文件讲"这个 Go 模块提供什么"。
 
 ## 对外接口（Handler）
@@ -23,7 +24,7 @@
 | `Page(query)` | 分页查询 |
 | `CheckInstalled(publicId)` | 检查是否已安装 |
 | `GetPluginRoot()` | 获取插件运行时根目录 |
-| `GetPluginStatus(pluginPublicId)` | 获取插件运行状态（生命周期状态、最近一次激活失败原因、进程存活、扩展点列表） |
+| `GetPluginStatus(pluginPublicId)` | 获取插件运行状态（生命周期状态、最近一次激活失败原因、进程存活、扩展点列表、声明 URL 监听模式聚合、参与度概要——条目态与求值降级态，见下「参与度真相层」） |
 | `GetPendingUpgrades()` | 获取检查更新待办（available 可答复计入红点；forced/error 只读告知） |
 | `ApplyPendingUpgrade(pluginPublicId)` | 答复「升级」：对 available 待办执行运行期换版（当次会话生效；运行中任务被参与者否决） |
 | `DeclinePendingUpgrade(pluginPublicId)` | 答复「跳过此构建」：持久化拒绝标记（`UpgradeDeclinedBuildID`），下次启动对等值 buildId 静默跳过 |
@@ -34,8 +35,8 @@
 | 方法 | 作用 |
 | --- | --- |
 | `GetSettings(pluginPublicId)` | 获取插件用户设置项（声明 + 当前值，加密项已解密） |
-| `SaveSetting(pluginPublicId, key, value)` | 保存单个设置项（按声明 `encrypted` 路由加密/明文） |
-| `ResetSetting(pluginPublicId, key)` | 重置设置项为默认值 |
+| `SaveSetting(pluginPublicId, key, value)` | 保存单个设置项（按声明 `encrypted` 路由加密/明文）；落库后异步触发该插件参与度求值（见「参与度真相层」） |
+| `ResetSetting(pluginPublicId, key)` | 重置设置项为默认值；落库后同样触发参与度求值（不经 SaveSetting，独立挂接） |
 
 ## 核心概念
 
@@ -46,6 +47,7 @@
 - **构建身份（BuildID）**：构建管线注入 plugin.json `buildId` 字段的 git describe 标识（同源码状态重构建永远同值，与构建环境无关）。`InstallBundled` 以它做捆绑插件升级检测；静态资产 URL/ETag 缓存键同源（优先 buildId，未打标包回落 version，键取自 `app.go` 的 `manifestCacheKey`，静态资源/前端扩展参与者在激活相位消费）。原 zip 字节 SHA256 存证（IntegrityHash）已退役移除（无判据性读取方）。设计见 `../library-squirrel-docs/plan/插件构建身份与升级判据机制.md`。
 - **检查更新待办（pendingUpgrade，内存态）**：启动期检测出的更新事项（available/forced/error 三类），进程生命周期、重启重检；前端「插件」菜单红点与管理页待更新区块消费。落库的只有拒绝标记 `UpgradeDeclinedBuildID`（「跳过此构建」持久化，重装全字段覆盖自然清零）。设计见 `../library-squirrel-docs/plan/插件检查更新方案.md`。
 - **PluginStatus**：插件运行状态——生命周期状态（inactive/activating/active/stopping）与最近一次激活失败原因（`GetPluginStatus` 取自状态机只读快照）、进程存活/PID、扩展点列表。
+- **参与度真相层（participation/ 子包）**：插件在各派生面（point 词汇 = `workFetch`/`siteAuthorFetch`/`siteBrowsers`/`resourceTypes`/`frontendExtensions`）上**声明条目 × 参与度**的运行期唯一真相源：per 插件会话 = 清单声明集 ⊕ resolver 覆盖表（快照整体替换、零持久化——每次激活末尾由持久 KV 重算重建）。resolver = 清单根级 `settingsResolver` 声明的『全量设置 → 条目参与度』纯函数脚本（求值运行器与契约见 `settingresolver/` 子包）。触发点三处：激活相位末尾（生命周期参与者末位，app.go 装配）、SaveSetting / ResetSetting 落库后（异步，同插件串行且在途合并）。求值失败保留旧表、降级态入状态面（`GetPluginStatus` 的参与度概要经 `SetParticipationStatusProvider` 序列化透出）。变更订阅联动下游面：前端扩展条目级注册/注销（app.go frontendExtensionParticipant）、候选/能力查询过滤与 resourceTypes/siteBrowsers 条目级注册（extension.Loader `AttachParticipation`）、URL 监听条目级登记/摘除（pluginTaskUrlListener——URL 监听无独立 point，按 `workFetch` 条目级变化最小映射联动）。安装闸门 `ValidateResolverForInstall`（脚本在场/体积/语法/默认值 dry-run）挂本模块安装路径。设计见 `../library-squirrel-docs/plan/插件设置驱动的派生面热生效方案.md`。
 - **PluginStorage（插件自存信息）**：统一 KV 存储（`plugin_storage` 单表），取代旧的 `plugin.plugin_data` 与 `secure_storage`。明文项直接读写，加密项 `SetValueEncrypted` 存密文（`util/crypto` 加解密）、读取自动解密。
 
 ## 依赖关系

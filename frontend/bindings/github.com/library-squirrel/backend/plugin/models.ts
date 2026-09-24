@@ -77,6 +77,160 @@ export class FrontendExtensionInfo {
 }
 
 /**
+ * ParticipationEntryState 单个声明条目的当前参与态
+ */
+export class ParticipationEntryState {
+    /**
+     * 条目所属派生面（workFetch/siteAuthorFetch/siteBrowsers/resourceTypes/frontendExtensions）
+     */
+    "point": string;
+
+    /**
+     * 条目 id（资源类型条目 = 类型串）
+     */
+    "id": string;
+
+    /**
+     * 参与中；false = 被覆盖停用
+     */
+    "active": boolean;
+
+    /**
+     * 覆盖停用时 resolver 给出的理由（参与态或无覆盖为空）
+     */
+    "reason": string;
+
+    /** Creates a new ParticipationEntryState instance. */
+    constructor($$source: Partial<ParticipationEntryState> = {}) {
+        if (!("point" in $$source)) {
+            this["point"] = "";
+        }
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("active" in $$source)) {
+            this["active"] = false;
+        }
+        if (!("reason" in $$source)) {
+            this["reason"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ParticipationEntryState instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ParticipationEntryState {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ParticipationEntryState($$parsedSource as Partial<ParticipationEntryState>);
+    }
+}
+
+/**
+ * ParticipationEvalStatus resolver 求值状态快照（降级态数据面）
+ */
+export class ParticipationEvalStatus {
+    /**
+     * 清单是否声明 settingsResolver（false = 该插件无参与度求值，条目全为基线参与）
+     */
+    "hasResolver": boolean;
+
+    /**
+     * 最近一次求值完成时间（Unix 毫秒，0 = 从未求值）
+     */
+    "lastEvalAt": number;
+
+    /**
+     * 最近一次求值失败分类（script_load/settings_read/timeout/runtime/output/canceled/internal；空 = 最近一次成功或从未求值）
+     */
+    "lastFailure": string;
+
+    /**
+     * 最近一次失败的人读信息
+     */
+    "lastFailureMsg": string;
+
+    /**
+     * 最近一次求值输出被单条拒收的条目数（含声明集外条目）
+     */
+    "lastRejected": number;
+
+    /** Creates a new ParticipationEvalStatus instance. */
+    constructor($$source: Partial<ParticipationEvalStatus> = {}) {
+        if (!("hasResolver" in $$source)) {
+            this["hasResolver"] = false;
+        }
+        if (!("lastEvalAt" in $$source)) {
+            this["lastEvalAt"] = 0;
+        }
+        if (!("lastFailure" in $$source)) {
+            this["lastFailure"] = "";
+        }
+        if (!("lastFailureMsg" in $$source)) {
+            this["lastFailureMsg"] = "";
+        }
+        if (!("lastRejected" in $$source)) {
+            this["lastRejected"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ParticipationEvalStatus instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ParticipationEvalStatus {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ParticipationEvalStatus($$parsedSource as Partial<ParticipationEvalStatus>);
+    }
+}
+
+/**
+ * ParticipationOverview 管理页「声明 × 状态」数据面：全部声明条目的当前参与态
+ * （声明集 ⊕ 覆盖表）与 resolver 求值状态（降级态）
+ */
+export class ParticipationOverview {
+    /**
+     * 全部声明条目的当前参与态（point、id 字典序）
+     */
+    "entries": ParticipationEntryState[];
+
+    /**
+     * 求值状态（降级态数据面）
+     */
+    "status": ParticipationEvalStatus;
+
+    /** Creates a new ParticipationOverview instance. */
+    constructor($$source: Partial<ParticipationOverview> = {}) {
+        if (!("entries" in $$source)) {
+            this["entries"] = [];
+        }
+        if (!("status" in $$source)) {
+            this["status"] = (new ParticipationEvalStatus());
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ParticipationOverview instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ParticipationOverview {
+        const $$createField0_0 = $$createType1;
+        const $$createField1_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("entries" in $$parsedSource) {
+            $$parsedSource["entries"] = $$createField0_0($$parsedSource["entries"]);
+        }
+        if ("status" in $$parsedSource) {
+            $$parsedSource["status"] = $$createField1_0($$parsedSource["status"]);
+        }
+        return new ParticipationOverview($$parsedSource as Partial<ParticipationOverview>);
+    }
+}
+
+/**
  * PluginQueryDTO 插件查询条件
  */
 export class PluginQueryDTO {
@@ -162,15 +316,15 @@ export class PluginQueryDTO {
      * Creates a new PluginQueryDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): PluginQueryDTO {
-        const $$createField0_0 = $$createType0;
-        const $$createField1_0 = $$createType0;
-        const $$createField2_0 = $$createType0;
-        const $$createField3_0 = $$createType0;
-        const $$createField4_0 = $$createType0;
-        const $$createField5_0 = $$createType0;
-        const $$createField6_0 = $$createType1;
-        const $$createField7_0 = $$createType2;
-        const $$createField8_0 = $$createType2;
+        const $$createField0_0 = $$createType3;
+        const $$createField1_0 = $$createType3;
+        const $$createField2_0 = $$createType3;
+        const $$createField3_0 = $$createType3;
+        const $$createField4_0 = $$createType3;
+        const $$createField5_0 = $$createType3;
+        const $$createField6_0 = $$createType4;
+        const $$createField7_0 = $$createType5;
+        const $$createField8_0 = $$createType5;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("publicId" in $$parsedSource) {
             $$parsedSource["publicId"] = $$createField0_0($$parsedSource["publicId"]);
@@ -240,6 +394,11 @@ export class PluginStatusDTO {
      */
     "urlPatterns": string[];
 
+    /**
+     * 参与度概要（真相层序列化快照，每次查询现读内存表；nil = 插件未激活无会话）
+     */
+    "participation": ParticipationOverview | null;
+
     /** Creates a new PluginStatusDTO instance. */
     constructor($$source: Partial<PluginStatusDTO> = {}) {
         if (!("lifecycleState" in $$source)) {
@@ -269,6 +428,9 @@ export class PluginStatusDTO {
         if (!("urlPatterns" in $$source)) {
             this["urlPatterns"] = [];
         }
+        if (!("participation" in $$source)) {
+            this["participation"] = null;
+        }
 
         Object.assign(this, $$source);
     }
@@ -277,10 +439,11 @@ export class PluginStatusDTO {
      * Creates a new PluginStatusDTO instance from a string or object.
      */
     static createFrom($$source: any = {}): PluginStatusDTO {
-        const $$createField5_0 = $$createType4;
-        const $$createField6_0 = $$createType4;
-        const $$createField7_0 = $$createType6;
-        const $$createField8_0 = $$createType7;
+        const $$createField5_0 = $$createType7;
+        const $$createField6_0 = $$createType7;
+        const $$createField7_0 = $$createType9;
+        const $$createField8_0 = $$createType10;
+        const $$createField9_0 = $$createType12;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workFetch" in $$parsedSource) {
             $$parsedSource["workFetch"] = $$createField5_0($$parsedSource["workFetch"]);
@@ -293,6 +456,9 @@ export class PluginStatusDTO {
         }
         if ("urlPatterns" in $$parsedSource) {
             $$parsedSource["urlPatterns"] = $$createField8_0($$parsedSource["urlPatterns"]);
+        }
+        if ("participation" in $$parsedSource) {
+            $$parsedSource["participation"] = $$createField9_0($$parsedSource["participation"]);
         }
         return new PluginStatusDTO($$parsedSource as Partial<PluginStatusDTO>);
     }
@@ -339,7 +505,7 @@ export class SettingItem {
      * Creates a new SettingItem instance from a string or object.
      */
     static createFrom($$source: any = {}): SettingItem {
-        const $$createField7_0 = $$createType9;
+        const $$createField7_0 = $$createType14;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("options" in $$parsedSource) {
             $$parsedSource["options"] = $$createField7_0($$parsedSource["options"]);
@@ -349,13 +515,18 @@ export class SettingItem {
 }
 
 // Private type creation functions
-const $$createType0 = query$0.QueryAttribute.createFrom($Create.Any);
-const $$createType1 = query$0.QueryAttribute.createFrom($Create.Any);
-const $$createType2 = query$0.QueryAttribute.createFrom($Create.Any);
-const $$createType3 = ExtensionInfo.createFrom;
-const $$createType4 = $Create.Array($$createType3);
-const $$createType5 = FrontendExtensionInfo.createFrom;
-const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = $Create.Array($Create.Any);
-const $$createType8 = dto$0.SettingOption.createFrom;
+const $$createType0 = ParticipationEntryState.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = ParticipationEvalStatus.createFrom;
+const $$createType3 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType4 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType5 = query$0.QueryAttribute.createFrom($Create.Any);
+const $$createType6 = ExtensionInfo.createFrom;
+const $$createType7 = $Create.Array($$createType6);
+const $$createType8 = FrontendExtensionInfo.createFrom;
 const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = $Create.Array($Create.Any);
+const $$createType11 = ParticipationOverview.createFrom;
+const $$createType12 = $Create.Nullable($$createType11);
+const $$createType13 = dto$0.SettingOption.createFrom;
+const $$createType14 = $Create.Array($$createType13);

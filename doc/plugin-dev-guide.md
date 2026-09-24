@@ -112,6 +112,7 @@ type MyWorkFetcher struct{}
 | `contractVersion` | number | 是 | 编译期契约版本（主程序据此协商加载，见「契约版本协商」）。**显式手填、不随 SDK 自动跟随**——SDK 升版后须自行改本字段；当前 = 12 |
 | `configSchemaVersion` | number | 否 | 配置 schema 版本（0/缺省=legacy 不管理；启用配置迁移时从 1 起递增，见 8.3）。与 contractVersion 正交：前者管插件配置结构，后者管 host↔plugin 协议 |
 | `settings` | `[SettingDeclaration]` | 否 | 用户可配置项声明，住清单根级（见「settings 用户设置声明」与 8.2）；`extensions` 子对象内出现 `settings` 键（值 `null` 亦然）即判不合格 |
+| `settingsResolver` | `{script, contractVersion}` | 否 | 设置驱动参与度 resolver 声明：`script` 为住插件包根目录的脚本文件名、`contractVersion` 当前唯一受支持值 1；安装时对脚本做在场/体积/语法/默认值 dry-run 校验，见 8.4 |
 | `extensions` | object | 是 | 能力包声明集合（见下与「能力声明」） |
 
 > 身份键与五条版本轴（version/contractVersion/configSchemaVersion/plugin_data schemaVersion/buildId）的全貌与变更时机速查，见第十八节。
@@ -809,6 +810,93 @@ func Activate(ctx sdkdto.PluginContext, ...) {
 - **不保证跨 key 原子性**：联动配置迁移中存在暂时不一致窗口，靠幂等重跑最终一致；建议联动 key 放同一迁移步。
 - **降级**（行版本 > 声明，如装旧版覆盖新版）：主程序告警、不自动迁移。
 - 主程序激活后会扫 `plugin_storage` 行，存在 `schema_version < configSchemaVersion` 的行则日志告警（迁移未完成或插件未声明 `MigrateConfig`），作为安全网。
+
+### 8.4 settingsResolver：设置驱动的派生面参与度
+
+用户改了插件的设置项后，该插件在主程序各派生面（前端扩展呈现、作品/作者拉取候选、URL 监听、自定义资源类型、能力集合）上的**参与状态**默认是激活期定死的——设置值不在激活快照里。`settingsResolver` 让插件把「设置 → 条目参与度」的映射以**纯函数脚本**形式随包分发：主程序内嵌 JS 引擎执行它，改设置后立即重算并热生效（无重启、无整页刷新）。**不带该声明的插件行为零变化**。
+
+#### 清单声明
+
+```jsonc
+"settingsResolver": { "script": "resolver.js", "contractVersion": 1 }
+```
+
+- `script`：脚本文件名，住**插件包根目录**（裸文件名，不含路径分隔符）。
+- `contractVersion`：resolver 契约版本，当前唯一受支持值 `1`。
+- 安装闸门：文件在场且 ≤64KB；语法可解析；以声明的设置**默认值** dry-run 一次，输出须通过 shape 校验且条目都在清单声明集内——不合格拒收安装。
+- 纯 UI 插件（无 `entryFile`）同受支持：脚本由宿主执行，零进程。
+
+#### 脚本契约
+
+脚本必须在**顶层**定义名为 `resolve` 的函数。每次求值在全新运行时中先执行一遍脚本顶层代码，随后以输入对象为唯一实参调用 `resolve` 一次，取返回值作为输出（顶层代码的作用不跨求值保留）。
+
+**输入**（实参形状）——该插件的全量设置快照：
+
+```jsonc
+{ "settings": { "<key>": "<value>" } }
+```
+
+**输出**（返回值形状）——当前完整意愿：
+
+```jsonc
+{
+  "version": 1,
+  "entries": [
+    { "point": "workFetch", "id": "main", "active": false, "reason": "用户关闭了高质量模式" }
+  ]
+}
+```
+
+- `point` 取值（封闭词汇表）：`workFetch` | `siteAuthorFetch` | `siteBrowsers` | `resourceTypes` | `frontendExtensions`。`resourceTypes` 条目的 `id` = 资源类型串，其余面的 `id` = 清单条目 id。
+- 覆盖只能作用于**清单已声明条目**——不能凭空造新条目、新 URL 模式（账 = 清单，态 = 覆盖）。声明集外条目被单条拒收（记日志），不株连其余条目。
+- **快照语义**：每次输出 = 当前完整意愿，整体替换上一次覆盖表；**未列出的条目 = 基线参与**。脚本不需要（也不应该）记住上次输出过什么。
+- `reason` 可选字符串：管理页状态抽屉里停用条目悬浮展示的停用缘由。
+- 未知顶层字段忽略。
+
+#### 纪律与限制
+
+- **纯函数纪律**：同一设置输入必产出同一输出。求值环境为**零宿主绑定沙箱**——无 I/O、网络、文件、计时器；`Date` 与 `Math.random` 已从运行时删除。确定性是「重启后由持久 KV 重算重建同一状态」的前提（覆盖表零持久化，每次激活末尾重求值）。
+- **超时 500ms**：超预算即中断，本次求值落败。
+- **体积上限 64KB**：超限安装即拒收。
+- **设置值以 KV 字符串形态喂入**：按设置声明，值统一以 string 存储——boolean 设置喂入的是 `"true"`/`"false"`，integer 是 `"20"`。脚本比较前用 `String()` 归一，勿假设拿到原始类型。加密项已解密后喂入（脚本与插件进程同信任级）。
+- **语法面锚定 ES2015**：`const`/箭头函数/模板串/解构可用；`async`/`await`、可选链（`?.`）等 ES2017+ 语法**勿用**——宿主引擎（goja）不支持。
+- **SDK 本地 harness 通过 ≠ 宿主语法面通过**：node 的语法面宽于宿主引擎（`library-squirrel-sdk/settingresolver/harness.mjs` 顶部「已知差异」）。harness 用于本地预演求值行为与安装闸门校验，语法面纪律须自行遵守。
+
+#### 失败语义
+
+求值失败（语法错/超时/运行异常/输出 shape 不合法/脚本装载失败）**不炸宿主、不构成激活失败**：主程序保留上一次覆盖表（首次失败 = 无覆盖 = 全基线参与），记日志，管理页状态抽屉显著标注**求值降级**（失败分类与信息，提示参与度展示可能滞后于最新设置）。恢复手段：重新保存该插件的设置项或重启（无「立即重算」按钮——降级是异常态）。
+
+#### 触发点（宿主独占）
+
+主程序在两个时机求值：① 激活相位末尾（基线注册完毕、晚于插件进程 Activate RPC——插件可在其中完成配置自迁移，读到的是迁移后设置）；② SaveSetting / ResetSetting 落库后（异步执行，保存响应不被阻塞；同一插件的求值串行化且在途完成后只跑最新输入）。插件没有自主触发重跑的入口。
+
+#### 能力边界（三层刻画）
+
+1. **真相层只管条目「在场/缺席」**：resolver 输出的 `active` 决定清单条目是否参与派生面（菜单项消失/恢复、拉取候选退出/恢复等）。
+2. **组件在场时的内部表现不经真相层**：插件组件（页面/弹窗/渲染器）渲染后的内部行为——包括读自身设置做自适应（如按下载质量设置切换默认选项）——属插件自由，与 resolver 无关（插件进程内 `GetValue` 现读，天然热）。
+3. **条目的结构性属性 v1 不可调**：`order`/`props`/`position`/`target` 等结构性属性不能经 resolver 修改。需要「同一功能两种形态」时用**清单声明变体条目 + resolver 切换参与**模式：声明两个条目（不同 props/position），resolver 按设置只让其中一个参与。
+
+#### 示例
+
+最小完整示例见测试插件：`library-squirrel-plugin-test/plugin.json`（根级 `settings` 布尔开关 `enableParticipation` + `settingsResolver` 声明）与 `library-squirrel-plugin-test/resolver.js`（布尔关闭态停用 `frontendExtensions/test-article-viewer` 与 `workFetch/main` 两条目，URL 监听随 workFetch 条目联动摘除/恢复）。SDK 契约 TS 类型与本地 harness：`library-squirrel-sdk/settingresolver/`（`contract.d.ts` / `harness.mjs`）。
+
+```js
+// resolver.js ——『全量设置 → 条目参与度』纯函数（ES2015 语法面）
+function resolve(input) {
+	var settings = input && input.settings ? input.settings : {};
+	var participate = String(settings.enableParticipation) !== "false"; // KV 字符串形态
+	if (participate) {
+		return { version: 1, entries: [] }; // 快照语义：未列出条目 = 基线参与
+	}
+	return {
+		version: 1,
+		entries: [
+			{ point: "frontendExtensions", id: "my-menu", active: false, reason: "设置「显示菜单」已关闭" },
+			{ point: "workFetch", id: "main", active: false }
+		]
+	};
+}
+```
 
 ## 九、前端通信
 

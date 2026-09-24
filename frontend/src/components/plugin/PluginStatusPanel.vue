@@ -3,9 +3,9 @@ import { computed, ref, watch } from 'vue'
 import { pluginApi } from '@renderer/apis/http'
 import { ElMessage } from 'element-plus'
 import StatusTag from '@renderer/components/common/StatusTag.vue'
-import { PluginStatusDTO } from '@bindings/github.com/library-squirrel/backend/plugin/models'
+import { PluginStatusDTO, ParticipationEntryState } from '@bindings/github.com/library-squirrel/backend/plugin/models'
 import { PluginDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
-import { isNotBlank } from '@renderer/utils/StringUtil'
+import { isBlank, isNotBlank } from '@renderer/utils/StringUtil'
 
 interface Props {
   publicId: string
@@ -50,6 +50,86 @@ const lifecycleStatusKey = computed(() => {
   const state = status.value?.lifecycleState
   return isNotBlank(state) ? `plugin-${state}` : 'plugin-inactive'
 })
+
+// 派生面展示名与展示序（point 值与后端参与度条目的 point 字段对应）
+const POINT_LABELS: ReadonlyArray<{ point: string; label: string }> = [
+  { point: 'workFetch', label: '作品拉取' },
+  { point: 'siteAuthorFetch', label: '作者拉取' },
+  { point: 'siteBrowsers', label: '站点浏览器' },
+  { point: 'resourceTypes', label: '资源类型' },
+  { point: 'frontendExtensions', label: '前端扩展' }
+]
+
+// 声明条目按派生面分组（声明 = 清单条目、状态 = 真相层参与度；仅含有条目的面，序取 POINT_LABELS）
+const participationGroups = computed(() => {
+  const entries = status.value?.participation?.entries
+  if (!entries || entries.length === 0) {
+    return []
+  }
+  const byPoint = new Map<string, ParticipationEntryState[]>()
+  for (const entry of entries) {
+    const list = byPoint.get(entry.point)
+    if (list) {
+      list.push(entry)
+    } else {
+      byPoint.set(entry.point, [entry])
+    }
+  }
+  return POINT_LABELS.flatMap(({ point, label }) => {
+    const groupEntries = byPoint.get(point)
+    return groupEntries ? [{ label, entries: groupEntries }] : []
+  })
+})
+
+// resolver 失败分类 → 人读标签（后端求值编排层与运行器的分类全集；未知值回退原值）
+const FAILURE_KIND_LABELS: Record<string, string> = {
+  syntax: '语法错误',
+  timeout: '执行超时',
+  runtime: '运行异常',
+  invalid_output: '输出不合法',
+  script_too_large: '脚本超体积',
+  script_load: '脚本装载失败',
+  settings_read: '设置读取失败',
+  canceled: '已取消',
+  internal: '内部错误'
+}
+
+// resolver 降级态标注文案：最近一次求值失败（超时/异常等）时显著标注，参与度展示可能滞后
+const resolverDegradedText = computed(() => {
+  const evalStatus = status.value?.participation?.status
+  if (!evalStatus || isBlank(evalStatus.lastFailure)) {
+    return null
+  }
+  const kindLabel = FAILURE_KIND_LABELS[evalStatus.lastFailure] ?? evalStatus.lastFailure
+  const msg = isNotBlank(evalStatus.lastFailureMsg) ? evalStatus.lastFailureMsg : '无详细信息'
+  return `${kindLabel}：${msg}。参与度展示可能滞后于最新设置，重新保存该插件的设置项或重启后恢复。`
+})
+
+// 最近一次求值的单条拒收提示（软降级：被拒条目保持之前状态，整体覆盖表仍生效）
+const rejectedNoteText = computed(() => {
+  const evalStatus = status.value?.participation?.status
+  if (!evalStatus || evalStatus.lastRejected <= 0) {
+    return null
+  }
+  return `最近一次求值有 ${evalStatus.lastRejected} 条输出被拒收，对应意愿未生效`
+})
+
+// 最近求值完成时间（降级标注与拒收提示的附带信息；0 = 从未求值）
+const lastEvalText = computed(() => {
+  const evalStatus = status.value?.participation?.status
+  if (!evalStatus || !evalStatus.lastEvalAt) {
+    return null
+  }
+  return `最近求值：${formatTime(evalStatus.lastEvalAt)}`
+})
+
+// 覆盖停用条目的悬浮理由（resolver 给出；无理由停用不悬浮）
+function disableReasonTooltip(entry: ParticipationEntryState): string | null {
+  if (entry.active || isBlank(entry.reason)) {
+    return null
+  }
+  return `停用理由：${entry.reason}`
+}
 
 function formatTime(timestamp: number | undefined): string {
   if (!timestamp) return '-'
@@ -196,6 +276,92 @@ function formatTime(timestamp: number | undefined): string {
         </el-descriptions-item>
       </el-descriptions>
 
+      <!-- 声明条目参与度（声明 = 清单条目、状态 = 真相层参与度；行内徽标，被覆盖停用的条目悬浮展示
+           resolver 给出的理由；插件未激活无会话时后端不下发该节） -->
+      <el-descriptions
+        v-if="status.participation"
+        title="声明条目参与度"
+        :column="1"
+        border
+        size="small"
+      >
+        <!-- resolver 降级态显著标注（超时/失败：展示可能滞后于最新设置） -->
+        <el-descriptions-item label="求值状态">
+          <div
+            v-if="resolverDegradedText"
+            class="resolver-degraded"
+            data-testid="resolver-degraded"
+          >
+            <span class="resolver-degraded__title">求值降级</span>
+            <span class="resolver-degraded__text">{{ resolverDegradedText }}</span>
+          </div>
+          <template v-else>
+            <span
+              v-if="status.participation.status.hasResolver"
+              class="text-muted"
+            >正常</span>
+            <span
+              v-else
+              class="text-muted"
+            >未声明设置解析器，条目全部基线参与</span>
+          </template>
+          <div
+            v-if="lastEvalText"
+            class="eval-meta"
+          >
+            {{ lastEvalText }}
+          </div>
+          <div
+            v-if="rejectedNoteText"
+            class="eval-meta eval-meta--warn"
+            data-testid="rejected-note"
+          >
+            {{ rejectedNoteText }}
+          </div>
+        </el-descriptions-item>
+        <el-descriptions-item
+          v-for="group in participationGroups"
+          :key="group.label"
+          :label="group.label"
+        >
+          <span
+            v-for="entry in group.entries"
+            :key="entry.id"
+            class="entry-item"
+          >
+            <el-tooltip
+              v-if="disableReasonTooltip(entry)"
+              :content="disableReasonTooltip(entry)"
+              placement="top"
+            >
+              <span class="entry-item__inner">
+                <code class="entry-item__id">{{ entry.id }}</code>
+                <StatusTag
+                  status="plugin-entry-disabled"
+                  size="small"
+                />
+              </span>
+            </el-tooltip>
+            <span
+              v-else
+              class="entry-item__inner"
+            >
+              <code class="entry-item__id">{{ entry.id }}</code>
+              <StatusTag
+                :status="entry.active ? 'plugin-entry-active' : 'plugin-entry-disabled'"
+                size="small"
+              />
+            </span>
+          </span>
+        </el-descriptions-item>
+        <el-descriptions-item
+          v-if="participationGroups.length === 0"
+          label="声明条目"
+        >
+          <span class="text-muted">无</span>
+        </el-descriptions-item>
+      </el-descriptions>
+
       <!-- URL 监听规则 -->
       <el-descriptions
         title="URL 监听规则"
@@ -269,6 +435,57 @@ function formatTime(timestamp: number | undefined): string {
 .text-muted {
   color: #909399;
   font-size: 12px;
+}
+
+/* 声明条目参与度：条目行内徽标（id + 参与态） */
+.entry-item {
+  display: inline-flex;
+  margin-right: 8px;
+  margin-bottom: 4px;
+}
+
+.entry-item__inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.entry-item__id {
+  font-size: 12px;
+}
+
+/* resolver 降级态显著标注（warn tone：超时/失败时参与度展示可能滞后） */
+.resolver-degraded {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--app-status-warn-border);
+  border-radius: var(--app-radius-sm);
+  background: var(--app-status-warn-bg);
+}
+
+.resolver-degraded__title {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--app-status-warn-text);
+}
+
+.resolver-degraded__text {
+  color: var(--app-status-warn-text);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+/* 求值附注（最近求值时间 / 单条拒收提示） */
+.eval-meta {
+  margin-top: 4px;
+  color: var(--app-status-idle-text);
+  font-size: 12px;
+}
+
+.eval-meta--warn {
+  color: var(--app-status-warn-text);
 }
 
 /* 官方身份行非官方时的中性文案（与渠道 tag 的灰同走 idle tone，随主题变化） */

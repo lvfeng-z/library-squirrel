@@ -492,6 +492,29 @@ function registerSlotByType(store: ReturnType<typeof useSlotRegistryStore>, slot
 }
 
 /**
+ * 统计插件在前端注册中心剩余的扩展条目数（全部 kind 桶，含被动响应型 resourceViewer）。
+ * 复合 store 键以 `publicId/` 为前缀，据此跨桶计数——菜单子项随父条目存亡，不单独计数
+ */
+function countRemainingPluginEntries(pluginPublicId: string): number {
+  const slotStore = useSlotRegistryStore()
+  const handlerStore = useHandlerRegistryStore()
+  const prefix = `${pluginPublicId}/`
+  const buckets: Map<string, unknown>[] = [
+    slotStore.viewSlots,
+    slotStore.embedSlots,
+    slotStore.dialogSlots,
+    slotStore.replaceViewSlots,
+    slotStore.menuSlots,
+    slotStore.siteBrowserSlots,
+    handlerStore.resourceViewerHandlers
+  ]
+  return buckets.reduce(
+    (count, bucket) => count + Array.from(bucket.keys()).filter((key) => key.startsWith(prefix)).length,
+    0
+  )
+}
+
+/**
  * 根据 slotType 注销 slot
  */
 function unregisterSlotByType(store: ReturnType<typeof useSlotRegistryStore>, slotId: string, slotType: string) {
@@ -537,12 +560,16 @@ export function initSlotSyncListener() {
   })
 
   // 监听运行时前端扩展注销事件（payload 为 pluginPublicId + 裸 frontendExtensionId 分列，
-  // 与注册事件同语义；复合 store 键在此派生，与注册共用 compositeSlotId 保证对称）
+  // 与注册事件同语义；复合 store 键在此派生，与注册共用 compositeSlotId 保证对称）。
+  // 单条注销 = 设置驱动的条目级热切换：样式清理仅在该插件最后一条扩展移除后进行，
+  // 避免株连同插件其余在场条目已加载的样式
   Events.On('frontend-extension-unregister', (event: unknown) => {
     const data = (event as { data: { pluginPublicId: string; frontendExtensionId: string; kind: string } }).data
     if (data?.pluginPublicId && data?.frontendExtensionId && data?.kind) {
       unregisterSlotByType(store, compositeSlotId(data.pluginPublicId, data.frontendExtensionId), data.kind)
-      removePluginStyles(data.pluginPublicId)
+      if (countRemainingPluginEntries(data.pluginPublicId) === 0) {
+        removePluginStyles(data.pluginPublicId)
+      }
     }
   })
 

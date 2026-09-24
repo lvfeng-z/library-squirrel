@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -44,6 +45,8 @@ import (
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/persistentStore"
 	"github.com/library-squirrel/backend/plugin"
+	"github.com/library-squirrel/backend/plugin/participation"
+	"github.com/library-squirrel/backend/plugin/settingresolver"
 	"github.com/library-squirrel/backend/pluginTaskUrlListener"
 	"github.com/library-squirrel/backend/reWorkAuthor"
 	"github.com/library-squirrel/backend/reWorkSetWorkSet"
@@ -105,6 +108,7 @@ type App struct {
 	PluginService           *plugin.Service
 	PluginStorageService    *plugin.PluginStorageService
 	PluginSettingService    *plugin.PluginSettingService
+	ParticipationManager    *participation.Manager
 	TaskService             *task.Service
 	TaskManagerService      *taskManager.Manager
 	SiteBrowserService      *siteBrowser.Service
@@ -1041,7 +1045,10 @@ func (app *App) initAdvancedServices() error {
 	pluginRepo := plugin.NewRepository(app.db)
 	app.PluginService = plugin.NewService(pluginRepo, app.BackupService)
 	app.PluginStorageService = plugin.NewPluginStorageService(plugin.NewStorageRepository(app.db))
-	app.PluginSettingService = plugin.NewPluginSettingService(pluginRepo, app.PluginStorageService, util.RootPath())
+	// 参与度真相层（设置→条目参与度覆盖表）：全量设置读取面由插件 KV 存储服务承担
+	// （加密项解密随读取完成）；参与者注册见装配尾部（激活相位末位）
+	app.ParticipationManager = participation.NewManager(app.PluginStorageService, util.RootPath())
+	app.PluginSettingService = plugin.NewPluginSettingService(pluginRepo, app.PluginStorageService, util.RootPath(), app.ParticipationManager)
 
 	// 插件库查询依赖（Tier 1 只读）：各域 repository 直连组装（extension 定义注入接口，
 	// 过滤语义落在各域 repository 的 GORM 管线，provider 不自拼 SQL）
@@ -1064,7 +1071,19 @@ func (app *App) initAdvancedServices() error {
 	// 插件生命周期参与者：凡持有插件运行痕迹的域注册为参与者（注册顺序即激活相位顺序，
 	// 停用按注册逆序清理），清单集中于此；进程参与者与任务否决参与者在各自依赖就绪后注册
 	app.PluginService.RegisterLifecycleParticipant(&staticResourceParticipant{svc: app.StaticResourceService})
-	app.PluginService.RegisterLifecycleParticipant(&frontendExtensionParticipant{registry: app.FrontendExtensionRegistry})
+	frontendExtParticipant := &frontendExtensionParticipant{
+		registry: app.FrontendExtensionRegistry,
+		sources:  make(map[string]frontendExtensionSource),
+	}
+	app.PluginService.RegisterLifecycleParticipant(frontendExtParticipant)
+	// 设置驱动的条目级热生效：point=frontendExtensions 的参与度翻转经条目注册/注销下行
+	// 单条事件（订阅先于任何激活发生——装配期接线，激活相位末尾的首评通知即经此回调）
+	app.ParticipationManager.SubscribeChanges(frontendExtParticipant.handleParticipationChange)
+	// 后端五面的设置驱动热生效：Loader 接线候选/能力查询过滤与 resourceTypes/siteBrowsers
+	// 条目级注册联动，URL 监听派生索引接线 workFetch 条目级登记/摘除（订阅先于任何激活
+	// 发生——装配期接线，激活相位末尾的首评通知即经这些回调）
+	app.pluginLoader.AttachParticipation(app.ParticipationManager)
+	app.PluginTaskUrlListenerSvc.AttachParticipation(app.ParticipationManager)
 	// 崩溃路径与显式停用共用参与者清理集合：Loader 摘除进程表条目后回调触发统一清理
 	app.pluginLoader.SetCrashNotifier(func(pluginPublicId string) {
 		app.PluginService.NotifyPluginCrashed(context.Background(), pluginPublicId)
@@ -1075,6 +1094,8 @@ func (app *App) initAdvancedServices() error {
 		siteBrowserRegistry:       app.SiteBrowserRegistry,
 		frontendExtensionRegistry: app.FrontendExtensionRegistry,
 	})
+	// 管理页「声明 × 状态」数据面：GetPluginStatus 序列化时现读参与度真相层
+	app.PluginService.SetParticipationStatusProvider(app.ParticipationManager)
 
 	// backupGovernance 备份治理服务（backup/plugin 两个引用方就绪后创建：双向对账 + 监视哨 + 24h 巡检）。
 	// ★ 引用方枚举登记处（唯一落点）：新增「业务行内嵌 backup_id 列引用保管清单行」的模块时，必须在此
@@ -1202,6 +1223,9 @@ func (app *App) initAdvancedServices() error {
 	app.PluginService.RegisterLifecycleParticipant(&pluginProcessParticipant{app: app})
 	// taskManager 在 Manager 创建后注册为参与者（拦截该插件运行中任务的停用/换版操作）
 	app.PluginService.RegisterLifecycleParticipant(&taskManagerParticipant{mgr: app.TaskManagerService})
+	// 参与度真相层末位注册：激活相位序列的最后一步——基线注册完毕且晚于进程 Activate RPC
+	// 的 KV 自迁移后首次求值，激活完成时覆盖表已就位；停用逆序最先清空覆盖表
+	app.PluginService.RegisterLifecycleParticipant(&participationParticipant{mgr: app.ParticipationManager})
 
 	// merge 合并服务（音视频合并编排；ffmpeg 缺失时 merger=nil，合并调用返回 ErrMergeUnavailable）
 	mergeResourceStoreRepo := resource.NewResourceStoreRepository(app.db)
@@ -1658,9 +1682,22 @@ func (p *staticResourceParticipant) OnStopped(ctx context.Context, pluginPublicI
 }
 
 // frontendExtensionParticipant 前端扩展生命周期参与者：激活时按 manifest 声明逐条注册，
-// 停用后注销全部前端扩展（触发前端注销事件）
+// 停用后注销全部前端扩展（触发前端注销事件）。另作为参与度变更订阅方：point=frontendExtensions
+// 的条目翻转经条目级注册/注销热生效（单条事件下行，前端动态装卸 view/replaceView 不整页刷新）
 type frontendExtensionParticipant struct {
 	registry *extension2.FrontendExtensionRegistry
+
+	// mu 保护 sources：激活相位写入、参与度变更回调（求值 goroutine）并发读取
+	mu      sync.Mutex
+	sources map[string]frontendExtensionSource // key: pluginPublicId
+}
+
+// frontendExtensionSource 热切换重注册所需的激活期快照。清单安装后不可变（运行期热调整
+// 只写真相层内存），激活后条目重注册直接取缓存声明，不重读磁盘
+type frontendExtensionSource struct {
+	plugin   *entity2.Plugin
+	manifest *dto.PluginManifest
+	cacheKey string
 }
 
 func (p *frontendExtensionParticipant) Activate(ctx context.Context, plugin *entity2.Plugin, manifest *dto.PluginManifest) error {
@@ -1668,31 +1705,76 @@ func (p *frontendExtensionParticipant) Activate(ctx context.Context, plugin *ent
 	if ext == nil || len(ext.FrontendExtensions) == 0 {
 		return nil
 	}
-	publicId := plugin.PublicID.String
-	cacheKey := manifestCacheKey(manifest, plugin)
+	src := frontendExtensionSource{plugin: plugin, manifest: manifest, cacheKey: manifestCacheKey(manifest, plugin)}
+	p.mu.Lock()
+	p.sources[plugin.PublicID.String] = src
+	p.mu.Unlock()
+
+	registered := 0
 	for _, fe := range ext.FrontendExtensions {
-		feConfig := base.NewFrontendExtensionConfig()
-		feConfig.Metadata.ID = fe.ID
-		feConfig.Metadata.PluginID = plugin.GetID()
-		feConfig.Metadata.PluginPublicID = publicId
-		feConfig.Metadata.Name = fe.Name
-		feConfig.Metadata.Description = fe.Description
-		feConfig.Kind = base.FrontendExtensionKind(fe.Kind)
-		feConfig.Order = fe.Order
-
-		// 按 kind 解析 content；解析失败跳过该条，不株连插件其余扩展
-		if err := parseFrontendExtensionContent(fe, feConfig, publicId, cacheKey); err != nil {
-			logger.Log.Errorf("解析前端扩展 content 失败 %s/%s: %v", publicId, fe.ID, err)
-			continue
-		}
-
-		extension := model.NewExtension(*feConfig.Metadata, feConfig)
-		if err := p.registry.Register(extension); err != nil {
-			logger.Log.Errorf("注册前端扩展失败 %s/%s: %v", publicId, fe.ID, err)
+		if p.applyDeclaredEntry(src, fe) {
+			registered++
 		}
 	}
-	logger.Log.Infof("插件 %s: 已注册 %d 个前端扩展", publicId, len(ext.FrontendExtensions))
+	logger.Log.Infof("插件 %s: 已注册 %d 个前端扩展", plugin.PublicID.String, registered)
 	return nil
+}
+
+// applyDeclaredEntry 条目级注册（激活整批循环与参与度热切换的单条重注册共用）：
+// 由清单声明构造 FrontendExtensionConfig 并注册进注册中心，成功即触发前端单条注册事件。
+// 解析或注册失败跳过该条，不株连插件其余扩展
+func (p *frontendExtensionParticipant) applyDeclaredEntry(src frontendExtensionSource, fe dto.FrontendExtensionDeclaration) bool {
+	publicId := src.plugin.PublicID.String
+	feConfig := base.NewFrontendExtensionConfig()
+	feConfig.Metadata.ID = fe.ID
+	feConfig.Metadata.PluginID = src.plugin.GetID()
+	feConfig.Metadata.PluginPublicID = publicId
+	feConfig.Metadata.Name = fe.Name
+	feConfig.Metadata.Description = fe.Description
+	feConfig.Kind = base.FrontendExtensionKind(fe.Kind)
+	feConfig.Order = fe.Order
+
+	// 按 kind 解析 content
+	if err := parseFrontendExtensionContent(fe, feConfig, publicId, src.cacheKey); err != nil {
+		logger.Log.Errorf("解析前端扩展 content 失败 %s/%s: %v", publicId, fe.ID, err)
+		return false
+	}
+
+	extension := model.NewExtension(*feConfig.Metadata, feConfig)
+	if err := p.registry.Register(extension); err != nil {
+		logger.Log.Errorf("注册前端扩展失败 %s/%s: %v", publicId, fe.ID, err)
+		return false
+	}
+	return true
+}
+
+// handleParticipationChange 参与度条目变更回调（仅本面条目）：停用方向条目级注销（触发
+// 前端单条注销事件，视图动态卸载）；参与方向按激活期清单声明重注册——重新注册即重新下发，
+// 同 target 的呈现由前端最近一次注册接管（最近启用动作胜）。在求值 goroutine 上串行调用
+func (p *frontendExtensionParticipant) handleParticipationChange(change participation.Change) {
+	if change.Point != settingresolver.PointFrontendExtensions {
+		return
+	}
+	if !change.Active {
+		if err := p.registry.Unregister(change.PluginPublicId, change.ID); err != nil {
+			logger.Log.Warnf("参与度停用注销前端扩展失败 %s/%s: %v", change.PluginPublicId, change.ID, err)
+		}
+		return
+	}
+	p.mu.Lock()
+	src, ok := p.sources[change.PluginPublicId]
+	p.mu.Unlock()
+	if !ok {
+		logger.Log.Warnf("参与度启用重注册前端扩展跳过：插件无激活期清单缓存 %s/%s", change.PluginPublicId, change.ID)
+		return
+	}
+	for _, fe := range src.manifest.Extensions.FrontendExtensions {
+		if fe.ID == change.ID {
+			p.applyDeclaredEntry(src, fe)
+			return
+		}
+	}
+	logger.Log.Warnf("参与度启用重注册前端扩展跳过：清单无该条目声明 %s/%s", change.PluginPublicId, change.ID)
 }
 
 func (p *frontendExtensionParticipant) PrepareStop(ctx context.Context, pluginPublicId string, op plugin.PluginStopOp, force bool) error {
@@ -1700,6 +1782,9 @@ func (p *frontendExtensionParticipant) PrepareStop(ctx context.Context, pluginPu
 }
 
 func (p *frontendExtensionParticipant) OnStopped(ctx context.Context, pluginPublicId string) {
+	p.mu.Lock()
+	delete(p.sources, pluginPublicId)
+	p.mu.Unlock()
 	if err := p.registry.UnregisterAll(pluginPublicId); err != nil {
 		logger.Log.Warnf("停用注销前端扩展失败: %s, %v", pluginPublicId, err)
 	}
@@ -1802,6 +1887,26 @@ func (p *taskManagerParticipant) PrepareStop(ctx context.Context, pluginPublicId
 
 func (p *taskManagerParticipant) OnStopped(ctx context.Context, pluginPublicId string) {
 	// 任务侧无停用后清理：非运行中任务保留原状，插件重装后由用户手动恢复
+}
+
+// participationParticipant 参与度真相层生命周期参与者（末位注册）：激活相位末尾登记
+// 声明集并同步完成首次 resolver 求值（清单声明 settingsResolver 时），停用/激活失败
+// 回滚时清空该插件参与度会话
+type participationParticipant struct {
+	mgr *participation.Manager
+}
+
+func (p *participationParticipant) Activate(ctx context.Context, plugin *entity2.Plugin, manifest *dto.PluginManifest) error {
+	p.mgr.StartSession(ctx, plugin, manifest)
+	return nil // 求值失败不构成激活失败：无覆盖 = 全基线，降级态入真相层状态面
+}
+
+func (p *participationParticipant) PrepareStop(ctx context.Context, pluginPublicId string, op plugin.PluginStopOp, force bool) error {
+	return nil // 参与度覆盖表无否决条件
+}
+
+func (p *participationParticipant) OnStopped(ctx context.Context, pluginPublicId string) {
+	p.mgr.StopSession(pluginPublicId)
 }
 
 // runtimeStatusAdapter 将 extension.RuntimeStatus 适配为 plugin.RuntimeStatus

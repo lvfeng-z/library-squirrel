@@ -24,18 +24,27 @@ type PluginActivation struct {
 // PluginManifest 插件清单（从 plugin.json 解析）；能力声明住 extensions 段，
 // settings（用户设置项声明）住根级
 type PluginManifest struct {
-	ID                  string               `json:"id"`
-	Name                string               `json:"name"`
-	Version             string               `json:"version"`
-	BuildID             string               `json:"buildId,omitempty"`   // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
-	ContractVersion     int                  `json:"contractVersion"`     // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；未声明=0 拒载，须声明）
-	ConfigSchemaVersion int                  `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
-	Author              string               `json:"author"`
-	Description         string               `json:"description,omitempty"`
-	Settings            []SettingDeclaration `json:"settings,omitempty"` // 用户设置项声明（住清单根级，不属 extensions 能力包）
-	Extensions          *PluginExtensions    `json:"extensions"`
-	Activation          PluginActivation     `json:"activation"`
-	EntryFile           string               `json:"entryFile"`
+	ID                  string                       `json:"id"`
+	Name                string                       `json:"name"`
+	Version             string                       `json:"version"`
+	BuildID             string                       `json:"buildId,omitempty"`   // 构建身份标识（构建管线注入 git describe 输出；同源码状态永远同值，主程序以此判同构建）
+	ContractVersion     int                          `json:"contractVersion"`     // 插件编译时锁定的契约版本（主程序加载时与 currentContractVersion/minSupportedContractVersion 比对；未声明=0 拒载，须声明）
+	ConfigSchemaVersion int                          `json:"configSchemaVersion"` // 插件配置 schema 版本（plugin.json 声明；0=legacy/未管理，host 写入时盖戳到 plugin_storage.schema_version）
+	Author              string                       `json:"author"`
+	Description         string                       `json:"description,omitempty"`
+	Settings            []SettingDeclaration         `json:"settings,omitempty"`         // 用户设置项声明（住清单根级，不属 extensions 能力包）
+	SettingsResolver    *SettingsResolverDeclaration `json:"settingsResolver,omitempty"` // 设置驱动参与度 resolver 声明（住清单根级；不带该字段的插件零行为变化）
+	Extensions          *PluginExtensions            `json:"extensions"`
+	Activation          PluginActivation             `json:"activation"`
+	EntryFile           string                       `json:"entryFile"`
+}
+
+// SettingsResolverDeclaration 清单根级 settingsResolver 声明：插件自带『全量设置 → 条目参与度』
+// 纯函数脚本（宿主内嵌 JS 引擎执行，契约见 backend/plugin/settingresolver）。可选字段，
+// 声明在场时安装期随包校验脚本工件（在场、体积上限、以声明默认值 dry-run 过输出 shape 校验）
+type SettingsResolverDeclaration struct {
+	Script          string `json:"script"`          // 脚本文件名（相对插件根目录的裸文件名，不含路径分隔符）
+	ContractVersion int    `json:"contractVersion"` // resolver 契约版本（当前唯一受支持值 1）
 }
 
 // PluginInstallDTO 插件安装数据传输对象
@@ -138,8 +147,8 @@ type WorkFetchDeclaration struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"` // 显示名（派生注册表元数据的唯一源）
 	Description string   `json:"description,omitempty"`
-	Options     []string `json:"options,omitempty"` // 本条目启用的可选方法组（内置枚举见 extension 包 Capability* 常量）
-	SiteKey     string   `json:"siteKey,omitempty"` // 条目声明的站点域（可选自由串，无枚举校验，约定复用身份域站点串；缺省或同批候选间不一致时，站点域判定退任务 URL host 兜底）
+	Options     []string `json:"options,omitempty"`     // 本条目启用的可选方法组（内置枚举见 extension 包 Capability* 常量）
+	SiteKey     string   `json:"siteKey,omitempty"`     // 条目声明的站点域（可选自由串，无枚举校验，约定复用身份域站点串；缺省或同批候选间不一致时，站点域判定退任务 URL host 兜底）
 	UrlPatterns []string `json:"urlPatterns,omitempty"` // URL 监听模式（正则模式串数组；匹配的 URL 创建任务时路由到本条目，缺省=不监听）
 }
 

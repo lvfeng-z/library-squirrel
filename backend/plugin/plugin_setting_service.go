@@ -26,16 +26,25 @@ type SettingItem struct {
 	Value       string              `json:"value"`
 }
 
-// PluginSettingService 插件设置服务（组合声明与存储）
-type PluginSettingService struct {
-	pluginRepo *PluginRepository
-	storage    *PluginStorageService
-	rootPath   string
+// ParticipationEvalTrigger 设置落库后的参与度求值触发器（参与度真相层 participation.Manager
+// 结构性实现，app 装配注入）：触发为异步排队——落库即返回保存响应；同插件求值串行，
+// 在途完成后仅跑最新输入。插件未激活（无会话）或清单未声明 settingsResolver 时为空操作
+type ParticipationEvalTrigger interface {
+	TriggerEvaluation(pluginPublicId string)
 }
 
-// NewPluginSettingService 创建插件设置服务
-func NewPluginSettingService(pluginRepo *PluginRepository, storage *PluginStorageService, rootPath string) *PluginSettingService {
-	return &PluginSettingService{pluginRepo: pluginRepo, storage: storage, rootPath: rootPath}
+// PluginSettingService 插件设置服务（组合声明与存储）
+type PluginSettingService struct {
+	pluginRepo  *PluginRepository
+	storage     *PluginStorageService
+	rootPath    string
+	evalTrigger ParticipationEvalTrigger
+}
+
+// NewPluginSettingService 创建插件设置服务。evalTrigger 为设置落库后的参与度求值触发器，
+// 可为 nil（未装配时落库不触发求值——纯测试装配）
+func NewPluginSettingService(pluginRepo *PluginRepository, storage *PluginStorageService, rootPath string, evalTrigger ParticipationEvalTrigger) *PluginSettingService {
+	return &PluginSettingService{pluginRepo: pluginRepo, storage: storage, rootPath: rootPath, evalTrigger: evalTrigger}
 }
 
 // GetSettings 获取插件设置项（声明 + 当前值，加密项已解密）
@@ -95,9 +104,17 @@ func (s *PluginSettingService) SaveSetting(ctx context.Context, publicId, key, v
 		schemaVer = plugin.ConfigSchemaVersion.Int64
 	}
 	if decl.Encrypted {
-		return s.storage.SetValueEncrypted(ctx, plugin.GetID(), key, value, schemaVer)
+		if err := s.storage.SetValueEncrypted(ctx, plugin.GetID(), key, value, schemaVer); err != nil {
+			return err
+		}
+		s.triggerParticipationEval(publicId)
+		return nil
 	}
-	return s.storage.SetValue(ctx, plugin.GetID(), key, value, schemaVer)
+	if err := s.storage.SetValue(ctx, plugin.GetID(), key, value, schemaVer); err != nil {
+		return err
+	}
+	s.triggerParticipationEval(publicId)
+	return nil
 }
 
 // ResetSetting 重置设置项为声明默认值（删除存储值）
@@ -109,7 +126,19 @@ func (s *PluginSettingService) ResetSetting(ctx context.Context, publicId, key s
 	if plugin == nil {
 		return fmt.Errorf("插件不存在: %s", publicId)
 	}
-	return s.storage.DeleteValue(ctx, plugin.GetID(), key)
+	if err := s.storage.DeleteValue(ctx, plugin.GetID(), key); err != nil {
+		return err
+	}
+	s.triggerParticipationEval(publicId)
+	return nil
+}
+
+// triggerParticipationEval 设置落库成功后触发该插件的参与度求值（ResetSetting 不经
+// SaveSetting，两落库点各自挂接；异步排队，未装配触发器时为空操作）
+func (s *PluginSettingService) triggerParticipationEval(publicId string) {
+	if s.evalTrigger != nil {
+		s.evalTrigger.TriggerEvaluation(publicId)
+	}
 }
 
 // loadSettingDeclarations 从插件 plugin.json 根级 settings 段读取用户设置项声明；

@@ -11,6 +11,9 @@ export {
 export {
     ExtensionInfo,
     FrontendExtensionInfo,
+    ParticipationEntryState,
+    ParticipationEvalStatus,
+    ParticipationOverview,
     PluginQueryDTO,
     PluginStatusDTO,
     SettingItem

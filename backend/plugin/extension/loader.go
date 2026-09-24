@@ -25,6 +25,7 @@ import (
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/plugin/settingresolver"
 	pluginsdktransport "github.com/lvfeng-z/library-squirrel-sdk/transport"
 )
 
@@ -104,7 +105,8 @@ type ActivePluginLister interface {
 }
 
 // WorkFetchEntries 返回插件声明的作品拉取条目清单（各条目 id/name 原样；未加载/未声明
-// 该段返回 nil）。消费方只读使用，不改动返回切片
+// 该段返回 nil）。参与度真相层接线后按覆盖表过滤——条目被 resolver 停用即不出现在
+// 返回清单。消费方只读使用，不改动返回切片
 func (l *Loader) WorkFetchEntries(pluginPublicId string) []dto.WorkFetchDeclaration {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
@@ -112,11 +114,12 @@ func (l *Loader) WorkFetchEntries(pluginPublicId string) []dto.WorkFetchDeclarat
 	if !ok || entry.info == nil {
 		return nil
 	}
-	return entry.info.WorkFetch
+	return l.filterWorkFetchEntries(pluginPublicId, entry.info.WorkFetch)
 }
 
 // SiteAuthorFetchEntries 返回插件声明的站点作者拉取能力包条目清单（各条目 id/name/sites 原样；
-// 未加载/未声明该能力包返回 nil）。消费方只读使用，不改动返回切片
+// 未加载/未声明该能力包返回 nil）。参与度真相层接线后按覆盖表过滤——条目被 resolver 停用
+// 即不出现在返回清单。消费方只读使用，不改动返回切片
 func (l *Loader) SiteAuthorFetchEntries(pluginPublicId string) []dto.SiteAuthorFetchDeclaration {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
@@ -124,16 +127,20 @@ func (l *Loader) SiteAuthorFetchEntries(pluginPublicId string) []dto.SiteAuthorF
 	if !ok || entry.info == nil {
 		return nil
 	}
-	return entry.info.SiteAuthorFetch
+	return l.filterSiteAuthorFetchEntries(pluginPublicId, entry.info.SiteAuthorFetch)
 }
 
 // HasWorkFetchOption 查询插件指定作品拉取条目是否声明了该方法组（未加载/无该条目/该条目未声明
-// 均返回 false，调用方据此不经该条目调用）。
+// 均返回 false，调用方据此不经该条目调用）。条目被参与度覆盖表停用时同样返回 false——
+// 停用条目不经此门控被调用。
 func (l *Loader) HasWorkFetchOption(pluginPublicId, extensionId, option string) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	entry, ok := l.processes[pluginPublicId]
 	if !ok || entry.info == nil {
+		return false
+	}
+	if !l.entryParticipates(pluginPublicId, settingresolver.PointWorkFetch, extensionId) {
 		return false
 	}
 	for _, handler := range entry.info.WorkFetch {
@@ -363,18 +370,24 @@ func registerPluginResourceTypes(info *PluginInfo) {
 		return
 	}
 	for _, decl := range info.ResourceTypes {
-		spec := entity.ResourceTypeSpec{
-			ResourceType:   decl.Type,
-			Roles:          toStoreRoleSpecs(decl.Roles),
-			PrimaryRoles:   decl.PrimaryRoles,
-			StoreStandards: toStoreStandards(decl.StoreStandards),
-		}
-		if err := entity.ResourceTypeRegistry.Register(spec); err != nil {
-			logger.Log.Warnf("插件 %s 自定义资源类型 %s 注册失败,跳过(不株连其他能力): %v", info.PublicID, decl.Type, err)
-			continue
-		}
-		logger.Log.Infof("插件 %s 自定义资源类型已注册: %s", info.PublicID, decl.Type)
+		registerPluginResourceType(info, decl)
 	}
+}
+
+// registerPluginResourceType 注册单个自定义资源类型声明（激活期整批注册与参与度恢复的
+// 单条重注册共用）；注册失败记日志跳过，不株连其他类型。
+func registerPluginResourceType(info *PluginInfo, decl dto.ResourceTypeDeclaration) {
+	spec := entity.ResourceTypeSpec{
+		ResourceType:   decl.Type,
+		Roles:          toStoreRoleSpecs(decl.Roles),
+		PrimaryRoles:   decl.PrimaryRoles,
+		StoreStandards: toStoreStandards(decl.StoreStandards),
+	}
+	if err := entity.ResourceTypeRegistry.Register(spec); err != nil {
+		logger.Log.Warnf("插件 %s 自定义资源类型 %s 注册失败,跳过(不株连其他能力): %v", info.PublicID, decl.Type, err)
+		return
+	}
+	logger.Log.Infof("插件 %s 自定义资源类型已注册: %s", info.PublicID, decl.Type)
 }
 
 // unregisterPluginResourceTypes 反注册插件声明的自定义资源类型(卸载时清理);内置类型受白名单保护不会被删。
@@ -408,22 +421,32 @@ func (l *Loader) registerDeclaredExtensions(info *PluginInfo) error {
 		}
 	}
 	for _, entry := range info.SiteBrowsers {
-		var browser sdkdto.SiteBrowser = &SiteBrowserProxy{
-			serviceAccessor: l,
-			pluginPublicId:  info.PublicID,
-			extensionId:     entry.ID,
+		if err := l.registerSiteBrowserEntry(info, entry); err != nil {
+			return err
 		}
-		metadata := model.ExtensionMetadata{
-			Type:           model.ExtensionTypeSiteBrowser,
-			ID:             entry.ID,
-			PluginID:       info.ID,
-			PluginPublicID: info.PublicID,
-			Name:           entry.Name,
-			Description:    entry.Description,
-		}
-		if err := l.siteBrowserRegistry.Register(model.NewExtension(metadata, browser)); err != nil {
-			return fmt.Errorf("注册站点浏览器条目 %s: %w", entry.ID, err)
-		}
+	}
+	return nil
+}
+
+// registerSiteBrowserEntry 注册单个站点浏览器条目代理（激活期整批注册与参与度恢复的
+// 单条重注册共用）：代理无状态，调用期经进程表解析 gRPC 客户端。注册失败（如同键条目
+// 已存在）返回错误——激活路径据此整体回滚
+func (l *Loader) registerSiteBrowserEntry(info *PluginInfo, entry dto.SiteBrowserDeclaration) error {
+	var browser sdkdto.SiteBrowser = &SiteBrowserProxy{
+		serviceAccessor: l,
+		pluginPublicId:  info.PublicID,
+		extensionId:     entry.ID,
+	}
+	metadata := model.ExtensionMetadata{
+		Type:           model.ExtensionTypeSiteBrowser,
+		ID:             entry.ID,
+		PluginID:       info.ID,
+		PluginPublicID: info.PublicID,
+		Name:           entry.Name,
+		Description:    entry.Description,
+	}
+	if err := l.siteBrowserRegistry.Register(model.NewExtension(metadata, browser)); err != nil {
+		return fmt.Errorf("注册站点浏览器条目 %s: %w", entry.ID, err)
 	}
 	return nil
 }
@@ -486,6 +509,13 @@ type Loader struct {
 	// 崩溃清理通知回调：Loader 完成自身清理（进程表+所属注册表+URL 监听）后调用，
 	// 供宿主触发生命周期参与者的 OnStopped，使崩溃路径与显式停用的清理集合对称
 	crashNotifier func(pluginPublicId string)
+
+	// 参与度真相层消费面（可选接线，装配期注入）：声明查询面（拉取条目清单、条目级
+	// 方法组门控、能力集合派生）叠加覆盖表过滤；resourceTypes / siteBrowsers 条目参与度
+	// 变化联动自定义资源类型与站点浏览器代理的条目级注册/反注册。未接线时各查询面退化
+	// 为纯声明（全基线参与）
+	participation       ParticipationTruth
+	detachParticipation func()
 
 	// 子进程模式：跟踪活跃的插件进程
 	processes map[string]*pluginEntry // publicId -> entry

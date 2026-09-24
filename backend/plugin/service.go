@@ -20,6 +20,7 @@ import (
 	querypkg "github.com/library-squirrel/backend/base/query"
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/plugin/extension"
+	"github.com/library-squirrel/backend/plugin/participation"
 	"github.com/library-squirrel/backend/util"
 )
 
@@ -117,6 +118,8 @@ type Service struct {
 
 	runtimeStatusProvider RuntimeStatusProvider
 	extensionListProvider ExtensionListProvider
+	// 参与度概要提供者（真相层查询面）：GetPluginStatus 序列化时现读，无独立状态追踪
+	participationStatusProvider ParticipationStatusProvider
 
 	pendingMu       sync.Mutex                      // 检查更新待办列表互斥锁（含执行中守卫）
 	pendingUpgrades map[string]*pendingUpgradeEntry // 启动期检测出的更新待办（内存态，重启重检）
@@ -209,6 +212,12 @@ func (s *Service) SetRuntimeStatusProvider(provider RuntimeStatusProvider) {
 // SetExtensionListProvider 设置扩展点列表提供者
 func (s *Service) SetExtensionListProvider(provider ExtensionListProvider) {
 	s.extensionListProvider = provider
+}
+
+// SetParticipationStatusProvider 设置参与度概要提供者（真相层查询面，*participation.Manager
+// 结构性实现）
+func (s *Service) SetParticipationStatusProvider(provider ParticipationStatusProvider) {
+	s.participationStatusProvider = provider
 }
 
 // GetById 根据ID获取
@@ -346,9 +355,40 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 		return nil, err
 	}
 
+	// settingsResolver 安装期闸门（清单校验簇同层）：声明在场时随包校验脚本工件并
+	// 以声明默认值 dry-run；不带该字段的插件零行为变化
+	scriptName := ""
+	if manifest.SettingsResolver != nil {
+		scriptName = manifest.SettingsResolver.Script
+	}
+	if err := participation.ValidateResolverForInstall(&manifest, readPackageFile(reader, scriptName)); err != nil {
+		return nil, err
+	}
+
 	// 构建安装 DTO
 	installDTO := manifest.ToPluginInstallDTO(packagePath)
 	return installDTO, nil
+}
+
+// readPackageFile 按条目名读取安装包内文件内容（精确名匹配，名为空、条目不在场或不可读
+// 返回 nil）
+func readPackageFile(reader *zip.Reader, name string) []byte {
+	if name == "" {
+		return nil
+	}
+	for _, file := range reader.File {
+		if file.Name != name {
+			continue
+		}
+		rc, err := file.Open()
+		if err != nil {
+			return nil
+		}
+		data, _ := io.ReadAll(rc)
+		rc.Close()
+		return data
+	}
+	return nil
 }
 
 // install 安装插件（包含激活）。reinstall=true 为重装/升级（复用同 publicId 原记录覆盖），false 为全新安装（已存在且未卸载则报错）。
@@ -518,7 +558,13 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 	plugin.Version = sql.NullString{String: installDTO.Version, Valid: true}
 	plugin.ContractVersion = sql.NullInt64{Int64: int64(installDTO.ContractVersion), Valid: installDTO.ContractVersion > 0}
 	plugin.ConfigSchemaVersion = sql.NullInt64{Int64: int64(installDTO.ConfigSchemaVersion), Valid: true} // 0=legacy/未管理，总是写入
-	plugin.EntryPath = sql.NullString{String: filepath.Join(PluginPackageRoot, pathRelative, installDTO.EntryFile), Valid: true}
+	// entryFile 缺席 = 纯 UI 插件（无子进程），EntryPath 不落值——空文件名拼接会得出目录
+	// 路径且非空，激活期会被判为运行时插件而尝试以目录为可执行文件起进程
+	if installDTO.EntryFile != "" {
+		plugin.EntryPath = sql.NullString{String: filepath.Join(PluginPackageRoot, pathRelative, installDTO.EntryFile), Valid: true}
+	} else {
+		plugin.EntryPath = sql.NullString{Valid: false}
+	}
 	plugin.RootPath = sql.NullString{String: filepath.Join(PluginPackageRoot, pathRelative), Valid: true}
 	plugin.ActivationType = sql.NullString{String: string(rune(installDTO.Activation.Type + '0')), Valid: true}
 	plugin.Uninstalled = sql.NullBool{Bool: false, Valid: true}
@@ -842,7 +888,40 @@ func (s *Service) GetPluginStatus(ctx context.Context, pluginPublicId string) (*
 	// URL 监听规则（清单声明的作品拉取条目 urlPatterns 聚合；插件未运行也可展示）
 	status.UrlPatterns = s.declaredUrlPatterns(plugin)
 
+	// 参与度概要（真相层序列化快照；插件未激活无会话时保持 nil，前端不渲染该节）
+	status.Participation = s.participationOverviewOf(pluginPublicId)
+
 	return status, nil
+}
+
+// participationOverviewOf 组装插件参与度概要（每次查询现读真相层内存表）：条目态取
+// Entries（声明集 ⊕ 覆盖表），求值状态取 StatusOf；无会话（插件未激活/已停用）返回 nil
+func (s *Service) participationOverviewOf(pluginPublicId string) *ParticipationOverview {
+	if s.participationStatusProvider == nil {
+		return nil
+	}
+	evalStatus := s.participationStatusProvider.StatusOf(pluginPublicId)
+	if evalStatus == nil {
+		return nil
+	}
+	entries := s.participationStatusProvider.Entries(pluginPublicId)
+	overview := &ParticipationOverview{Entries: make([]ParticipationEntryState, 0, len(entries))}
+	for _, e := range entries {
+		overview.Entries = append(overview.Entries, ParticipationEntryState{
+			Point:  string(e.Point),
+			ID:     e.ID,
+			Active: e.Active,
+			Reason: e.Reason,
+		})
+	}
+	if !evalStatus.LastEvalAt.IsZero() {
+		overview.Status.LastEvalAt = evalStatus.LastEvalAt.UnixMilli()
+	}
+	overview.Status.HasResolver = evalStatus.HasResolver
+	overview.Status.LastFailure = evalStatus.LastFailure
+	overview.Status.LastFailureMsg = evalStatus.LastFailureMsg
+	overview.Status.LastRejected = evalStatus.LastRejected
+	return overview
 }
 
 // declaredUrlPatterns 读插件清单声明的 URL 监听模式（作品拉取条目 urlPatterns 跨条目聚合）。

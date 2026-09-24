@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { markRaw, ref } from 'vue'
 import type { Component } from 'vue'
 import type { ViewSlot, EmbedSlot, DialogSlot, ReplaceViewSlot } from '@renderer/model/slot'
 import type { RouteRecordRaw } from 'vue-router'
@@ -37,9 +37,9 @@ let routerInstance: Router | null = null
 
 /**
  * 设置 Router 实例
- * 在应用启动时调用
+ * 在应用启动时调用；接受 null 供测试在独立路由器上执行后清理模块级实例
  */
-export function setRouterInstance(router: Router) {
+export function setRouterInstance(router: Router | null) {
   routerInstance = router
 }
 
@@ -59,8 +59,12 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
     menuSlots: new Map<string, MenuSlotItem>(),
     siteBrowserSlots: new Map<string, SiteBrowserListSlotItem>(),
     activeViewId: ref<string | null>(null),
-    // replaceView 覆盖前的原始路由 component（用于卸载恢复）
-    originalRouteComponents: new Map<string, RouteRecordRaw['component']>()
+    // replaceView 覆盖前的原始路由（component + meta，供卸载恢复）
+    originalRouteRecords: new Map<string, { component: NonNullable<RouteRecordRaw['component']>; meta?: RouteRecordRaw['meta'] }>(),
+    // replaceViewSlot 注册次序（slotId → 单调递增序号）：同 target 多插件时的接管基准——
+    // 最近启用（注册）者胜；某覆盖者注销后由剩余覆盖者中序号最大者接管
+    replaceViewOrder: new Map<string, number>(),
+    replaceViewSeq: 0
   }),
 
   getters: {
@@ -188,44 +192,65 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
     // 注册替换视图插槽（覆盖主程序已有路由）
     registerReplaceViewSlot(slot: ReplaceViewSlot) {
       this.replaceViewSlots.set(slot.slotId, slot)
-      if (routerInstance) {
-        const existing = routerInstance.getRoutes().find((r) => r.name === slot.target)
-        // 记录原始 component（仅在首次覆盖时记录）
-        if (!this.originalRouteComponents.has(slot.target)) {
-          if (existing?.components?.default) {
-            this.originalRouteComponents.set(slot.target, existing.components.default)
-          }
-        }
-        // 覆盖路由 component（作为 MainLayout children，保留侧边菜单布局）
-        routerInstance.addRoute('MainLayout', {
-          name: slot.target,
-          path: slot.target,
-          component: slot.component,
-          meta: { ...(existing?.meta || {}), isPlugin: true, replaced: true }
-        })
-      }
+      this.replaceViewOrder.set(slot.slotId, ++this.replaceViewSeq)
+      this.applyReplaceViewToRoute(slot)
     },
 
-    // 取消注册替换视图插槽（恢复主程序原组件）
+    // 取消注册替换视图插槽：同 target 其余覆盖者中最近注册者接管；无剩余覆盖者时恢复
+    // 主程序原路由（component 与 meta 均复原）
     unregisterReplaceViewSlot(slotId: string) {
       const slot = this.replaceViewSlots.get(slotId)
-      if (slot && routerInstance) {
-        const original = this.originalRouteComponents.get(slot.target)
-        if (original) {
-          // 恢复为 MainLayout children（与注册时一致，保留侧边菜单布局）
-          routerInstance.addRoute('MainLayout', {
-            name: slot.target,
-            path: slot.target,
-            component: original
-          })
+      this.replaceViewSlots.delete(slotId)
+      this.replaceViewOrder.delete(slotId)
+      if (!slot) return
+
+      if (routerInstance) {
+        // 剩余同 target 覆盖者按注册序取最近者
+        const successor = Array.from(this.replaceViewSlots.entries())
+          .filter(([, s]) => s.target === slot.target)
+          .sort((a, b) => (this.replaceViewOrder.get(b[0]) ?? 0) - (this.replaceViewOrder.get(a[0]) ?? 0))[0]
+        if (successor) {
+          this.applyReplaceViewToRoute(successor[1])
+        } else {
+          const original = this.originalRouteRecords.get(slot.target)
+          if (original) {
+            // 恢复为 MainLayout children（与覆盖前一致，保留侧边菜单布局）
+            routerInstance.addRoute('MainLayout', {
+              name: slot.target,
+              path: slot.target,
+              component: original.component,
+              meta: original.meta ? { ...original.meta } : undefined
+            })
+          }
+          this.originalRouteRecords.delete(slot.target)
         }
-        this.originalRouteComponents.delete(slot.target)
         // 如果当前在被替换的路由，导航到首页强制刷新（清除插件组件缓存）
         if (routerInstance.currentRoute.value.name === slot.target) {
           routerInstance.push('/')
         }
       }
-      this.replaceViewSlots.delete(slotId)
+    },
+
+    // 将替换视图写入路由表：覆盖 target 路由的 component（作为 MainLayout children，保留
+    // 侧边菜单布局）；首次覆盖该 target 时记录原始路由供卸载恢复，后续覆盖者不覆盖该记录
+    applyReplaceViewToRoute(slot: ReplaceViewSlot) {
+      if (!routerInstance) return
+      const existing = routerInstance.getRoutes().find((r) => r.name === slot.target)
+      const existingComponent = existing?.components?.default
+      if (!this.originalRouteRecords.has(slot.target) && existingComponent) {
+        this.originalRouteRecords.set(slot.target, {
+          // markRaw：组件对象不进响应式系统——pinia 深层代理会令恢复时 addRoute 拿到
+          // 代理组件（引用同一性破坏，路由表持有代理也有无谓的开销）
+          component: markRaw(existingComponent),
+          meta: existing?.meta ? { ...existing.meta } : undefined
+        })
+      }
+      routerInstance.addRoute('MainLayout', {
+        name: slot.target,
+        path: slot.target,
+        component: slot.component,
+        meta: { ...(existing?.meta || {}), isPlugin: true, replaced: true }
+      })
     },
 
     // 切换视图
@@ -286,7 +311,9 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
       this.menuSlots.clear()
       this.siteBrowserSlots.clear()
       this.activeViewId = null
-      this.originalRouteComponents.clear()
+      this.originalRouteRecords.clear()
+      this.replaceViewOrder.clear()
+      this.replaceViewSeq = 0
     }
   }
 })

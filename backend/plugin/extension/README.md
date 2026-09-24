@@ -13,7 +13,8 @@
 
 | 组件 | 职责 |
 | --- | --- |
-| `loader.go` | 插件进程加载与 HostDeps 装配：契约版本校验（current 引用 SDK `transport.ContractVersion`，minSupported=12——扩展点正名为作品拉取 workFetch 的破坏性分界）、声明面门控查询（清单原文校验 `ValidateManifestDeclarations`、能力集合派生 `deriveCapabilities`、拉取条目声明 `SiteAuthorFetchEntries`、条目级 `HasWorkFetchOption`）、激活期按清单声明派生注册作品拉取/站点浏览器代理（元数据 name 取清单条目，停用/崩溃清理走 `UnloadPlugin` 的 `UnregisterAll`）、HostService RPC 桥接适配器（含库查询方法组 → `PluginContext` 的适配 `hostLibraryQueryProvider`） |
+| `loader.go` | 插件进程加载与 HostDeps 装配：契约版本校验（current 引用 SDK `transport.ContractVersion`，minSupported=12——扩展点正名为作品拉取 workFetch 的破坏性分界）、声明面门控查询（清单原文校验 `ValidateManifestDeclarations`、能力集合派生 `deriveCapabilities`、拉取条目声明 `SiteAuthorFetchEntries`、条目级 `HasWorkFetchOption`）、激活期按清单声明派生注册作品拉取/站点浏览器代理（元数据 name 取清单条目，停用/崩溃清理走 `UnloadPlugin` 的 `UnregisterAll`）、自定义资源类型注册/反注册（`registerPluginResourceTypes`/`unregisterPluginResourceTypes`，单条原语 `registerPluginResourceType` 供参与度恢复重注册共用）、HostService RPC 桥接适配器（含库查询方法组 → `PluginContext` 的适配 `hostLibraryQueryProvider`） |
+| `participation.go` | 参与度真相层消费面接线：`AttachParticipation`（装配期注入，须早于插件激活）后——声明查询面（拉取条目清单、条目级方法组门控、能力集合 `Capabilities`）叠加覆盖表过滤（停用条目不进候选、不贡献能力）；resourceTypes 条目参与度变化联动自定义资源类型条目级注册/反注册（反注册后资源行渲染走 Registry 未命中的降级链，与内置 unknown 同一语义），siteBrowsers 条目参与度变化联动站点浏览器代理条目级注销/重注册（重注册原语与激活期整批注册共用）。未接线时各查询面退化为纯声明（全基线参与） |
 | `library_query_provider.go` | **库查询核心（Tier 1 只读）**：实现 SDK `LibraryQuery` 契约 21 端点，逐端点桥接 14 个域只读接口（`LibraryQueryDeps`）并映射为契约消息；分页钳制（page≥1、缺省 20、上限 200）；Get* 未命中 `NotFound`、GetWorkDir 未配置 `FailedPrecondition`；零自拼 SQL——查询全走各域 repository GORM 管线（软删 scope 自动排除、resource_store 关联活行过滤） |
 | `plugin_context.go` | 插件侧 `PluginContext` 实现：自存 KV、任务触发、前端通信转发、库查询方法组收口（每调用记诊断级日志——调用方插件 + 端点 + 关键参数）。**注册相关方法为契约 v11 前遗留**（运行时注册/注销 RPC 已从 SDK 接口删除，宿主侧实现零调用方，待清死代码） |
 | `task_executor.go` / `work_fetch_proxy*.go` | WorkFetcher 执行与 gRPC 代理（实现 download 模块定义的 `PluginExecutor` 接口；proxy registry 按插件身份取代理） |
@@ -36,4 +37,5 @@
 - **查询实现分层**：插件查询不走 search、provider 不自拼 SQL——同一过滤语义的单一落点 = 各域 repository（缺口过滤在对应域 repository 补方法，前端将来亦可复用）。
 - **库查询核心无插件态**：`libraryQueryProvider` 不感知调用方插件；诊断日志与调用方归因在 `pluginContext` 调用点记录。
 - **声明面门控方向性**：声明面（`extensions` 各条目）门控**主程序→插件**方向的可选能力调用（能力包在场 / 条目 `options` 声明驱动）；插件→宿主方向的库查询 RPC 无声明直接调用。
+- **参与度叠加过滤属查询面而非注册面**：拉取候选/能力集合在声明查询函数处叠加真相层过滤（停用条目不出清单、`HasWorkFetchOption` 短路），任务创建/作者拉取/粘性记忆等消费方零改动自动跟随；经订阅做注册面联动的是 resourceTypes（注册态即渲染语义）与 siteBrowsers（注册表即列表 API 与打开调用的产出面）。URL 监听派生索引的参与度联动在 `backend/pluginTaskUrlListener` 自包内完成（URL 监听无独立参与度词汇，按声明来源面 workFetch 条目级映射，登记记忆支撑恢复重挂）。
 - **激活插件清单载体**：`ActivePluginLister.ListActivePlugins()` 返回 `[]ActivePlugin{PublicID, Name}`（非裸 ID 清单）——同一清单既作广播路由的候选集、又作交互面的候选展示名来源（插件未设置名时回落公开 ID）；清单按字典序返回（`loader.go:273-274,286`），「命中一个即止」的候选序据此可复现。

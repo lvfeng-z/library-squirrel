@@ -238,6 +238,14 @@
   --app-status-plugin-stopping-text: var(--app-status-warn-text);
   --app-status-plugin-stopping-border: var(--app-status-warn-border);
 
+  /* —— 插件声明条目参与度（管理页状态抽屉行内徽标：active=参与中→绿、disabled=被覆盖停用→灰）—— */
+  --app-status-plugin-entry-active-bg: var(--app-status-done-bg);
+  --app-status-plugin-entry-active-text: var(--app-status-done-text);
+  --app-status-plugin-entry-active-border: var(--app-status-done-border);
+  --app-status-plugin-entry-disabled-bg: var(--app-status-idle-bg);
+  --app-status-plugin-entry-disabled-text: var(--app-status-idle-text);
+  --app-status-plugin-entry-disabled-border: var(--app-status-idle-border);
+
   --app-status-toggle-disabled-bg: var(--app-status-idle-bg);
   --app-status-toggle-disabled-text: var(--app-status-idle-text);
   --app-status-toggle-disabled-border: var(--app-status-idle-border);

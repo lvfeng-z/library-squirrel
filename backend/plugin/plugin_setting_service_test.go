@@ -28,7 +28,7 @@ func newSettingTestService(t *testing.T) (*PluginSettingService, *Service) {
 	}
 	repo := NewRepository(db)
 	svc := NewService(repo, nil)
-	return NewPluginSettingService(repo, NewPluginStorageService(newMockStorageRepo()), util.RootPath()), svc
+	return NewPluginSettingService(repo, NewPluginStorageService(newMockStorageRepo()), util.RootPath(), nil), svc
 }
 
 // TestGetSettingsReadsRootLevelDeclarations 根级 settings 段解析与设置服务读取：
