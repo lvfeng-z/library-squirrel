@@ -16,7 +16,7 @@ html[data-theme="ocean-light"] {
 
   --app-bg-page: #e2f0f2;
   --app-bg-surface-variant: #edf6f7;
-  --app-bg-sidebar: #cde5e8;
+  --app-bg-sidebar: #ffffff;
 
   /* ===== EP 组件色族（success/warning/danger/info）：经 ep-bridge 驱动 <el-button type=success>、残留 <el-tag type=*> 等 EP 组件；
      与下方状态语义槽位(--app-status-*)分属两条轨道、互不引用。 ===== */

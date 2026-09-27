@@ -2,21 +2,21 @@
    覆盖主色为深绿；文字、边框、背景沿用 tokens.css 的 :root 默认值，状态语义槽位由本文件独立覆盖（见下，初值暂同 default）。
    --el-* 由 ep-bridge.css 统一桥接，自动跟随此处 --app-* 变化。 */
 html[data-theme="forest-light"] {
-  --app-color-primary: #007038;
-  --app-color-primary-light-1: #1a7e4c;
-  --app-color-primary-light-2: #338d60;
-  --app-color-primary-light-3: #4d9b74;
-  --app-color-primary-light-4: #66a988;
-  --app-color-primary-light-5: #80b89c;
-  --app-color-primary-light-6: #99c6af;
-  --app-color-primary-light-7: #b3d4c3;
-  --app-color-primary-light-8: #cce2d7;
-  --app-color-primary-light-9: #e6f1eb;
-  --app-color-primary-dark-2: #005a2d;
+  --app-color-primary: #008b45;
+  --app-color-primary-light-1: #1a9758;
+  --app-color-primary-light-2: #33a26a;
+  --app-color-primary-light-3: #4dae7d;
+  --app-color-primary-light-4: #66b98f;
+  --app-color-primary-light-5: #80c5a2;
+  --app-color-primary-light-6: #99d1b5;
+  --app-color-primary-light-7: #b3dcc7;
+  --app-color-primary-light-8: #cce8da;
+  --app-color-primary-light-9: #e6f3ec;
+  --app-color-primary-dark-2: #007038;
 
-  --app-bg-page: #e8efe5;
-  --app-bg-surface-variant: #f0f4ee;
-  --app-bg-sidebar: #d4e2d0;
+  --app-bg-page: #e6efe7;
+  --app-bg-surface-variant: #f0f5f0;
+  --app-bg-sidebar: #ffffff;
 
   /* ===== EP 组件色族（success/warning/danger/info）：经 ep-bridge 驱动 <el-button type=success>、残留 <el-tag type=*> 等 EP 组件；
      与下方状态语义槽位(--app-status-*)分属两条轨道、互不引用。 ===== */
@@ -70,7 +70,7 @@ html[data-theme="forest-light"] {
 
   /* ===== 状态语义槽位（驱动所有 --app-status-{类目}-* 别名）：初值暂同 default（tokens.css :root 的 EP 经典色），
      待逐主题调色时各自独立填色、不引用 :root。
-     调色提示：本主题 primary 为绿(#007038)，done 槽不可再用绿；done 搬离后须避免与 warn(橙)、active(橙)挤入同一暖域。 ===== */
+     调色提示：本主题 primary 为绿(#008b45)，done 槽不可再用绿；done 搬离后须避免与 warn(橙)、active(橙)挤入同一暖域。 ===== */
   --app-status-active-text: #f97316;
   --app-status-active-bg: color-mix(in srgb, #f97316 18%, white);
   --app-status-active-border: color-mix(in srgb, #f97316 26%, white);

@@ -61,7 +61,10 @@ function handleClickOutSide() {
     v-click-out-side="handleClickOutSide"
     class="side-menu-container"
   >
-    <div class="side-menu-main">
+    <div
+      class="side-menu-main"
+      :class="{ 'side-menu-main-floating': !folded && !locked }"
+    >
       <div class="side-menu-collapse-button">
         <el-icon
           class="side-menu-collapse-button-collapse"
@@ -127,7 +130,11 @@ function handleClickOutSide() {
   overflow: visible;
   background-color: var(--side-menu-background-color, white);
   border-right: solid 1px var(--app-border-color);
-  transition: width 0.3s ease;
+  transition: width 0.3s ease, box-shadow 0.3s ease;
+}
+/* 悬浮态（展开且未锁定）：菜单体悬于内容上方而非占据布局，投阴影标出与被覆盖内容的边界 */
+.side-menu-main-floating {
+  box-shadow: var(--app-shadow);
 }
 .side-menu-collapse-button {
   display: grid;

@@ -222,4 +222,9 @@ async function handleCloseCurrentView() {
 :deep(.main-page-sidebar) {
   overflow: visible;
 }
+
+/* 侧栏列顶部与系统标题栏之间的分隔线：由外壳布局（调用者）绘制，侧栏组件自身不感知 */
+.main-page-sidebar {
+  border-top: 1px solid var(--app-border-color);
+}
 </style>

@@ -16,7 +16,7 @@ html[data-theme="sakura-light"] {
 
   --app-bg-page: #f5e6ea;
   --app-bg-surface-variant: #f9eff1;
-  --app-bg-sidebar: #ecd3dc;
+  --app-bg-sidebar: #ffffff;
 
   /* ===== EP 组件色族（success/warning/danger/info）：经 ep-bridge 驱动 <el-button type=success>、残留 <el-tag type=*> 等 EP 组件；
      与下方状态语义槽位(--app-status-*)分属两条轨道、互不引用。 ===== */

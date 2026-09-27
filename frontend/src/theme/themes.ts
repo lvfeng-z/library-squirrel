@@ -38,8 +38,8 @@ export const THEMES: ThemeMeta[] = [
   {
     id: 'forest-light',
     name: '森林绿',
-    swatch: { primary: '#007038', bg: '#fafafa', surface: '#ffffff' },
-    titleBar: { bg: '#e8efe5', text: '#303133' },
+    swatch: { primary: '#008b45', bg: '#fafafa', surface: '#ffffff' },
+    titleBar: { bg: '#e6efe7', text: '#303133' },
   },
   {
     id: 'ocean-light',
