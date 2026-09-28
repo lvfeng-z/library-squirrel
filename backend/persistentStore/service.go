@@ -17,7 +17,6 @@ import (
 	"github.com/library-squirrel/backend/util"
 	"github.com/library-squirrel/backend/util/fingerprint"
 
-	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -83,7 +82,7 @@ func tryDecodeImageDimensions(filePath, ext sql.NullString, workDir string) (wid
 	absPath := filepath.Join(workDir, filePath.String)
 	w, h, err := util.DecodeImageDimensions(absPath)
 	if err != nil {
-		logger.Log.Warn("提取图片宽高失败，留空", zap.String("path", absPath), zap.Error(err))
+		logger.Log.Warnw("提取图片宽高失败，留空", "path", absPath, "error", err)
 		return
 	}
 	return sql.NullInt64{Int64: int64(w), Valid: true}, sql.NullInt64{Int64: int64(h), Valid: true}
@@ -174,7 +173,7 @@ func (s *Service) runBackfillFingerprints(ctx context.Context) {
 	}
 	records, err := s.repo.List(ctx, &database.QueryOption{})
 	if err != nil {
-		logger.Log.Warn("[persistentStore] 回填指纹：查询记录失败", zap.Error(err))
+		logger.Log.Warnw("[persistentStore] 回填指纹：查询记录失败", "error", err)
 		return
 	}
 	filled := 0
@@ -195,12 +194,12 @@ func (s *Service) runBackfillFingerprints(ctx context.Context) {
 		}
 		fp, err := s.fingerprinter.Fingerprint(ctx, absPath)
 		if err != nil {
-			logger.Log.Warn("[persistentStore] 回填指纹：计算失败", zap.String("path", absPath), zap.Error(err))
+			logger.Log.Warnw("[persistentStore] 回填指纹：计算失败", "path", absPath, "error", err)
 			continue
 		}
 		r.ContentFingerprint = sql.NullString{String: fp.Digest, Valid: true}
 		if err := s.repo.Updates(ctx, r); err != nil {
-			logger.Log.Warn("[persistentStore] 回填指纹：更新失败", zap.Int64("id", r.GetID()), zap.Error(err))
+			logger.Log.Warnw("[persistentStore] 回填指纹：更新失败", "id", r.GetID(), "error", err)
 			continue
 		}
 		filled++
@@ -217,7 +216,7 @@ func (s *Service) computeFingerprint(absPath string) sql.NullString {
 	}
 	fp, err := s.fingerprinter.Fingerprint(context.Background(), absPath)
 	if err != nil {
-		logger.Log.Warn("计算内容指纹失败，留空", zap.String("path", absPath), zap.Error(err))
+		logger.Log.Warnw("计算内容指纹失败，留空", "path", absPath, "error", err)
 		return sql.NullString{}
 	}
 	return sql.NullString{String: fp.Digest, Valid: true}
@@ -254,7 +253,7 @@ func (s *Service) CleanupFileResult(relPath string) error {
 // CleanupFile 清理指定相对路径的磁盘文件（用于事务回滚后的文件清理）
 func (s *Service) CleanupFile(relPath string) {
 	if err := s.CleanupFileResult(relPath); err != nil {
-		logger.Log.Warn("清理文件失败", zap.String("path", filepath.Join(s.getWorkDir(), relPath)), zap.Error(err))
+		logger.Log.Warnw("清理文件失败", "path", filepath.Join(s.getWorkDir(), relPath), "error", err)
 	}
 }
 
@@ -440,12 +439,12 @@ func (s *Service) HardDelete(ctx context.Context, id int64, backup bool) (int64,
 		if backup && record.CompletedAt > 0 && s.fileMover != nil {
 			backupId, err = s.fileMover.MoveToBackup(ctx, absPath)
 			if err != nil {
-				logger.Log.Warn("备份文件失败，降级为直接删除", zap.String("path", absPath), zap.Error(err))
+				logger.Log.Warnw("备份文件失败，降级为直接删除", "path", absPath, "error", err)
 				_ = os.Remove(absPath)
 			}
 		} else {
 			if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
-				logger.Log.Warn("删除文件失败（将仅删除记录）", zap.String("path", absPath), zap.Error(err))
+				logger.Log.Warnw("删除文件失败（将仅删除记录）", "path", absPath, "error", err)
 			}
 		}
 	}
@@ -470,7 +469,7 @@ func (s *Service) DeleteWithBackup(ctx context.Context, id int64) (int64, error)
 	// 查询失败（含脏数据 record not found）不阻断删除：返回 0，调用方按"未备份"跳过该条
 	record, err := s.repo.GetById(ctx, id)
 	if err != nil {
-		logger.Log.Warn("备份前查询 store 记录失败，跳过", zap.Int64("storeId", id), zap.Error(err))
+		logger.Log.Warnw("备份前查询 store 记录失败，跳过", "storeId", id, "error", err)
 		return 0, nil
 	}
 	if record == nil || !record.FilePath.Valid {
@@ -482,13 +481,13 @@ func (s *Service) DeleteWithBackup(ctx context.Context, id int64) (int64, error)
 	defer storeRegistry.Release(record.FilePath.String)
 
 	if s.fileMover == nil {
-		logger.Log.Warn("未注入 FileMover，跳过备份（文件留存原地）", zap.Int64("storeId", id))
+		logger.Log.Warnw("未注入 FileMover，跳过备份（文件留存原地）", "storeId", id)
 		return 0, s.repo.SoftDeleteWithBackup(ctx, id, 0)
 	}
 	workDir := s.getWorkDir()
 	absPath := filepath.Join(workDir, record.FilePath.String)
 	if !util.FileExists(absPath) {
-		logger.Log.Warn("源文件不存在，跳过备份", zap.Int64("storeId", id), zap.String("path", absPath))
+		logger.Log.Warnw("源文件不存在，跳过备份", "storeId", id, "path", absPath)
 		return 0, s.repo.SoftDeleteWithBackup(ctx, id, 0)
 	}
 
@@ -541,7 +540,7 @@ func (s *Service) ListByIdsIncludeDeleted(ctx context.Context, ids []int64) []*d
 		IncludeDeleted: true,
 	})
 	if err != nil {
-		logger.Log.Warn("按 ID 批量查询 store 记录（含删）失败", zap.Error(err))
+		logger.Log.Warnw("按 ID 批量查询 store 记录（含删）失败", "error", err)
 		return []*domain.PersistentStore{}
 	}
 	return records

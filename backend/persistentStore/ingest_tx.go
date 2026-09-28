@@ -21,7 +21,6 @@ import (
 	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/storeRegistry"
 
-	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -157,8 +156,7 @@ func (s *Service) AbortIngest(ctx context.Context, intentIds []int64) error {
 	var firstErr error
 	for _, row := range rows {
 		if err := revertIngestFile(row, workDir, &suppressed); err != nil {
-			logger.Log.Warn("撤回入库单文件失败，登记行保留待重试",
-				zap.String("filePath", row.FilePath), zap.Error(err))
+			logger.Log.Warnw("撤回入库单文件失败，登记行保留待重试", "filePath", row.FilePath, "error", err)
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -224,13 +222,11 @@ func (s *Service) RecoverIngest(ctx context.Context) (int, error) {
 	recovered := 0
 	for _, row := range rows {
 		if row.Workdir != workDir {
-			logger.Log.Warn("入库登记行所属库根与当前工作目录不匹配，保留待对应库根恢复",
-				zap.String("filePath", row.FilePath), zap.String("journalWorkdir", row.Workdir))
+			logger.Log.Warnw("入库登记行所属库根与当前工作目录不匹配，保留待对应库根恢复", "filePath", row.FilePath, "journalWorkdir", row.Workdir)
 			continue
 		}
 		if err := s.recoverIngestRow(ctx, row, workDir); err != nil {
-			logger.Log.Warn("入库登记行恢复失败，登记行保留待下次启动重试",
-				zap.String("filePath", row.FilePath), zap.Error(err))
+			logger.Log.Warnw("入库登记行恢复失败，登记行保留待下次启动重试", "filePath", row.FilePath, "error", err)
 			continue
 		}
 		recovered++
@@ -247,7 +243,7 @@ func (s *Service) recoverIngestRow(ctx context.Context, row *domain.StoreIngestJ
 	}
 	if !exists {
 		// 未落位：文件仍在暂存（或已不存在），登记行直接收口
-		logger.Log.Infof("[persistentStore] 入库恢复：文件未落位，登记行收口", zap.String("filePath", row.FilePath))
+		logger.Log.Infow("[persistentStore] 入库恢复：文件未落位，登记行收口", "filePath", row.FilePath)
 		return s.repo.DeleteIngestJournalsByIds(ctx, []int64{row.GetID()})
 	}
 	action, err := domain.ParseIngestAbortAction(string(row.AbortAction))
@@ -262,17 +258,15 @@ func (s *Service) recoverIngestRow(ctx context.Context, row *domain.StoreIngestJ
 			if rerr := os.Remove(finalAbs); rerr != nil && !os.IsNotExist(rerr) {
 				return fmt.Errorf("退回暂存失败且兜底删除失败: 退回=%v, 删除=%v", err, rerr)
 			}
-			logger.Log.Warn("入库恢复：退回暂存不可达，已删除最终路径文件兜底",
-				zap.String("filePath", row.FilePath), zap.String("stagingPath", row.StagingPath), zap.Error(err))
+			logger.Log.Warnw("入库恢复：退回暂存不可达，已删除最终路径文件兜底", "filePath", row.FilePath, "stagingPath", row.StagingPath, "error", err)
 		} else {
-			logger.Log.Infof("[persistentStore] 入库恢复：文件已退回暂存",
-				zap.String("filePath", row.FilePath), zap.String("stagingPath", row.StagingPath))
+			logger.Log.Infow("[persistentStore] 入库恢复：文件已退回暂存", "filePath", row.FilePath, "stagingPath", row.StagingPath)
 		}
 	case domain.AbortActionDiscard:
 		if err := os.Remove(finalAbs); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("丢弃文件失败: %w", err)
 		}
-		logger.Log.Infof("[persistentStore] 入库恢复：已按丢弃声明删除文件", zap.String("filePath", row.FilePath))
+		logger.Log.Infow("[persistentStore] 入库恢复：已按丢弃声明删除文件", "filePath", row.FilePath)
 	}
 	return s.repo.DeleteIngestJournalsByIds(ctx, []int64{row.GetID()})
 }
