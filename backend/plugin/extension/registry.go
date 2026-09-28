@@ -7,7 +7,6 @@ import (
 	domain "github.com/library-squirrel/backend/base"
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
-	"go.uber.org/zap"
 )
 
 // FrontendExtensionRegistry 前端扩展注册中心（管全部 7 种 kind，单一统一管道）
@@ -44,9 +43,7 @@ func (r *FrontendExtensionRegistry) Register(extension *model.Extension[*domain.
 		return ErrExtensionAlreadyExists
 	}
 	r.extensions[key] = extension
-	logger.Log.Info("前端扩展已注册",
-		zap.String("key", key),
-		zap.String("kind", string(extension.Instance.Kind)))
+	logger.Log.Infow("前端扩展已注册", "key", key, "kind", string(extension.Instance.Kind))
 
 	// 推送注册事件（payload 与注销事件同源，frontendExtensionId 为裸 extensionId）
 	if r.pusher != nil {
@@ -94,7 +91,7 @@ func (r *FrontendExtensionRegistry) UnregisterAll(pluginPublicId string) error {
 	// 推送批量注销事件
 	if r.pusher != nil && len(items) > 0 {
 		r.pusher.PushBatchUnregister(items)
-		logger.Log.Info("前端扩展已批量注销", zap.String("plugin", pluginPublicId), zap.Int("count", len(items)))
+		logger.Log.Infow("前端扩展已批量注销", "plugin", pluginPublicId, "count", len(items))
 	}
 
 	return nil

@@ -19,7 +19,6 @@ import (
 	"github.com/lvfeng-z/library-squirrel-sdk/gen"
 	"github.com/lvfeng-z/library-squirrel-sdk/identity"
 	pluginsdkliveness "github.com/lvfeng-z/library-squirrel-sdk/liveness"
-	"go.uber.org/zap"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
@@ -832,7 +831,7 @@ func (l *Loader) handlePluginCrash(pluginPublicId string) {
 		if l.crashNotifier != nil {
 			l.crashNotifier(pluginPublicId)
 		}
-		logger.Log.Warn("插件进程崩溃，已清理", zap.String("plugin", pluginPublicId))
+		logger.Log.Warnw("插件进程崩溃，已清理", "plugin", pluginPublicId)
 	}
 }
 

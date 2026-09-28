@@ -7,7 +7,6 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
-	"go.uber.org/zap"
 )
 
 // SiteBrowserRegistry 站点浏览器注册中心
@@ -33,9 +32,7 @@ func (r *SiteBrowserRegistry) Register(extension *model.Extension[pluginsdkdto.S
 		return ErrExtensionAlreadyExists
 	}
 	r.extensions[key] = extension
-	logger.Log.Info("SiteBrowser 已注册",
-		zap.String("key", key),
-		zap.String("name", extension.Metadata.Name))
+	logger.Log.Infow("SiteBrowser 已注册", "key", key, "name", extension.Metadata.Name)
 	return nil
 }
 
@@ -66,7 +63,7 @@ func (r *SiteBrowserRegistry) UnregisterAll(pluginPublicId string) error {
 		}
 	}
 	if count > 0 {
-		logger.Log.Info("SiteBrowser 已注销", zap.String("plugin", pluginPublicId), zap.Int("count", count))
+		logger.Log.Infow("SiteBrowser 已注销", "plugin", pluginPublicId, "count", count)
 	}
 	return nil
 }

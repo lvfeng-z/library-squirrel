@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/library-squirrel/backend/base/logger"
-	"go.uber.org/zap"
 )
 
 // pluginResourceMapping 插件资源路径映射
@@ -38,9 +37,7 @@ func (s *StaticResourceService) RegisterPlugin(publicId, absRootPath string, cac
 		rootPath: absRootPath,
 		cacheKey: cacheKey,
 	}
-	logger.Log.Info("插件静态资源已注册",
-		zap.String("plugin", publicId),
-	)
+	logger.Log.Infow("插件静态资源已注册", "plugin", publicId)
 }
 
 // UnregisterPlugin 注销插件的静态资源路径
@@ -48,7 +45,7 @@ func (s *StaticResourceService) UnregisterPlugin(publicId string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.plugins, publicId)
-	logger.Log.Info("插件静态资源已注销", zap.String("plugin", publicId))
+	logger.Log.Infow("插件静态资源已注销", "plugin", publicId)
 }
 
 // ServeHTTP 处理插件静态资源请求

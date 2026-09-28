@@ -7,7 +7,6 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
-	"go.uber.org/zap"
 )
 
 const (
@@ -42,9 +41,7 @@ func (r *WorkFetchRegistry) Register(extension *model.Extension[pluginsdkdto.Wor
 		return ErrExtensionAlreadyExists
 	}
 	r.extensions[key] = extension
-	logger.Log.Info("WorkFetch 已注册",
-		zap.String("key", key),
-		zap.String("name", extension.Metadata.Name))
+	logger.Log.Infow("WorkFetch 已注册", "key", key, "name", extension.Metadata.Name)
 	return nil
 }
 
@@ -75,7 +72,7 @@ func (r *WorkFetchRegistry) UnregisterAll(pluginPublicId string) error {
 		}
 	}
 	if count > 0 {
-		logger.Log.Info("WorkFetch 已注销", zap.String("plugin", pluginPublicId), zap.Int("count", count))
+		logger.Log.Infow("WorkFetch 已注销", "plugin", pluginPublicId, "count", count)
 	}
 	return nil
 }

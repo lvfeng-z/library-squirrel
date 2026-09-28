@@ -5,7 +5,6 @@ import (
 
 	"github.com/library-squirrel/backend/base/logger"
 	domain "github.com/library-squirrel/backend/base/model/entity"
-	"go.uber.org/zap"
 
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
@@ -26,8 +25,8 @@ func (e *TaskExecutorImpl) CreateWorkInfo(ctx context.Context, task *domain.Task
 	pluginPublicId, extensionId := pluginIdsFromWorkTask(workTask)
 	handler, err := e.getSDKWorkFetcher(pluginPublicId, extensionId)
 	if err != nil {
-		logger.Log.Error("获取作品拉取扩展失败", zap.String("pluginPublicId", pluginPublicId),
-			zap.String("extensionId", extensionId), zap.Error(err))
+		logger.Log.Errorw("获取作品拉取扩展失败", "pluginPublicId", pluginPublicId,
+			"extensionId", extensionId, "error", err)
 		return nil, err
 	}
 	sdkTask := EntityTaskToSDK(task, workTask)
@@ -44,8 +43,8 @@ func (e *TaskExecutorImpl) Start(ctx context.Context, task *domain.Task, workTas
 	pluginPublicId, extensionId := pluginIdsFromWorkTask(workTask)
 	handler, err := e.getSDKWorkFetcher(pluginPublicId, extensionId)
 	if err != nil {
-		logger.Log.Error("获取作品拉取扩展失败", zap.String("pluginPublicId", pluginPublicId),
-			zap.String("extensionId", extensionId), zap.Error(err))
+		logger.Log.Errorw("获取作品拉取扩展失败", "pluginPublicId", pluginPublicId,
+			"extensionId", extensionId, "error", err)
 		return nil, nil, err
 	}
 	return handler.Start(ctx, EntityTaskToSDK(task, workTask), storeRoles)
@@ -59,8 +58,8 @@ func (e *TaskExecutorImpl) Pause(ctx context.Context, param *sdkdto.TaskResParam
 	pluginPublicId, extensionId := pluginIdsFromSDKTask(param.Task)
 	handler, err := e.getSDKWorkFetcher(pluginPublicId, extensionId)
 	if err != nil {
-		logger.Log.Error("获取作品拉取扩展失败", zap.String("pluginPublicId", pluginPublicId),
-			zap.String("extensionId", extensionId), zap.Error(err))
+		logger.Log.Errorw("获取作品拉取扩展失败", "pluginPublicId", pluginPublicId,
+			"extensionId", extensionId, "error", err)
 		return err
 	}
 	if proxy, ok := handler.(*WorkFetchProxy); ok {
@@ -77,8 +76,8 @@ func (e *TaskExecutorImpl) Stop(ctx context.Context, param *sdkdto.TaskResParam)
 	pluginPublicId, extensionId := pluginIdsFromSDKTask(param.Task)
 	handler, err := e.getSDKWorkFetcher(pluginPublicId, extensionId)
 	if err != nil {
-		logger.Log.Error("获取作品拉取扩展失败", zap.String("pluginPublicId", pluginPublicId),
-			zap.String("extensionId", extensionId), zap.Error(err))
+		logger.Log.Errorw("获取作品拉取扩展失败", "pluginPublicId", pluginPublicId,
+			"extensionId", extensionId, "error", err)
 		return err
 	}
 	if proxy, ok := handler.(*WorkFetchProxy); ok {
@@ -95,8 +94,8 @@ func (e *TaskExecutorImpl) Resume(ctx context.Context, param *sdkdto.TaskResumeP
 	pluginPublicId, extensionId := pluginIdsFromSDKTask(param.Task)
 	handler, err := e.getSDKWorkFetcher(pluginPublicId, extensionId)
 	if err != nil {
-		logger.Log.Error("获取作品拉取扩展失败", zap.String("pluginPublicId", pluginPublicId),
-			zap.String("extensionId", extensionId), zap.Error(err))
+		logger.Log.Errorw("获取作品拉取扩展失败", "pluginPublicId", pluginPublicId,
+			"extensionId", extensionId, "error", err)
 		return nil, nil, err
 	}
 	return handler.Resume(ctx, param)
