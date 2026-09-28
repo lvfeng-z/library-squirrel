@@ -1,25 +1,25 @@
 /* 樱花粉浅色主题
-   覆盖主色与背景基调；文字、边框沿用 tokens.css 的 :root 默认值，状态语义槽位由本文件独立覆盖（见下，初值暂同 default）。
+   覆盖主色与背景基调；文字、边框沿用 tokens.css 的 :root 默认值，状态语义槽位统一回归 default 基准（见下）。
    --el-* 由 ep-bridge.css 统一桥接，自动跟随此处 --app-* 变化。 */
 html[data-theme="sakura-light"] {
-  --app-color-primary: #ec6d8e;
-  --app-color-primary-light-1: #ee7c99;
-  --app-color-primary-light-2: #f08aa5;
-  --app-color-primary-light-3: #f299b0;
-  --app-color-primary-light-4: #f4a7bb;
-  --app-color-primary-light-5: #f6b6c7;
-  --app-color-primary-light-6: #f7c5d2;
-  --app-color-primary-light-7: #f9d3dd;
-  --app-color-primary-light-8: #fbe2e8;
-  --app-color-primary-light-9: #fdf0f4;
-  --app-color-primary-dark-2: #bd5772;
+  --app-color-primary: #ff7ca5;
+  --app-color-primary-light-1: #ff89ae;
+  --app-color-primary-light-2: #ff96b7;
+  --app-color-primary-light-3: #ffa3c0;
+  --app-color-primary-light-4: #ffb0c9;
+  --app-color-primary-light-5: #ffbed2;
+  --app-color-primary-light-6: #ffcbdb;
+  --app-color-primary-light-7: #ffd8e4;
+  --app-color-primary-light-8: #ffe5ed;
+  --app-color-primary-light-9: #fff2f6;
+  --app-color-primary-dark-2: #cc6384;
 
   --app-bg-page: #f5e6ea;
   --app-bg-surface-variant: #f9eff1;
   --app-bg-sidebar: #ffffff;
 
   /* ===== EP 组件色族（success/warning/danger/info）：经 ep-bridge 驱动 <el-button type=success>、残留 <el-tag type=*> 等 EP 组件；
-     与下方状态语义槽位(--app-status-*)分属两条轨道、互不引用。 ===== */
+     与状态语义槽位(--app-status-*，统一基准见 tokens.css)分属两条轨道、互不引用。 ===== */
   --app-color-success: #88c43f;
   --app-color-success-light-1: #94ca52;
   --app-color-success-light-2: #a0d065;
@@ -68,30 +68,8 @@ html[data-theme="sakura-light"] {
   --app-color-info-light-9: #f5f4f5;
   --app-color-info-dark-2: #7b7578;
 
-  /* ===== 状态语义槽位（驱动所有 --app-status-{类目}-* 别名）：初值暂同 default（tokens.css :root 的 EP 经典色），
-     待逐主题调色时各自独立填色、不引用 :root。
-     调色提示：本主题 primary 为粉(#ec6d8e)，fail(红)与之同红粉域——搬 fail 伤通用语义、调 primary 偏紫或接受邻近，需单独裁决。 ===== */
-  --app-status-active-text: #f97316;
-  --app-status-active-bg: color-mix(in srgb, #f97316 18%, white);
-  --app-status-active-border: color-mix(in srgb, #f97316 26%, white);
-
-  --app-status-done-text: #67c23a;
-  --app-status-done-bg: color-mix(in srgb, #67c23a 18%, white);
-  --app-status-done-border: color-mix(in srgb, #67c23a 26%, white);
-
-  --app-status-fail-text: #dc2626;           /* 失败·深红（保留"红=危险"语义，加深明度拉开 primary 樱花粉）*/
-  --app-status-fail-bg: color-mix(in srgb, #dc2626 18%, white);
-  --app-status-fail-border: color-mix(in srgb, #dc2626 26%, white);
-
-  --app-status-warn-text: #e6a23c;
-  --app-status-warn-bg: color-mix(in srgb, #e6a23c 18%, white);
-  --app-status-warn-border: color-mix(in srgb, #e6a23c 26%, white);
-
-  --app-status-pending-text: #409eff;
-  --app-status-pending-bg: color-mix(in srgb, #409eff 18%, white);
-  --app-status-pending-border: color-mix(in srgb, #409eff 26%, white);
-
-  --app-status-idle-text: #909399;
-  --app-status-idle-bg: color-mix(in srgb, #909399 18%, white);
-  --app-status-idle-border: color-mix(in srgb, #909399 26%, white);
+  /* ===== 状态语义槽位：统一回归 default 基准（tokens.css），唯一例外 fail；
+     pending 经 --app-color-primary 自动绑本主题主色 #ff7ca5 ===== */
+  --app-status-fail-text: #fb3e3a;  /* fail 鲜艳正红：与主色粉 #ff7ca5 拉开红粉界限（用户裁决，继深红 #b91c1c 后改亮正红）；
+                                       bg/border 由 tokens.css color-mix 派生自动跟随，无需在此声明 */
 }

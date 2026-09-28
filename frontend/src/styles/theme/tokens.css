@@ -110,35 +110,35 @@
   --app-tag-neutral-bg-strong: color-mix(in srgb, var(--app-color-info) 30%, transparent);
   --app-tag-neutral-text: var(--app-color-info);
 
-  /* ===== 状态语义 tone 色板（default 主题默认值，参考 Element Plus 经典状态色）
+  /* ===== 状态语义 tone 色板（全部主题统一基准，参考 Element Plus 经典状态色）
      每个 tone 的 text 取 EP 验证过的经典色（绿 success/橙 warning/红 danger/灰 info/蓝 primary），
      bg/border 由 text 与白色按 EP 算法派生（color-mix 18%/26%）。
-     本块给出 default 主题（默认浅色）的状态基色；forest/ocean/sakura 在各自 theme-*.css 独立覆盖这些 tone 的值，
-     主题填色时自行保证槽位色相两两分散、避免与主色撞色。所有 --app-status-* 别名引用本层 tone。
+     本块为全部主题共用的状态基准：forest/ocean/sakura 不再在 theme-*.css 覆盖语义 tone，状态色跨主题一致（例外覆盖见各主题文件注释）；
+     pending 例外跟随 --app-color-primary（各主题主色）。所有 --app-status-* 别名引用本层 tone。
      状态槽位独立于 --app-color-{success,warning,...} EP 组件色族（后者经 ep-bridge 驱动 el-button/el-tag，两条轨道互不引用）。 ===== */
   --app-status-active-text: #f97316;         /* 进行中·橙 */
-  --app-status-active-bg: color-mix(in srgb, #f97316 18%, white);
-  --app-status-active-border: color-mix(in srgb, #f97316 26%, white);
+  --app-status-active-bg: color-mix(in srgb, var(--app-status-active-text) 18%, white);
+  --app-status-active-border: color-mix(in srgb, var(--app-status-active-text) 26%, white);
 
   --app-status-done-text: #67c23a;           /* 完成·绿（EP success）*/
-  --app-status-done-bg: color-mix(in srgb, #67c23a 18%, white);
-  --app-status-done-border: color-mix(in srgb, #67c23a 26%, white);
+  --app-status-done-bg: color-mix(in srgb, var(--app-status-done-text) 18%, white);
+  --app-status-done-border: color-mix(in srgb, var(--app-status-done-text) 26%, white);
 
   --app-status-fail-text: #f56c6c;           /* 失败·红（EP danger）*/
-  --app-status-fail-bg: color-mix(in srgb, #f56c6c 18%, white);
-  --app-status-fail-border: color-mix(in srgb, #f56c6c 26%, white);
+  --app-status-fail-bg: color-mix(in srgb, var(--app-status-fail-text) 18%, white);
+  --app-status-fail-border: color-mix(in srgb, var(--app-status-fail-text) 26%, white);
 
   --app-status-warn-text: #e6a23c;           /* 警示·橙（EP warning）*/
-  --app-status-warn-bg: color-mix(in srgb, #e6a23c 18%, white);
-  --app-status-warn-border: color-mix(in srgb, #e6a23c 26%, white);
+  --app-status-warn-bg: color-mix(in srgb, var(--app-status-warn-text) 18%, white);
+  --app-status-warn-border: color-mix(in srgb, var(--app-status-warn-text) 26%, white);
 
-  --app-status-pending-text: #409eff;        /* 待激活·蓝（EP primary）*/
-  --app-status-pending-bg: color-mix(in srgb, #409eff 18%, white);
-  --app-status-pending-border: color-mix(in srgb, #409eff 26%, white);
+  --app-status-pending-text: var(--app-color-primary);  /* 待激活·跟随主题主色（default 主色 #409eff 与 EP primary 一致，视觉不变）*/
+  --app-status-pending-bg: color-mix(in srgb, var(--app-status-pending-text) 18%, white);
+  --app-status-pending-border: color-mix(in srgb, var(--app-status-pending-text) 26%, white);
 
   --app-status-idle-text: #909399;           /* 空闲·灰（EP info）*/
-  --app-status-idle-bg: color-mix(in srgb, #909399 18%, white);
-  --app-status-idle-border: color-mix(in srgb, #909399 26%, white);
+  --app-status-idle-bg: color-mix(in srgb, var(--app-status-idle-text) 18%, white);
+  --app-status-idle-border: color-mix(in srgb, var(--app-status-idle-text) 26%, white);
 
   /* source 类目专属色（StatusTag 按 source-local/source-site 拼名消费，无别名层）。
      local 与 site 都跟随主题主色（var(--app-color-primary)）：local 用标准浓度（鲜明，自有数据用品牌色）、
@@ -153,9 +153,9 @@
 
   /* ===== 状态语义别名（Layer 1）
      每个状态含 -bg/-text/-border 三分量，引用上方 tone 色板。
-     业务与 StatusTag 只用 --app-status-*；主题在各自 theme-*.css 覆盖 tone 的值，状态色即随主题整体变化。
+     业务与 StatusTag 只用 --app-status-*；tone 基准跨主题统一，pending 绑 --app-color-primary 随主题主色变化。
      命名规范：--app-status-{类目}-{语义}-{分量}。source 类目无别名层，直接消费上方专属 tone。 ===== */
-  /* —— 任务状态（task-*）：created=洋红、processing=橙、waiting/paused=灰、pausing/stopping/部分完成/等待确认=黄、completed=绿、failed=红 —— */
+  /* —— 任务状态（task-*）：created=蓝（pending）、processing=橙、waiting/paused=灰、pausing/stopping/部分完成/等待确认=黄、completed=绿、failed=红 —— */
   --app-status-task-created-bg: var(--app-status-pending-bg);
   --app-status-task-created-text: var(--app-status-pending-text);
   --app-status-task-created-border: var(--app-status-pending-border);

@@ -41,12 +41,12 @@
 | `--app-tag-neutral-bg` / `-bg-hover` / `-bg-strong` / `-text` | 中性标签（跟随 info 色族，用于无状态/未选中/分段灰） |
 
 ### 状态语义别名（状态展示优先使用）
-> 状态展示（任务状态、来源类型、开关、资源状态）优先用语义别名。别名引用**语义 tone 色板**——`:root` 给出 default 主题默认色（text 取 Element Plus 经典色），bg/border 由 `color-mix` 派生，各主题在 `theme-*.css` 独立覆盖这些 tone 的值，**状态色随主题变化**。状态槽位独立于 `--app-color-*` EP 组件色族（两条轨道），主题填色时自行保证槽位色相分散。命名 `--app-status-{类目}-{语义}`，类目 `task`/`source`/`toggle`/`resource`。
+> 状态展示（任务状态、来源类型、开关、资源状态）优先用语义别名。别名引用**语义 tone 色板**——`tokens.css` `:root` 给出全部主题共用的统一基准（text 取 Element Plus 经典色，bg/border 引用 `var(--app-status-{tone}-text)` 与白色 `color-mix` 派生，改 text 一行 bg/border 自动跟随）；forest/ocean/sakura 不再独立覆盖 tone，统一级联回该基准，仅两条例外覆盖（forest done=`#409eff`、sakura fail=`#fb3e3a`）；`pending` 绑 `var(--app-color-primary)` 随各主题主色变化。状态槽位独立于 `--app-color-*` EP 组件色族（两条轨道）。命名 `--app-status-{类目}-{语义}`，类目 `task`/`source`/`toggle`/`resource`。
 
-| 令牌前缀 | 语义 | 对应 tone（default 主题 text 色，随主题变化） |
+| 令牌前缀 | 语义 | 对应 tone（统一基准 text 色，default 主题下取值） |
 |---|---|---|
-| `--app-status-task-{created,processing,waiting,pausing,paused,stopping,completed,partly-finished,failed,waiting-input}` | 任务状态 | created=pending(蓝)、processing=active(橙)、completed=done(绿)、failed=fail(红)、waiting/paused=idle(灰)、其余过渡态=warn(橙) |
-| `--app-status-source-{local,site}` | 来源类型（作者/标签） | local=跟随主题主色(var(--app-color-primary))、site=固定紫#8b5cf6 |
+| `--app-status-task-{created,processing,waiting,pausing,paused,stopping,completed,partly-finished,failed,waiting-input}` | 任务状态 | created=pending(蓝，绑各主题主色 var(--app-color-primary))、processing=active(橙)、completed=done(绿)、failed=fail(红)、waiting/paused=idle(灰)、其余过渡态=warn(橙) |
+| `--app-status-source-{local,site}` | 来源类型（作者/标签） | local=跟随主题主色（标准浓度 bg 18%/border 26%）、site=同随主题主色但更浅（bg 10%/border 16%，靠深浅区分） |
 | `--app-status-toggle-{enabled,disabled}` | 开关/运行态 | enabled=done(绿)、disabled=idle(灰) |
 | `--app-status-resource-{downloaded,missing,damaged}` | 资源/作品状态 | downloaded=done(绿)、missing=warn(橙)、damaged=fail(红) |
 

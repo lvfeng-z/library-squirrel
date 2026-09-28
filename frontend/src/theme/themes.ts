@@ -50,7 +50,7 @@ export const THEMES: ThemeMeta[] = [
   {
     id: 'sakura-light',
     name: '樱花粉',
-    swatch: { primary: '#ec6d8e', bg: '#fdf6f8', surface: '#ffffff' },
+    swatch: { primary: '#ff7ca5', bg: '#fdf6f8', surface: '#ffffff' },
     titleBar: { bg: '#f5e6ea', text: '#303133' },
   },
 ]
