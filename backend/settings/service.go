@@ -49,8 +49,9 @@ func defaultSettings() *Settings {
 			RetentionDays:      30,
 		},
 		Appearance: AppearanceSettings{
-			Theme:              "default-light",
-			MultiSelectEnabled: false,
+			Theme:                  "default-light",
+			MultiSelectEnabled:     false,
+			ViewCloseButtonEnabled: false,
 		},
 		MergeSettings: MergeSettings{
 			Strategy: MergeStrategyKeep,

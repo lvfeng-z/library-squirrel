@@ -41,8 +41,9 @@ type RecycleBinSettings struct {
 
 // AppearanceSettings 外观与交互偏好设置
 type AppearanceSettings struct {
-	Theme              string `json:"theme" koanf:"theme"`                           // 当前主题 id
-	MultiSelectEnabled bool   `json:"multiSelectEnabled" koanf:"multiSelectEnabled"` // 主页多选模式开关（默认关；开启后作品/作品集网格可勾选、操作栏可用）
+	Theme                  string `json:"theme" koanf:"theme"`                                   // 当前主题 id
+	MultiSelectEnabled     bool   `json:"multiSelectEnabled" koanf:"multiSelectEnabled"`         // 主页多选模式开关（默认关；开启后作品/作品集网格可勾选、操作栏可用）
+	ViewCloseButtonEnabled bool   `json:"viewCloseButtonEnabled" koanf:"viewCloseButtonEnabled"` // 视图关闭按钮显示开关（默认关；开启后非主页视图时应用外壳左上角露出圆形悬浮按钮，点击返回主页）
 }
 
 // MergeSettings 合并相关设置
@@ -122,8 +123,9 @@ func NewSettings() *Settings {
 			RetentionDays:      30,
 		},
 		Appearance: AppearanceSettings{
-			Theme:              "default-light",
-			MultiSelectEnabled: false,
+			Theme:                  "default-light",
+			MultiSelectEnabled:     false,
+			ViewCloseButtonEnabled: false,
 		},
 		MergeSettings: MergeSettings{
 			Strategy: MergeStrategyKeep,

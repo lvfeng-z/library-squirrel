@@ -19,6 +19,11 @@ export class AppearanceSettings {
      */
     "multiSelectEnabled": boolean;
 
+    /**
+     * 视图关闭按钮显示开关（默认关；开启后非主页视图时应用外壳左上角露出圆形悬浮按钮，点击返回主页）
+     */
+    "viewCloseButtonEnabled": boolean;
+
     /** Creates a new AppearanceSettings instance. */
     constructor($$source: Partial<AppearanceSettings> = {}) {
         if (!("theme" in $$source)) {
@@ -26,6 +31,9 @@ export class AppearanceSettings {
         }
         if (!("multiSelectEnabled" in $$source)) {
             this["multiSelectEnabled"] = false;
+        }
+        if (!("viewCloseButtonEnabled" in $$source)) {
+            this["viewCloseButtonEnabled"] = false;
         }
 
         Object.assign(this, $$source);

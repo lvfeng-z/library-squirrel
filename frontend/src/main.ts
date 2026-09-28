@@ -21,6 +21,7 @@ import { initBuiltinMenus } from './composables/useBuiltinMenus.ts'
 import { setRouterInstance } from './store/SlotRegistryStore.ts'
 import { useTourCenterStore } from '@renderer/store/UseTourCenterStore.ts'
 import { useThemeStore } from '@renderer/store/UseThemeStore.ts'
+import { useViewCloseButtonStore } from '@renderer/store/UseViewCloseButtonStore.ts'
 import { registerBuiltinTours } from '@renderer/tour/definitions'
 import lodash from 'lodash'
 import * as apis from './apis/http'
@@ -114,5 +115,8 @@ void tourCenterStore.loadCompleted()
 // 应用持久化的主题（首屏由 tokens.css 的 :root fallback 兜底，避免闪烁）
 const themeStore = useThemeStore()
 void themeStore.load()
+
+// 加载视图关闭按钮开关（默认关；控制应用外壳左上角非主页视图的关闭按钮是否显示）
+void useViewCloseButtonStore().load()
 
 iniListener()

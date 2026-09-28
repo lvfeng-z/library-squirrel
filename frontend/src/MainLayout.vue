@@ -14,6 +14,7 @@ import ShareReceiveDialog from '@renderer/components/dialogs/ShareReceiveDialog.
 import { usePluginUpdateStore } from '@renderer/store/UsePluginUpdateStore.ts'
 import { useWorkdirStatusStore } from '@renderer/store/UseWorkdirStatusStore.ts'
 import { useTourCenterStore } from '@renderer/store/UseTourCenterStore.ts'
+import { useViewCloseButtonStore } from '@renderer/store/UseViewCloseButtonStore.ts'
 
 const router = useRouter()
 const route = useRoute()
@@ -56,9 +57,10 @@ async function gotoSettings() {
   await router.push({ name: 'settings', query: { highlight: 'workdir' } })
 }
 
-// 根据当前路由路径判断是否显示关闭按钮（非主页时显示）
+// 关闭按钮显示条件：开关开启且当前非主页视图（开关关闭时沿用滑出屏外的隐藏态）
+const viewCloseButton = useViewCloseButtonStore()
 const showCloseButton = computed(() => {
-  return route.path !== '/'
+  return viewCloseButton.enabled && route.path !== '/'
 })
 
 async function handleCloseCurrentView() {

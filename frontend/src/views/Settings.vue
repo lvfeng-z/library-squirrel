@@ -17,6 +17,7 @@ import type { StickyMemoryEntryDTO } from '@bindings/github.com/library-squirrel
 import type { Settings } from '@bindings/github.com/library-squirrel/backend/settings/models'
 import { emptySettings } from '@renderer/model/util/Settings.js'
 import { useThemeStore } from '@renderer/store/UseThemeStore.ts'
+import { useViewCloseButtonStore } from '@renderer/store/UseViewCloseButtonStore.ts'
 import { useWorkdirStatusStore } from '@renderer/store/UseWorkdirStatusStore.ts'
 import { isBlank, isNotBlank } from '@renderer/utils/StringUtil.ts'
 import type { ThemeId } from '@renderer/theme/themes'
@@ -58,6 +59,8 @@ const settings: Ref<Settings> = ref(emptySettings)
 let oldSettings: Settings = emptySettings // 原设置
 // 主题（即时生效，独立于设置的保存流程，切换时由 store 自行持久化）
 const themeStore = useThemeStore()
+// 视图关闭按钮开关（与主题同模式：即时生效并持久化，绑定 store 而非表单对象，保存其他设置时不产出该键的变更路径）
+const viewCloseButtonStore = useViewCloseButtonStore()
 // 自动修复策略 schema（可选项由后端 apply 能力约束，前端不写死）
 const policySchema = ref<AutoRepairPolicyDTO[]>([])
 // 有选择空间的策略组合（options 多于一项）才渲染下拉；Delete 单选项与 Untracked 不可配置不渲染
@@ -73,6 +76,10 @@ const REPAIR_ACTION_LABEL: Record<string, string> = {
 }
 async function handleSelectTheme(id: ThemeId) {
   await themeStore.setTheme(id)
+}
+// 切换视图关闭按钮开关：更新状态并由 store 持久化
+async function handleToggleViewCloseButton(v: string | number | boolean) {
+  await viewCloseButtonStore.setEnabled(Boolean(v))
 }
 // 深链协议注册状态（便携版运行时自注册视图；安装版由安装/卸载器管理 HKLM 键）
 const protocolStatus = ref<ShareProtocolRegStatus | null>(null)
@@ -322,8 +329,9 @@ async function resetSettings() {
   if (confirm) {
     const response = await apis.settingsResetSettings()
     await loadSettings()
-    // 设置重置后同步主题状态（appearance.theme 回到默认）
+    // 设置重置后同步主题与视图关闭按钮状态（appearance 组回到默认）
     await themeStore.load()
+    await viewCloseButtonStore.load()
     if (ApiUtil.check(response)) {
       const succeed = ApiUtil.data<boolean>(response)
       if (succeed) {
@@ -772,6 +780,19 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                       </div>
                       <el-text>{{ theme.name }}</el-text>
                     </div>
+                  </div>
+                </div>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">显示视图关闭按钮</span>
+                    <el-switch
+                      :model-value="viewCloseButtonStore.enabled"
+                      inline-prompt
+                      size="large"
+                      active-text="是"
+                      inactive-text="否"
+                      @change="handleToggleViewCloseButton"
+                    />
                   </div>
                 </div>
               </div>
