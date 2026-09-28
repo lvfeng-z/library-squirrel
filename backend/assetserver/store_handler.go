@@ -56,12 +56,16 @@ func (h *StoreFileHandler) SetBackupResolver(resolver BackupPathResolver) {
 	h.backupResolver = resolver
 }
 
-// SetWorkDir 设置工作目录
+// SetWorkDir 设置工作目录。仅目录实际变化时记日志——afterSave 回调在每次设置保存/重置后
+// 都会以全量快照刷新此处（app.go 注入，保存即生效），同值刷新刷屏会误导为工作目录被改动。
 func (h *StoreFileHandler) SetWorkDir(dir string) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	changed := h.workDir != dir
 	h.workDir = dir
-	logger.Log.Info("存储工作目录已设置", zap.String("dir", dir))
+	h.mu.Unlock()
+	if changed {
+		logger.Log.Info("存储工作目录已设置", zap.String("dir", dir))
+	}
 }
 
 // ServeHTTP 处理存储文件请求
