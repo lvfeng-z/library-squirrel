@@ -25,8 +25,8 @@ func withObservedLog(t *testing.T) *observer.ObservedLogs {
 }
 
 func countWorkDirLogs(logs *observer.ObservedLogs) int {
-	// 存量风格：SugaredLogger.Info(msg, zap.Field) 把 Field 以 fmt 参数拼进消息
-	// （实际消息为「存储工作目录已设置{dir 15 0 ... <nil>}」），故用片段匹配
+	// 键值对形态：Infow(msg, "dir", dir) 的消息就是纯「存储工作目录已设置」，
+	// dir 走结构化字段不混入消息，片段匹配即稳定覆盖该消息
 	return logs.FilterMessageSnippet("存储工作目录已设置").Len()
 }
 

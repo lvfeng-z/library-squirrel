@@ -9,7 +9,6 @@ import (
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"go.uber.org/zap"
 )
 
 // routeEntry 路由条目
@@ -61,7 +60,7 @@ func (r *Router) Handle(prefix string, handler http.Handler, priority int) {
 		return r.routes[i].priority > r.routes[j].priority
 	})
 
-	logger.Log.Info("路由已注册", zap.String("prefix", prefix), zap.Int("priority", priority))
+	logger.Log.Infow("路由已注册", "prefix", prefix, "priority", priority)
 }
 
 // Remove 移除路由处理器
@@ -79,7 +78,7 @@ func (r *Router) Remove(prefix string) {
 	for i, route := range r.routes {
 		if route.prefix == prefix {
 			r.routes = append(r.routes[:i], r.routes[i+1:]...)
-			logger.Log.Info("路由已移除", zap.String("prefix", prefix))
+			logger.Log.Infow("路由已移除", "prefix", prefix)
 			return
 		}
 	}

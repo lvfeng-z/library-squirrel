@@ -20,7 +20,6 @@ import (
 	extension2 "github.com/library-squirrel/backend/plugin/extension"
 	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"go.uber.org/zap"
 	"gorm.io/gorm"
 
 	"github.com/library-squirrel/backend/appLauncher"
@@ -653,10 +652,10 @@ type wailsFrontendEventProvider struct {
 func (p *wailsFrontendEventProvider) PublishToFrontend(topic string, data []byte) error {
 	emitter := p.emitterFunc()
 	if emitter != nil {
-		logger.Log.Info("插件事件转发到前端", zap.String("topic", topic), zap.Int("dataLen", len(data)))
+		logger.Log.Infow("插件事件转发到前端", "topic", topic, "dataLen", len(data))
 		emitter.Emit(topic, data)
 	} else {
-		logger.Log.Warn("插件事件转发失败: emitter 为 nil", zap.String("topic", topic))
+		logger.Log.Warnw("插件事件转发失败: emitter 为 nil", "topic", topic)
 	}
 	return nil
 }
@@ -664,7 +663,7 @@ func (p *wailsFrontendEventProvider) PublishToFrontend(topic string, data []byte
 func (p *wailsFrontendEventProvider) SubscribeFrontend(topic string, pushCh func([]byte)) (func(), error) {
 	onEvent := p.onEventFunc()
 	if onEvent == nil {
-		logger.Log.Warn("插件订阅前端事件失败: onEvent 为 nil", zap.String("topic", topic))
+		logger.Log.Warnw("插件订阅前端事件失败: onEvent 为 nil", "topic", topic)
 		return func() {}, nil
 	}
 	cancel := onEvent(topic, func(data any) {
@@ -681,7 +680,7 @@ func (p *wailsFrontendEventProvider) SubscribeFrontend(topic string, pushCh func
 			pushCh(bytes)
 		}
 	})
-	logger.Log.Info("插件已订阅前端事件", zap.String("topic", topic))
+	logger.Log.Infow("插件已订阅前端事件", "topic", topic)
 	return cancel, nil
 }
 

@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/library-squirrel/backend/base/logger"
-	"go.uber.org/zap"
 )
 
 // StoreStateResolver 按路径解析存储记录状态（含已删行；由 persistentStore.Service 实现）
@@ -64,7 +63,7 @@ func (h *StoreFileHandler) SetWorkDir(dir string) {
 	h.workDir = dir
 	h.mu.Unlock()
 	if changed {
-		logger.Log.Info("存储工作目录已设置", zap.String("dir", dir))
+		logger.Log.Infow("存储工作目录已设置", "dir", dir)
 	}
 }
 
