@@ -31,25 +31,25 @@ export const DEFAULT_THEME_ID: ThemeId = 'default-light'
 export const THEMES: ThemeMeta[] = [
   {
     id: 'default-light',
-    name: '默认浅色',
+    name: '默认',
     swatch: { primary: '#409eff', bg: '#fafafa', surface: '#ffffff' },
     titleBar: { bg: '#eaeef4', text: '#303133' },
   },
   {
     id: 'forest-light',
-    name: '森林绿',
+    name: '叶绿',
     swatch: { primary: '#008b45', bg: '#fafafa', surface: '#ffffff' },
     titleBar: { bg: '#e6efe7', text: '#303133' },
   },
   {
     id: 'ocean-light',
-    name: '海洋蓝',
+    name: '湛蓝',
     swatch: { primary: '#1ab7c7', bg: '#f4fbfc', surface: '#ffffff' },
     titleBar: { bg: '#e2f0f2', text: '#303133' },
   },
   {
     id: 'sakura-light',
-    name: '樱花粉',
+    name: '玫粉',
     swatch: { primary: '#ff7ca5', bg: '#fdf6f8', surface: '#ffffff' },
     titleBar: { bg: '#f5e6ea', text: '#303133' },
   },

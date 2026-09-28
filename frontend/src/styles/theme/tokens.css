@@ -1,6 +1,6 @@
 /* 主题语义令牌（--app-*）
    作为全局 fallback：data-theme 未写入或未命中时，使用此处的默认浅色值；
-   同时作为「默认浅色」主题（default-light）的令牌来源——该主题不重复定义 --app-*，
+   同时作为「默认」主题（default-light）的令牌来源——该主题不重复定义 --app-*，
    其它主题在各自 theme-*.css 中覆盖对应令牌。
    业务样式统一使用 --app-*，禁止直接使用 Element Plus 内置变量（--el-*）。 */
 :root {

@@ -1,4 +1,4 @@
-/* 森林绿浅色主题（备选）
+/* 叶绿浅色主题（备选）
    覆盖主色为深绿；文字、边框、背景沿用 tokens.css 的 :root 默认值，状态语义槽位统一回归 default 基准（见下）。
    --el-* 由 ep-bridge.css 统一桥接，自动跟随此处 --app-* 变化。 */
 html[data-theme="forest-light"] {

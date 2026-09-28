@@ -1,4 +1,4 @@
-/* 海洋蓝浅色主题
+/* 湛蓝浅色主题
    覆盖主色与背景基调；文字、边框沿用 tokens.css 的 :root 默认值，状态语义槽位统一回归 default 基准（见下）。
    --el-* 由 ep-bridge.css 统一桥接，自动跟随此处 --app-* 变化。 */
 html[data-theme="ocean-light"] {
