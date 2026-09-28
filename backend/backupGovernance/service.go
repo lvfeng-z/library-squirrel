@@ -11,8 +11,6 @@ import (
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/util"
-
-	"go.uber.org/zap"
 )
 
 // BackupCatalog 备份保管清单的目录面（由 backup.Service 实现）：治理对账的清单数据源。
@@ -177,7 +175,7 @@ func (s *Service) ClearBackupRefs(ctx context.Context, backupIds []int64) error 
 	var firstErr error
 	for _, ref := range s.referencers {
 		if err := ref.ClearBackupRefsByBackupIDs(ctx, backupIds); err != nil {
-			logger.Log.Warn("[backupGovernance] 联动清列失败", zap.String("referencer", ref.Name()), zap.Int64s("backupIds", backupIds), zap.Error(err))
+			logger.Log.Warnw("[backupGovernance] 联动清列失败", "referencer", ref.Name(), "backupIds", backupIds, "error", err)
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -194,7 +192,7 @@ func (s *Service) collectReferenced(ctx context.Context) (refsByReferencer map[s
 		ids, err := ref.ListReferencedBackupIDs(ctx)
 		if err != nil {
 			// 单方查询失败按空集处理会让该方引用的备份进入无主候选，正向误清风险——整轮跳过正向
-			logger.Log.Error("[backupGovernance] 查询引用集失败，本轮跳过正向清理", zap.String("referencer", ref.Name()), zap.Error(err))
+			logger.Log.Errorw("[backupGovernance] 查询引用集失败，本轮跳过正向清理", "referencer", ref.Name(), "error", err)
 			// 以哨兵 nil 标记失败方，供正向判定整体熔断
 			refsByReferencer[ref.Name()] = nil
 			continue
@@ -212,7 +210,7 @@ func (s *Service) collectReferenced(ctx context.Context) (refsByReferencer map[s
 func (s *Service) clearDanglingRefs(ctx context.Context, refsByReferencer map[string][]int64) (cleared int, illegalCleared int) {
 	existing, err := s.catalog.ListAllIDs(ctx)
 	if err != nil {
-		logger.Log.Warn("[backupGovernance] 查询现存清单行失败，本轮跳过反向对账", zap.Error(err))
+		logger.Log.Warnw("[backupGovernance] 查询现存清单行失败，本轮跳过反向对账", "error", err)
 		return 0, 0
 	}
 	existingSet := make(map[int64]struct{}, len(existing))
@@ -231,7 +229,7 @@ func (s *Service) clearDanglingRefs(ctx context.Context, refsByReferencer map[st
 			continue
 		}
 		if err := ref.ClearBackupRefsByBackupIDs(ctx, dangling); err != nil {
-			logger.Log.Warn("[backupGovernance] 清理悬空引用失败", zap.String("referencer", ref.Name()), zap.Int64s("backupIds", dangling), zap.Error(err))
+			logger.Log.Warnw("[backupGovernance] 清理悬空引用失败", "referencer", ref.Name(), "backupIds", dangling, "error", err)
 		} else {
 			cleared += len(dangling)
 			logger.Log.Infof("[backupGovernance] 已清理 %d 条悬空引用（清单行已不存在）: %s", len(dangling), ref.Name())
@@ -241,7 +239,7 @@ func (s *Service) clearDanglingRefs(ctx context.Context, refsByReferencer map[st
 	for _, ref := range s.referencers {
 		if san, ok := ref.(IllegalBackupRefSanitizer); ok {
 			if n, err := san.ClearIllegalAliveBackupRefs(ctx); err != nil {
-				logger.Log.Warn("[backupGovernance] 清理非法活行引用失败", zap.String("referencer", ref.Name()), zap.Error(err))
+				logger.Log.Warnw("[backupGovernance] 清理非法活行引用失败", "referencer", ref.Name(), "error", err)
 			} else if n > 0 {
 				illegalCleared += int(n)
 				logger.Log.Warnf("[backupGovernance] 检出并清理 %d 行活行非法备份引用（构造上不可达，疑外部直改数据库）: %s", n, ref.Name())
@@ -256,7 +254,7 @@ func (s *Service) clearDanglingRefs(ctx context.Context, refsByReferencer map[st
 func (s *Service) watchReferencers(ctx context.Context, refsByReferencer map[string][]int64) {
 	stats, err := s.computeReferencerStats(ctx, refsByReferencer)
 	if err != nil {
-		logger.Log.Warn("[backupGovernance] 统计引用方数据失败，本轮跳过监视哨", zap.Error(err))
+		logger.Log.Warnw("[backupGovernance] 统计引用方数据失败，本轮跳过监视哨", "error", err)
 		return
 	}
 	for _, st := range stats {
@@ -320,7 +318,7 @@ func (s *Service) cleanupOrphans(ctx context.Context, referenced map[int64]struc
 	expireBefore := util.GetCurrentTimestamp() - int64(retentionDays)*24*60*60*1000
 	candidates, err := s.catalog.ListCreatedBefore(ctx, expireBefore)
 	if err != nil {
-		logger.Log.Warn("[backupGovernance] 查询无主候选失败", zap.Error(err))
+		logger.Log.Warnw("[backupGovernance] 查询无主候选失败", "error", err)
 		return 0
 	}
 	cleaned := 0
@@ -329,7 +327,7 @@ func (s *Service) cleanupOrphans(ctx context.Context, referenced map[int64]struc
 			continue
 		}
 		if err := s.catalog.DeleteBackup(ctx, row.GetID()); err != nil {
-			logger.Log.Warn("[backupGovernance] 清理无主备份失败", zap.Int64("backupId", row.GetID()), zap.Error(err))
+			logger.Log.Warnw("[backupGovernance] 清理无主备份失败", "backupId", row.GetID(), "error", err)
 			continue
 		}
 		cleaned++
