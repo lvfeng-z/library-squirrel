@@ -18,9 +18,10 @@
 | `--app-color-primary` | 主色 |
 | `--app-color-primary-light-1` ~ `--app-color-primary-light-9` | 主色浅色档（hover / 浅底） |
 | `--app-color-primary-dark-2` | 主色深色档（active） |
-| `--app-color-{success,warning,danger,info}` 及各自 `-light-N` / `-dark-2` | 状态色及派生档位（随主题整体变化） |
+| `--app-color-{success,warning,info}` 及各自 `-light-N` / `-dark-2` | 状态色及派生档位（随主题整体变化） |
+| `--app-color-danger` 及 `-light-1` ~ `-light-9` / `-dark-2` | 危险色及派生档位（跨主题统一）：default 基准，forest/ocean 不覆盖、级联回基准；sakura 整族例外，与该主题失败色同值 |
 
-> 主色 primary 与状态色 success/warning/danger/info 均随主题变化；每套主题覆盖各自档位。
+> 主色 primary 与状态色 success/warning/info 均随主题变化，每套主题覆盖各自档位；danger 唯一例外——统一 default 基准 `#f56c6c` 系（forest/ocean 不覆盖），sakura 整族例外 `#fb3e3a`、与该主题失败色（fail tone）同值。
 
 ### 背景 / 文字 / 边框 / 填充
 | 令牌 | 语义 |

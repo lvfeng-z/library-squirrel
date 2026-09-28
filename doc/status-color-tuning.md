@@ -42,6 +42,7 @@
 ```
 > 个别主题确需不同色相时，在对应 `theme-*-light.css` 同样只加一行 text 覆盖声明（现有例外：forest done、sakura fail）。
 > 注：`fail` tone 除驱动失败/损坏状态标签（StatusTag）外，还驱动破坏性操作按钮（`el-button type="danger"` + `tone-fail` class，见 `frontend/src/styles/tone-button.css`）——调 fail 色会同时影响二者。
+> 另注：EP 危险色（`--app-color-danger*` 色族，经 ep-bridge 桥接驱动纯 EP 危险组件，如副视图关闭按钮）不在 fail tone 轨道内——改 EP 危险色在 `tokens.css` danger 族改一处即 default/forest/ocean 三主题生效；sakura 例外整族在 `theme-sakura-light.css` danger 族，与本主题 fail 覆盖同值（双轨合一），改任一侧需注意另一侧是否同步。
 
 ### 调底色/边框浓淡（不改颜色）
 改 color-mix 百分比：
