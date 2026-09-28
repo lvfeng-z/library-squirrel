@@ -1,4 +1,4 @@
-/* 湛蓝浅色主题
+/* 湖青浅色主题
    覆盖主色与背景基调；文字、边框沿用 tokens.css 的 :root 默认值，状态语义槽位统一回归 default 基准（见下）。
    --el-* 由 ep-bridge.css 统一桥接，自动跟随此处 --app-* 变化。 */
 html[data-theme="ocean-light"] {
@@ -44,7 +44,7 @@ html[data-theme="ocean-light"] {
   --app-color-warning-light-9: #fcf6ea;
   --app-color-warning-dark-2: #b38025;
 
-  /* danger 色族：统一回归 default 基准（tokens.css）——EP 危险色跨主题一致（玫粉例外，见 theme-sakura-light.css） */
+  /* danger 色族：统一回归 default 基准（tokens.css）——EP 危险色跨主题一致（桃粉例外，见 theme-sakura-light.css） */
 
   --app-color-info: #78909c;
   --app-color-info-light-1: #869ba6;

@@ -44,7 +44,7 @@ html[data-theme="forest-light"] {
   --app-color-warning-light-9: #fbf4ea;
   --app-color-warning-dark-2: #ae7326;
 
-  /* danger 色族：统一回归 default 基准（tokens.css）——EP 危险色跨主题一致（玫粉例外，见 theme-sakura-light.css） */
+  /* danger 色族：统一回归 default 基准（tokens.css）——EP 危险色跨主题一致（桃粉例外，见 theme-sakura-light.css） */
 
   --app-color-info: #8a929a;
   --app-color-info-light-1: #969da4;

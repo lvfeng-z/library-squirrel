@@ -43,13 +43,13 @@ export const THEMES: ThemeMeta[] = [
   },
   {
     id: 'ocean-light',
-    name: '湛蓝',
+    name: '湖青',
     swatch: { primary: '#1ab7c7', bg: '#f4fbfc', surface: '#ffffff' },
     titleBar: { bg: '#e2f0f2', text: '#303133' },
   },
   {
     id: 'sakura-light',
-    name: '玫粉',
+    name: '桃粉',
     swatch: { primary: '#ff7ca5', bg: '#fdf6f8', surface: '#ffffff' },
     titleBar: { bg: '#f5e6ea', text: '#303133' },
   },
