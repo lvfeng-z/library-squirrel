@@ -44,17 +44,7 @@ html[data-theme="ocean-light"] {
   --app-color-warning-light-9: #fcf6ea;
   --app-color-warning-dark-2: #b38025;
 
-  --app-color-danger: #ec6464;
-  --app-color-danger-light-1: #ee7474;
-  --app-color-danger-light-2: #f08383;
-  --app-color-danger-light-3: #f29393;
-  --app-color-danger-light-4: #f4a2a2;
-  --app-color-danger-light-5: #f6b2b2;
-  --app-color-danger-light-6: #f7c1c1;
-  --app-color-danger-light-7: #f9d1d1;
-  --app-color-danger-light-8: #fbe0e0;
-  --app-color-danger-light-9: #fdf0f0;
-  --app-color-danger-dark-2: #bd5050;
+  /* danger 色族：统一回归 default 基准（tokens.css）——EP 危险色跨主题一致（玫粉例外，见 theme-sakura-light.css） */
 
   --app-color-info: #78909c;
   --app-color-info-light-1: #869ba6;

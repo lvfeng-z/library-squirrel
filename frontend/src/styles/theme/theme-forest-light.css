@@ -44,17 +44,7 @@ html[data-theme="forest-light"] {
   --app-color-warning-light-9: #fbf4ea;
   --app-color-warning-dark-2: #ae7326;
 
-  --app-color-danger: #c95050;
-  --app-color-danger-light-1: #ce6262;
-  --app-color-danger-light-2: #d47373;
-  --app-color-danger-light-3: #d98585;
-  --app-color-danger-light-4: #df9696;
-  --app-color-danger-light-5: #e4a8a8;
-  --app-color-danger-light-6: #e9b9b9;
-  --app-color-danger-light-7: #efcbcb;
-  --app-color-danger-light-8: #f4dcdc;
-  --app-color-danger-light-9: #faeeee;
-  --app-color-danger-dark-2: #a14040;
+  /* danger 色族：统一回归 default 基准（tokens.css）——EP 危险色跨主题一致（玫粉例外，见 theme-sakura-light.css） */
 
   --app-color-info: #8a929a;
   --app-color-info-light-1: #969da4;
