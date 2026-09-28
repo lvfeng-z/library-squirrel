@@ -193,7 +193,7 @@ function handleClickOutSide() {
   cursor: pointer;
 }
 .side-menu-hide-button:hover {
-  background-color: rgb(197.7, 225.9, 255, 80%);
+  background-color: var(--app-color-primary-light-7);
   transition: background-color 0.3s;
   border-radius: var(--app-radius);
 }
