@@ -161,7 +161,9 @@ export class ExportTaskResult {
 /**
  * FileEntry 文件条目（files[]；被 work 的 store 挂载按 StoreID 引用）。
  * Path/Size/Missing 由规划阶段填充（包内路径命名 + 源文件存在性检查）；内容哈希由产出方
- * 预填——zip 导出打包填 Sha256，分享宿主填 Sha256 与 ContentFingerprint 双字段。
+ * 预填——zip 导出打包（Packer.Pack 逐文件读流顺带采样）与分享宿主（fillManifestFingerprints）
+ * 均填 Sha256 与 ContentFingerprint 双字段（schemaVersion 3 起为空即契约违约，回灌内容判定
+ * 对缺指纹条目按不匹配处理）。
  * 源文件缺失 → Missing=true，该 store 缺席、其余照常。
  */
 export class FileEntry {
@@ -183,8 +185,8 @@ export class FileEntry {
 
     /**
      * ContentFingerprint 文件内容头部指纹（size + 头部 64KB SHA256，`<size>:<hex>`，与库内
-     * persistent_store.content_fingerprint 同口径）；分享宿主会话开始时预计算，供收件方零读盘
-     * 快速判定本地是否已拥有同内容文件。
+     * persistent_store.content_fingerprint 同口径）；zip 导出打包（读流顺带采样）与分享宿主
+     * 会话开始时预计算，供回灌/收件方零读盘快速判定本地是否已拥有同内容文件。
      */
     "contentFingerprint"?: string;
 

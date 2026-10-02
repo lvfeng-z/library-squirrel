@@ -31,6 +31,7 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/export"
+	importer "github.com/library-squirrel/backend/import"
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/shareLock"
 	"github.com/library-squirrel/backend/taskManager"
@@ -208,8 +209,8 @@ type recordingDialer struct {
 	sent bytes.Buffer
 }
 
-func (r *recordingDialer) dial(addr string) (net.Conn, error) {
-	c, err := net.Dial("tcp", addr)
+func (r *recordingDialer) dial(ep relayEndpoint) (net.Conn, error) {
+	c, err := net.Dial("tcp", ep.Addr)
 	if err != nil {
 		return nil, err
 	}
@@ -876,7 +877,7 @@ func (h *fakeStrategyHandle) WaitReplaceConfirm(conflicts []taskManager.Conflict
 		// 答复与暂停竞态（对齐真实外层取消分支非阻塞消费残留答复记记忆）：记录决策后返回取消，
 		// 返回决策值按真实语义固定 Skip（取消时调用方忽略决策，记忆承载实际答复）
 		h.confirmMemo = &taskManager.ReplaceConfirmMemo{
-			ConflictWorkIds: conflictWorkIDsOf(conflicts),
+			ConflictWorkIds: importer.ConflictWorkIDsOf(conflicts),
 			Decision:        d,
 		}
 		c = true
@@ -884,7 +885,7 @@ func (h *fakeStrategyHandle) WaitReplaceConfirm(conflicts []taskManager.Conflict
 	case !c:
 		// 正常答复：记录确认决策记忆（对齐真实 strategyHandle——答复消费即记记忆）
 		h.confirmMemo = &taskManager.ReplaceConfirmMemo{
-			ConflictWorkIds: conflictWorkIDsOf(conflicts),
+			ConflictWorkIds: importer.ConflictWorkIDsOf(conflicts),
 			Decision:        d,
 		}
 	}
@@ -1685,7 +1686,7 @@ func TestMetaPayloadWorksName(t *testing.T) {
 		id:         "empty-share",
 		title:      "空分享",
 		instanceID: "test-instance-0001",
-		relayDial:  stub.addr,
+		relayDial:  relayEndpoint{Addr: stub.addr},
 		relayHost:  "localhost",
 		workDir:    workDir,
 		key:        key,
@@ -1709,7 +1710,7 @@ func TestMetaPayloadWorksName(t *testing.T) {
 
 // TestMetaPayloadWorksNameSanitized 跨仓契约修复（阶段3）：metaWorksName 每个作品名须净化——
 // 剔除控制字符、截断 200 rune（relay 侧 worksName 单名校验 ≤200 rune 且禁控制字符，不净化会被
-// 中继以 malformed 拒绝）。与收件侧子任务命名、Receive 返回 workNames 共用 sanitizedWorkName。
+// 中继以 malformed 拒绝）。与收件侧子任务命名、Receive 返回 workNames 共用 importer.SanitizedWorkName。
 func TestMetaPayloadWorksNameSanitized(t *testing.T) {
 	stub := startRelayStub(t)
 	workDir := t.TempDir()

@@ -95,7 +95,7 @@ func isRelayRetryableErr(err error) bool {
 
 // receiveClient 收件人拉取客户端（一次任务执行一个实例；逐文件/逐请求拨号）
 type receiveClient struct {
-	dialAddr      string
+	dialEp        relayEndpoint
 	token         string
 	instanceID    string
 	passwordHash  string
@@ -128,7 +128,7 @@ func newReceiveClient(p *receiveConnParams, instanceID string, opts sessionRunti
 		readIdle = opts.tunnelReadIdle // 测试覆写通道（生产用收件人默认值）
 	}
 	return &receiveClient{
-		dialAddr:      p.RelayDial,
+		dialEp:        p.Relay,
 		token:         p.Token,
 		instanceID:    instanceID,
 		passwordHash:  p.PasswordHash,
@@ -173,7 +173,7 @@ func (c *receiveClient) fetch(ctx context.Context, req *streamRequest) (*streamH
 	}
 	logger.Log.Debugf("[share-recv] task=%d fetch path=%s 取拨号令牌耗%s", c.taskID, req.Path, time.Since(t2))
 	t3 := time.Now()
-	conn, err := c.opts.dialFn(c.dialAddr)
+	conn, err := c.opts.dialFn(c.dialEp)
 	logger.Log.Debugf("[share-recv] task=%d fetch path=%s 拨号(relay)耗%s err=%v", c.taskID, req.Path, time.Since(t3), err)
 	if err != nil {
 		c.coord.ReleaseSlot() // 拨号失败未开流：槽立即归还，避免泄漏

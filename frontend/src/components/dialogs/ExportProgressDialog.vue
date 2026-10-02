@@ -45,7 +45,7 @@ async function startExport() {
       type: 'success',
       duration: 6000,
       message: h('span', null, [
-        '已创建导出任务，进度见任务面板 ',
+        '已创建导出任务，进度见作品下载 ',
         h(
           ElLink,
           {

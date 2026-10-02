@@ -19,17 +19,19 @@ import * as model$0 from "../base/model/models.js";
 import * as $models from "./models.js";
 
 /**
- * ImportFromZip 从导出 ZIP 产物回灌导入：解包读 manifest → 校验版本锚（Ingest 内）→
- * 入库 → 返回导入结果摘要。同步执行（进度/取消形态归二期任务模块接入，决策12）。
+ * StartImport 从导出 ZIP 产物建导入任务树：读包内 manifest → 建树前校验（版本锚/非空/上限/
+ * 站点键——提前失败，不建「注定全失败」的任务树）→ 两段式建树（父容器「导入（N 项）」→
+ * manifest 原字节落盘父作用域 → 子任务 + import_task 领域行）→ 整树启动。建树各步失败显式
+ * 删树回滚不留孤儿任务（share 收件同款失败语义）；执行进度/暂停/重试归任务面板（执行面策略）。
  */
-export function ImportFromZip(zipPath: string): $CancellablePromise<model$0.ApiResponse<$models.ImportResult | null> | null> {
-    return $Call.ByID(2335095020, zipPath).then(($result: any) => {
+export function StartImport(zipPath: string): $CancellablePromise<model$0.ApiResponse<$models.StartImportResult | null> | null> {
+    return $Call.ByID(2709892561, zipPath).then(($result: any) => {
         return $$createType3($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = $models.ImportResult.createFrom;
+const $$createType0 = $models.StartImportResult.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
 const $$createType2 = model$0.ApiResponse.createFrom($$createType1);
 const $$createType3 = $Create.Nullable($$createType2);

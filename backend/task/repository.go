@@ -508,7 +508,7 @@ func (r *TaskRepository) ClearResourceTaskId(ctx context.Context, ids []int64) e
 // DeleteTask 删除任务（包含子任务）- 批量删除，返回全量被删任务 ID 集（入参与其子任务，
 // 供删除链消费方清理任务级附属物——下载暂存目录键即任务 ID）。
 // dbFromCtx 模式：删除链在事务内执行——清 resource.task_id 引用（见 Service.DeleteTask）→
-// 删 work_task/share_task/export_task 领域行 → 删核心行（共享主键 id→task 外键要求领域行先于核心行消亡）
+// 删 work_task/share_task/export_task/import_task 领域行 → 删核心行（共享主键 id→task 外键要求领域行先于核心行消亡）
 func (r *TaskRepository) DeleteTask(ctx context.Context, ids []int64) ([]int64, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -533,6 +533,9 @@ func (r *TaskRepository) DeleteTask(ctx context.Context, ids []int64) ([]int64, 
 		return nil, err
 	}
 	if err := db.Where("id IN ?", allIds).Delete(&domain.ExportTask{}).Error; err != nil {
+		return nil, err
+	}
+	if err := db.Where("id IN ?", allIds).Delete(&domain.ImportTask{}).Error; err != nil {
 		return nil, err
 	}
 

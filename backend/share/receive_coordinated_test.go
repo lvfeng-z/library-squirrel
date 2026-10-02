@@ -69,7 +69,7 @@ type countingDialer struct {
 	max    int
 }
 
-func (d *countingDialer) dial(addr string) (net.Conn, error) {
+func (d *countingDialer) dial(ep relayEndpoint) (net.Conn, error) {
 	d.mu.Lock()
 	d.active++
 	if d.active > d.max {
@@ -77,7 +77,7 @@ func (d *countingDialer) dial(addr string) (net.Conn, error) {
 	}
 	d.mu.Unlock()
 	time.Sleep(30 * time.Millisecond) // 制造并发拨号停留窗，观察同时活跃数峰值
-	conn, err := d.rec.dial(addr)
+	conn, err := d.rec.dial(ep)
 	d.mu.Lock()
 	d.active--
 	d.mu.Unlock()

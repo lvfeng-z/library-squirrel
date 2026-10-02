@@ -74,6 +74,9 @@ var fkBatches = []fkTable{
 	{Table: "export_task", FKs: []fkSpec{
 		{Column: "id", Parent: "task"},
 	}},
+	{Table: "import_task", FKs: []fkSpec{
+		{Column: "id", Parent: "task"},
+	}},
 	{Table: "plugin", FKs: []fkSpec{
 		{Column: "backup_id", Parent: "backup"},
 	}},

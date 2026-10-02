@@ -118,7 +118,7 @@ function closeAfterSuccess(): void {
           :closable="false"
           show-icon
         >
-          已创建拉取任务，共 {{ result.workCount }} 个作品。每个作品一个子任务，进度与结果在任务面板查看。
+          已创建拉取任务，共 {{ result.workCount }} 个作品。每个作品一个子任务，进度与结果在作品下载查看。
         </el-alert>
         <div class="share-receive-result-list">
           <div
@@ -147,7 +147,7 @@ function closeAfterSuccess(): void {
           show-icon
         >
           粘贴完整分享链接（含 #k= 解密密钥）；拉取需要分享方保持应用在线，
-          内容端到端加密、中继无法读取。进度与结果在任务面板查看。
+          内容端到端加密、中继无法读取。进度与结果在作品下载查看。
         </el-alert>
 
         <el-input
@@ -196,7 +196,7 @@ function closeAfterSuccess(): void {
           type="primary"
           @click="goTaskPanel"
         >
-          前往任务面板查看进度
+          前往作品下载查看进度
         </el-button>
       </template>
       <template v-else>

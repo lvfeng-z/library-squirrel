@@ -7,5 +7,5 @@ export {
 };
 
 export {
-    ImportResult
+    StartImportResult
 } from "./models.js";

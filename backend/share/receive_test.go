@@ -16,6 +16,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -49,32 +50,54 @@ func TestParseShareLinkValid(t *testing.T) {
 	key, _ := GenerateShareKey()
 	keyB64 := base64.RawURLEncoding.EncodeToString(key)
 
-	// 深链：中继带端口
+	// 深链：公网中继带显式端口（端口保留，传输按判定表为 TLS）
 	dl := fmt.Sprintf("library-squirrel://share/relay.example.com:9527/%s#k=%s", token22, keyB64)
 	target, err := ParseShareLink(dl)
 	require.NoError(t, err)
-	assert.Equal(t, "relay.example.com:9527", target.RelayDial)
+	assert.Equal(t, "relay.example.com:9527", target.Relay.Addr)
 	assert.Equal(t, "relay.example.com:9527", target.RelayHost)
 	assert.Equal(t, token22, target.Token)
 	assert.Equal(t, key, target.Key)
 
-	// 深链：中继无端口（补默认端口）
+	// 深链：公网中继无端口（缺省按 TLS 语义补 443）
 	dl2 := fmt.Sprintf("LIBRARY-SQUIRREL://share/relay.example.com/%s#k=%s", token22, keyB64)
 	target2, err := ParseShareLink(dl2)
 	require.NoError(t, err)
-	assert.Equal(t, "relay.example.com:9527", target2.RelayDial)
+	assert.Equal(t, "relay.example.com:443", target2.Relay.Addr)
 
-	// https 分享链接
+	// https 分享链接（公网缺省 TLS 443）
 	hl := fmt.Sprintf("https://relay.example.com/s/%s#k=%s", token22, keyB64)
 	target3, err := ParseShareLink(hl)
 	require.NoError(t, err)
-	assert.Equal(t, "relay.example.com:9527", target3.RelayDial)
+	assert.Equal(t, "relay.example.com:443", target3.Relay.Addr)
 	assert.Equal(t, "relay.example.com", target3.RelayHost)
 
 	// 密钥走 query（兼容形态）
 	hl2 := fmt.Sprintf("https://relay.example.com/s/%s?k=%s", token22, keyB64)
 	_, err = ParseShareLink(hl2)
 	require.NoError(t, err)
+
+	// 深链/落地页两分支推断一致（单一判据）：公网中继走 TLS 缺省 443
+	deepPub := fmt.Sprintf("library-squirrel://share/pub.example.org/%s#k=%s", token22, keyB64)
+	pagePub := fmt.Sprintf("https://pub.example.org/s/%s#k=%s", token22, keyB64)
+	fromDeep, err := ParseShareLink(deepPub)
+	require.NoError(t, err)
+	fromPage, err := ParseShareLink(pagePub)
+	require.NoError(t, err)
+	assert.Equal(t, "pub.example.org:443", fromDeep.Relay.Addr)
+	assert.Equal(t, fromDeep.Relay.Addr, fromPage.Relay.Addr)
+	assert.Equal(t, fromDeep.RelayHost, fromPage.RelayHost)
+
+	// 深链/落地页两分支推断一致：回环字面量走明文豁免缺省 9527
+	deepLocal := fmt.Sprintf("library-squirrel://share/127.0.0.1/%s#k=%s", token22, keyB64)
+	pageLocal := fmt.Sprintf("https://127.0.0.1/s/%s#k=%s", token22, keyB64)
+	localDeep, err := ParseShareLink(deepLocal)
+	require.NoError(t, err)
+	localPage, err := ParseShareLink(pageLocal)
+	require.NoError(t, err)
+	assert.Equal(t, "127.0.0.1:9527", localDeep.Relay.Addr)
+	assert.Equal(t, localDeep.Relay.Addr, localPage.Relay.Addr)
+	assert.Equal(t, localDeep.RelayHost, localPage.RelayHost)
 }
 
 func TestParseShareLinkInvalid(t *testing.T) {
@@ -243,6 +266,7 @@ type receiveTestEnv struct {
 	dialer     *recordingDialer
 	sourceData map[string][]byte
 	shareTasks *fakeShareTaskStore // 收件任务领域行桩（建树补写 + 执行面读取）
+	tlsDialer  *redirectingDialer  // TLS 夹具的端点记录拨号器（发布与收件共用；明文夹具为 nil，拨号形态断言锚）
 }
 
 // startReceiveEnv 发布分享并构建收件执行器夹具（link 为完整分享链接；默认单作品模型）
@@ -297,6 +321,46 @@ func startReceiveEnvWithTaskCtl(t *testing.T, opts SharePublishOptions,
 		link: comp.Link, workDir: hostWorkDir, recvDir: recvDir,
 		manifest: model.Manifest, ingestor: &fakeIngestor{}, dialer: dialer, sourceData: sourceData,
 		shareTasks: shareTasks,
+	}
+}
+
+// startReceiveEnvTLS TLS 桩版收件夹具：中继地址为裸公网域名（缺省 TLS 443），发布与
+// 收件拨号共用同一 redirectingDialer（重定向到 TLS 桩并记录端点形态）；dialer 字段
+// 留 nil（TLS 场景不做发送字节断言，那是明文 E2E 用例的锚）
+func startReceiveEnvTLS(t *testing.T, opts SharePublishOptions) *receiveTestEnv {
+	t.Helper()
+	f := startTLSRelayFixture(t)
+
+	hostWorkDir := t.TempDir()
+	model, sourceData := buildTestModel(t, hostWorkDir)
+	if _, err := export.NewPacker().Plan(context.Background(), hostWorkDir, model, ""); err != nil {
+		t.Fatalf("规划导出模型失败: %v", err)
+	}
+	em := newCaptureEmitter()
+	dialer := &redirectingDialer{target: f.stub.addr, tlsRoot: f.root}
+	hostSvc := newTLSService(t, nil, tlsRelayTestHost, hostWorkDir, model, em, dialer)
+	_, comp := publishAndWait(t, hostSvc, em, opts)
+	if !comp.Success {
+		t.Fatalf("宿主发布失败: %s", comp.ErrMsg)
+	}
+
+	recvDir := t.TempDir()
+	shareTasks := newFakeShareTaskStore()
+	recvSvc := NewService(nil, nil, nil,
+		func() string { return tlsRelayTestHost }, func() string { return recvDir },
+		"recipient-instance-0001", nil, nil, nil)
+	recvSvc.SetShareTaskStore(shareTasks)
+	recvSvc.setTunables(sessionRuntimeOptions{
+		dialFn:          dialer.dial,
+		streamRate:      8 << 20,
+		dialCoordinator: NewDialCoordinator(0, 0), // 无限制桩：绕过默认拨号门控
+	})
+
+	return &receiveTestEnv{
+		stub: f.stub, hostSvc: hostSvc, recvSvc: recvSvc, em: em,
+		link: comp.Link, workDir: hostWorkDir, recvDir: recvDir,
+		manifest: model.Manifest, ingestor: &fakeIngestor{}, sourceData: sourceData,
+		shareTasks: shareTasks, tlsDialer: dialer,
 	}
 }
 
@@ -721,6 +785,43 @@ func TestReceiveExecutionEndToEnd(t *testing.T) {
 	assert.FileExists(t, env.manifestPathOf(), "共享 manifest 在父目录，子任务 Finish 清理自己暂存不动它")
 }
 
+// TestTLSReceiveExecutionEndToEnd TLS 桩全链收件（③裸公网域名走 TLS 的完整链）：
+// 裸域名发布 → 链接为 https 域名形态、链接解析推断 TLS 端点（缺省 443）→ 收件执行
+// 拉取回灌成功 → 发布与收件全部拨号端点均 TLS
+func TestTLSReceiveExecutionEndToEnd(t *testing.T) {
+	env := startReceiveEnvTLS(t, SharePublishOptions{})
+
+	wantPrefix := "https://" + tlsRelayTestHost + "/s/"
+	assert.True(t, strings.HasPrefix(env.link, wantPrefix), "链接应为 https 域名形态（前缀 %s）: %s", wantPrefix, env.link)
+	target, err := ParseShareLink(env.link)
+	require.NoError(t, err)
+	assert.True(t, target.Relay.TLS, "裸公网域名链接应推断 TLS 拨号")
+	assert.Equal(t, net.JoinHostPort(tlsRelayTestHost, "443"), target.Relay.Addr)
+
+	h, _, exec := env.buildReceiveHandle(t, "")
+	finished, failed := waitExecuteDone(t, h, exec)
+	require.True(t, finished, "应成功终态，失败信息: %s", failed)
+
+	env.ingestor.mu.Lock()
+	defer env.ingestor.mu.Unlock()
+	require.Equal(t, 1, env.ingestor.called, "回灌导入应恰好调用一次")
+	for _, entry := range env.ingestor.manifest.Files {
+		if entry.Missing {
+			continue
+		}
+		got, ok := env.ingestor.contents[entry.Path]
+		require.True(t, ok, "文件未被导入: %s", entry.Path)
+		if src, isSrc := env.sourceData[entry.StorePath]; isSrc {
+			assert.Equal(t, src, got, "TLS 链内容不一致: %s", entry.Path)
+		}
+	}
+	eps := env.tlsDialer.endpoints()
+	require.NotEmpty(t, eps, "发布与收件应产生拨号记录")
+	for _, ep := range eps {
+		assert.True(t, ep.TLS, "TLS 桩下拨号端点不应为明文: %+v", ep)
+	}
+}
+
 // TestReceiveExecutionSubTaskFiltersWork 子任务只处理本作品（设计四/五/六）：
 // 双作品模型，子任务负责作品 B（ID 2）→ 读本地共享 manifest → 过滤出本作品子集 →
 // 只拉本作品引用文件 → 导入子 manifest（Works 仅本作品、Files 仅本作品引用文件）
@@ -848,7 +949,7 @@ func TestReceiveExecutionDialTerminal(t *testing.T) {
 	target, err := ParseShareLink(env.link)
 	require.NoError(t, err)
 	badTarget := &ReceiveTarget{
-		RelayDial: target.RelayDial, RelayHost: target.RelayHost,
+		Relay: target.Relay, RelayHost: target.RelayHost,
 		Token: "zzzzzzzzzzzzzzzzzzzzzz", Key: target.Key,
 	}
 	env.shareTasks.rows[777] = newChildShareTask(777, buildReceiveConnParams(badTarget, ""), rel, env.manifest.Works[0].ID)
@@ -886,7 +987,7 @@ func TestReceiveExecutionPauseKeepsStaging(t *testing.T) {
 	env := startReceiveEnv(t, SharePublishOptions{})
 	// 收件侧拨号改为恒失败（瞬态网络错误语义），拉取停留在重试退避窗口
 	env.recvSvc.setTunables(sessionRuntimeOptions{
-		dialFn: func(addr string) (net.Conn, error) {
+		dialFn: func(ep relayEndpoint) (net.Conn, error) {
 			return nil, errors.New("模拟网络不可达")
 		},
 		dialCoordinator: NewDialCoordinator(0, 0), // 无限制桩：拨号恒失败场景不受速率门控干扰
@@ -1944,7 +2045,7 @@ func TestReceiveExecutionMissingFingerprintFallsBack(t *testing.T) {
 }
 
 // TestReceiveExecutionSharedFileSkipSafe 跳过作品与未跳过作品共享文件 → 共享文件仍应拉取
-// （fileSkipSet「全部引用作品均跳过才不拉」语义不被整作品跳过破坏）
+// （importer.FileSkipSet「全部引用作品均跳过才不拉」语义不被整作品跳过破坏）
 func TestReceiveExecutionSharedFileSkipSafe(t *testing.T) {
 	manifest := &export.Manifest{
 		Works: []export.WorkRecord{
@@ -1955,7 +2056,7 @@ func TestReceiveExecutionSharedFileSkipSafe(t *testing.T) {
 		},
 		Files: []export.FileEntry{{StoreID: 101}, {StoreID: 103}},
 	}
-	skip := fileSkipSet(manifest, map[int64]struct{}{1: {}})
+	skip := importer.FileSkipSet(manifest, map[int64]struct{}{1: {}})
 	_, shared := skip[101]
 	_, own := skip[103]
 	assert.False(t, shared, "共享文件（作品1、2 都引用）不得跳过，仍应被未跳过作品拉取")
@@ -1999,15 +2100,16 @@ func TestReceiveExecutionContentSameRerunZeroDial(t *testing.T) {
 	require.Len(t, reqs, 0, "内容相同重跑仍零拨号，实际: %+v", reqs)
 }
 
-// TestShareManifestSchemaVersionGate 分享侧版本门锚（两处）：v1 旧 manifest（SiteRecord 尚无
-// siteKey 的契约代）在 Receive 预拉入口与收件子任务执行入口均被拒绝（import 回灌入口的
-// 版本门见 importer.TestManifestSchemaVersionGate）。
+// TestShareManifestSchemaVersionGate 分享侧版本门锚（两处）：v2 旧 manifest（上一代产物：
+// files[] 尚无 contentFingerprint 的契约代）在 Receive 预拉入口与收件子任务执行入口均被拒绝
+// （import 回灌入口的版本门见 importer.TestManifestSchemaVersionGate）。字面量版本号
+// （决策2：不兼容旧版，锚点升级即拒绝跨版本分享组合）。
 func TestShareManifestSchemaVersionGate(t *testing.T) {
 	t.Run("Receive预拉入口拒绝", func(t *testing.T) {
 		taskCtl := &fakeBuiltinTaskControl{}
 		env := startReceiveEnvWithTaskCtl(t, SharePublishOptions{}, func(t *testing.T, workDir string) (*export.ExportModel, map[string][]byte) {
 			m, data := buildTestModel(t, workDir)
-			m.Manifest.SchemaVersion = 1
+			m.Manifest.SchemaVersion = 2
 			return m, data
 		}, taskCtl)
 		_, err := env.recvSvc.Receive(context.Background(), env.link, "")
@@ -2017,7 +2119,7 @@ func TestShareManifestSchemaVersionGate(t *testing.T) {
 	})
 	t.Run("收件子任务执行入口拒绝", func(t *testing.T) {
 		env := startReceiveEnv(t, SharePublishOptions{})
-		env.manifest.SchemaVersion = 1
+		env.manifest.SchemaVersion = 2
 		h, cancel, exec := env.buildReceiveHandle(t, "")
 		defer cancel()
 		exec.Execute(h)

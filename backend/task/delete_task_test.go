@@ -131,6 +131,9 @@ func TestDeleteTaskClearsResourceTaskId(t *testing.T) {
 		if err := db.Create(domain.NewExportTask(tk.GetID())).Error; err != nil {
 			t.Fatalf("插任务 %s 的导出领域行失败: %v", name, err)
 		}
+		if err := db.Create(domain.NewImportTask(tk.GetID())).Error; err != nil {
+			t.Fatalf("插任务 %s 的导入领域行失败: %v", name, err)
+		}
 		return tk
 	}
 	parent := newSeededTask("主任务", 0)
@@ -196,6 +199,23 @@ func TestDeleteTaskClearsResourceTaskId(t *testing.T) {
 	}
 	if otherExportTask != 1 {
 		t.Fatalf("对照组任务的导出领域行应保留，实际 %d 行", otherExportTask)
+	}
+
+	// 被删任务的导入领域行随之消亡（同共享主键外键防线；删除链漏摘该行时删核心行直接 FK 违约——
+	// 声明10 export_task 补删先例的同型用例）
+	var importTaskCount int64
+	if err := db.Model(&domain.ImportTask{}).Where("id IN ?", []int64{parent.GetID(), child.GetID()}).Count(&importTaskCount).Error; err != nil {
+		t.Fatalf("统计导入领域行失败: %v", err)
+	}
+	if importTaskCount != 0 {
+		t.Fatalf("被删任务的导入领域行应随之消亡，剩余 %d 行", importTaskCount)
+	}
+	var otherImportTask int64
+	if err := db.Model(&domain.ImportTask{}).Where("id = ?", other.GetID()).Count(&otherImportTask).Error; err != nil {
+		t.Fatalf("统计对照组导入领域行失败: %v", err)
+	}
+	if otherImportTask != 1 {
+		t.Fatalf("对照组任务的导入领域行应保留，实际 %d 行", otherImportTask)
 	}
 
 	// 资源行全部保留

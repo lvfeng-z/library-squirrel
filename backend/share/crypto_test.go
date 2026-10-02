@@ -100,36 +100,56 @@ func byteHex(b []byte) string {
 	return string(out)
 }
 
-func TestSanitizeMetaText(t *testing.T) {
-	if got := SanitizeMetaText("a\r b\n c\t d\x07", 100); got != "a b c d" {
-		t.Fatalf("控制字符未剔除: %q", got)
-	}
-	long := strings.Repeat("测", 300)
-	if got := SanitizeMetaText(long, 200); len([]rune(got)) != 200 {
-		t.Fatalf("rune 截断失败: %d", len([]rune(got)))
-	}
-}
-
 func TestNormalizeRelayAddress(t *testing.T) {
+	// 地址语义判定表逐行覆盖 + 前缀覆盖/网段边界/书写形态
 	cases := []struct {
-		in, dial, host string
+		name     string
+		in       string
+		wantDial string
+		wantTLS  bool
+		wantHost string
 	}{
-		{"relay.example.com", "relay.example.com:9527", "relay.example.com"},
-		{"https://relay.example.com", "relay.example.com:9527", "relay.example.com"},
-		{"relay.example.com:9000", "relay.example.com:9000", "relay.example.com:9000"},
-		{" 127.0.0.1:9527 ", "127.0.0.1:9527", "127.0.0.1:9527"},
+		{"公网字面量缺省端口", "relay.example.com", "relay.example.com:443", true, "relay.example.com"},
+		{"公网字面量显式端口", "relay.example.com:9000", "relay.example.com:9000", true, "relay.example.com:9000"},
+		{"公网裸 IP 字面量不豁免", "1.2.3.4", "1.2.3.4:443", true, "1.2.3.4"},
+		{"https 前缀缺省端口", "https://relay.example.com", "relay.example.com:443", true, "relay.example.com"},
+		{"https 前缀显式端口", "https://relay.example.com:8443", "relay.example.com:8443", true, "relay.example.com:8443"},
+		{"https 前缀覆盖回环豁免", "https://127.0.0.1:9527", "127.0.0.1:9527", true, "127.0.0.1:9527"},
+		{"https 前缀覆盖 localhost 豁免", "https://localhost", "localhost:443", true, "localhost"},
+		{"http 逃生口缺省端口", "http://relay.example.com", "relay.example.com:9527", false, "relay.example.com"},
+		{"http 逃生口显式端口", "http://relay.example.com:9000", "relay.example.com:9000", false, "relay.example.com:9000"},
+		{"回环 IPv4 缺省端口", "127.0.0.1", "127.0.0.1:9527", false, "127.0.0.1"},
+		{"回环段内非 .1 地址", "127.200.0.9", "127.200.0.9:9527", false, "127.200.0.9"},
+		{"localhost 字面量", "localhost", "localhost:9527", false, "localhost"},
+		{"回环 IPv6 字面量", "::1", "[::1]:9527", false, "[::1]"},
+		{"回环 IPv6 方括号带端口", "[::1]:9527", "[::1]:9527", false, "[::1]:9527"},
+		{"私网 10/8", "10.0.0.5", "10.0.0.5:9527", false, "10.0.0.5"},
+		{"私网 172.16/12 段内上界", "172.31.255.1", "172.31.255.1:9527", false, "172.31.255.1"},
+		{"172.32 在 172.16/12 之外走 TLS", "172.32.0.1", "172.32.0.1:443", true, "172.32.0.1"},
+		{"私网 192.168/16", "192.168.1.100", "192.168.1.100:9527", false, "192.168.1.100"},
+		{"书写空白与尾斜杠容忍", "  127.0.0.1:9527/ ", "127.0.0.1:9527", false, "127.0.0.1:9527"},
 	}
 	for _, c := range cases {
-		dial, host, err := normalizeRelayAddress(c.in)
-		if err != nil {
-			t.Fatalf("地址 %q 解析失败: %v", c.in, err)
-		}
-		if dial != c.dial || host != c.host {
-			t.Fatalf("地址 %q 解析 = (%q,%q), want (%q,%q)", c.in, dial, host, c.dial, c.host)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			ep, host, err := normalizeRelayAddress(c.in)
+			if err != nil {
+				t.Fatalf("地址 %q 解析失败: %v", c.in, err)
+			}
+			if ep.Addr != c.wantDial || ep.TLS != c.wantTLS || host != c.wantHost {
+				t.Fatalf("地址 %q = (addr %q, tls %v, host %q), want (addr %q, tls %v, host %q)",
+					c.in, ep.Addr, ep.TLS, host, c.wantDial, c.wantTLS, c.wantHost)
+			}
+		})
 	}
-	if _, _, err := normalizeRelayAddress("a b"); err == nil {
-		t.Fatal("含空格地址应被拒绝")
+	for _, bad := range []string{
+		"tcp://relay.example.com", // tcp:// 前缀报错：明文逃生口统一为 http:// 前缀
+		"a b",
+		"  ",
+		"https://",
+	} {
+		if _, _, err := normalizeRelayAddress(bad); err == nil {
+			t.Fatalf("地址 %q 应被拒绝", bad)
+		}
 	}
 }
 

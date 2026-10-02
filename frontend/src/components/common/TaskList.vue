@@ -131,7 +131,8 @@ function isBuiltinTaskType(row: TaskProgressTreeDTO): boolean {
 // 内置任务类型显示名（未登记类型回退原始字符串）
 const builtinTaskTypeLabels: Record<string, string> = {
   'share-receive': '收件',
-  'export': '导出'
+  'export': '导出',
+  'import': '导入'
 }
 function taskTypeLabel(row: TaskProgressTreeDTO): string {
   const taskType = row.taskProgress?.task?.taskType ?? ''

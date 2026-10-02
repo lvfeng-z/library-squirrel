@@ -52,7 +52,8 @@ const (
 	OwnerDownload Owner = "download"
 	// OwnerShareReceive 分享收件任务：父/子任务各占一个作用域，键=任务 ID，父目录含共享 manifest。
 	OwnerShareReceive Owner = "share-receive"
-	// OwnerImport UI 回灌导入，作用域键=铸造稳定键，启动一律回收。
+	// OwnerImport 导入任务：父/子任务各占一个作用域，键=任务 ID，父目录含共享 manifest，
+	// 按任务行存在性判活（旧铸造键作用域非数字键判死，启动清扫回收——存量兼容）。
 	OwnerImport Owner = "import"
 	// OwnerMerge 合并产物，作用域键=铸造稳定键，启动一律回收。
 	OwnerMerge Owner = "merge"

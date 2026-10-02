@@ -607,11 +607,18 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                 <el-tooltip
                   placement="top"
                   effect="customized"
-                  content="分享功能的盲转中继地址（host 或 host:port，可带 https:// 前缀；未写端口默认 9527）。官方中继为默认值，可改为自建中继。"
                 >
+                  <template #content>
+                    分享功能的盲转中继地址（host 或 host:port，可带 https:// / http:// 前缀）。<br>
+                    <b>公网地址缺省 TLS</b>：未写端口缺省 443，显式 https:// 前缀与缺省等价。<br>
+                    <b>明文逃生口须显式写 http:// 前缀</b>：未写端口缺省 9527。<br>
+                    回环 / 局域网私网 / localhost 缺省走明文 9527（本机开发豁免），显式 https:// 可覆盖。<br>
+                    不支持 tcp:// 前缀，明文中继请写 http://。裸公网 IP 亦走 TLS，须用含该 IP SAN 的证书。<br>
+                    公开可达的中继必须自配 TLS 门面，否则收件方无法接入。官方中继为默认值，可改为自建中继。
+                  </template>
                   <el-input
                     v-model="settings.shareSettings.relayAddress"
-                    placeholder="relay.example.com"
+                    placeholder="relay.example.com（缺省 TLS）或 http://192.168.1.10:9527"
                     clearable
                   />
                 </el-tooltip>

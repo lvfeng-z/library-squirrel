@@ -89,8 +89,9 @@ func TestManifestRoundTrip(t *testing.T) {
 
 	assert.Equal(t, m, back)
 
-	// schemaVersion 与 siteKey 字段须如实序列化（回灌的版本锚与站点身份键）
-	assert.Contains(t, string(data), `"schemaVersion": 2`)
+	// schemaVersion 与 siteKey 字段须如实序列化（回灌的版本锚与站点身份键）。
+	// 字面量断言（非 SchemaVersion 常量自证）：版本锚是回灌硬约束，升级须显式改动本处期望值。
+	assert.Contains(t, string(data), `"schemaVersion": 3`)
 	assert.Contains(t, string(data), `"siteKey": "pixiv"`)
 }
 

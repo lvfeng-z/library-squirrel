@@ -833,9 +833,9 @@ func (app *App) initBaseServices() {
 		func() string { return app.SettingsService.GetWorkDir() },
 		shareInstanceID,
 		share.NewWailsShareEmitter(func() share.EventEmitter { return app.taskProgressEmitter }),
-		// share-receive 任务创建/启动能力：task.Service + taskManager 经适配器组合；
+		// share-receive 收件任务创建/启动能力：task.Service + taskManager 经适配器组合；
 		// 二者在本阶段之后创建，经闭包运行期取用（收件拉取调用时均已就绪）
-		&shareTaskControlAdapter{
+		&builtinTaskControlAdapter{
 			getTaskSvc: func() *task.Service { return app.TaskService },
 			getMgr:     func() *taskManager.Manager { return app.TaskManagerService },
 		},
@@ -1205,13 +1205,17 @@ func (app *App) initAdvancedServices() error {
 		},
 		// 任务类型执行面策略表：plugin-download=插件下载（download 模块）、share-receive=分享
 		// 收件拉取（回灌导入，ManifestIngestor 与 import handler 共用同一实例）、export=导出
-		// （读 export_task 领域行打包 zip）。分享方发布不经任务模块（发布直跑 + share_record
-		// 生命周期，见 backend/share/service.go）
+		// （读 export_task 领域行打包 zip）、import=zip 导入（读 import_task 领域行，zip 条目
+		// 流文件源 + 任务作用域暂存层回灌，前置编排共用 importer.ReplacePlanner）。分享方发布
+		// 不经任务模块（发布直跑 + share_record 生命周期，见 backend/share/service.go）
 		map[string]taskManager.ExecutionStrategy{
 			entity2.TaskTypePluginDownload: pluginDownloadStrategy,
 			share.TaskTypeReceive: share.NewReceiveExecution(app.ShareService, app.shareTaskRepo, app.manifestIngestor,
 				app.DuplicateService, app.ReplaceService, app.ResourceService),
 			export.TaskTypeExport: export.NewExportExecution(app.ExportService, export.NewPacker(), app.SettingsService),
+			importer.TaskTypeImport: importer.NewImportExecution(app.SettingsService.GetWorkDir,
+				importer.NewImportTaskRepository(app.db), app.manifestIngestor,
+				app.DuplicateService, app.ReplaceService, app.ResourceService),
 		},
 		app.workTaskRepo, // WorkTaskProjector（活跃插件计数窄投影）
 		taskStagingCleaner{workDirGetter: app.SettingsService.GetWorkDir}, // StagingCleaner（work 删除链清下载暂存）
@@ -1276,8 +1280,9 @@ func (app *App) initAdvancedServices() error {
 
 	// 暂存域启动治理（先于任何能创建作用域的服务执行——任务派发均需用户操作，此时尚无作用域
 	// 可被误回收）：① 旧版暂存根（task-staging/ 与 share-receive/）一次性整体作废回收；② 新暂存
-	// 总根（staging/）按根注册表统一清扫——任务属主根（download/share-receive）按任务行存在性
-	// 判活（ID 集合一次装载），import/merge 启动清空，export 按描述账本回收
+	// 总根（staging/）按根注册表统一清扫——任务属主根（download/share-receive/import）按任务
+	// 行存在性判活（ID 集合一次装载；import 根下旧铸造键作用域非数字键判死自动回收——存量
+	// 兼容），merge 启动清空，export 按描述账本回收
 	if workDir := app.SettingsService.GetWorkDir(); workDir != "" {
 		sweepCtx := context.Background()
 		if err := staging.RetireLegacyRoots(sweepCtx, workDir); err != nil {
@@ -1301,15 +1306,15 @@ type workSetWriterAdapter struct {
 	repo *workSet.WorkSetRepository
 }
 
-// shareTaskControlAdapter 将任务创建与启动能力适配为 share.BuiltinTaskControl
-// （share-receive 收件拉取建任务用）。ShareService 在 task/taskManager 之前创建，
-// 依赖经闭包运行期取用（收件拉取调用时均已就绪）。
-type shareTaskControlAdapter struct {
+// builtinTaskControlAdapter 将任务创建与启动能力适配为 share.BuiltinTaskControl /
+// importer.TaskControl（share-receive 收件拉取与 import 建树用）。taskService/taskManager
+// 在 task/taskManager 之前创建的服务中经闭包运行期取用（调用时均已就绪）。
+type builtinTaskControlAdapter struct {
 	getTaskSvc func() *task.Service
 	getMgr     func() *taskManager.Manager
 }
 
-func (a *shareTaskControlAdapter) CreateBuiltinTask(ctx context.Context, taskType string, taskName string) (int64, error) {
+func (a *builtinTaskControlAdapter) CreateBuiltinTask(ctx context.Context, taskType string, taskName string) (int64, error) {
 	t, err := a.getTaskSvc().CreateBuiltinTask(ctx, taskType, taskName)
 	if err != nil {
 		return 0, err
@@ -1317,28 +1322,28 @@ func (a *shareTaskControlAdapter) CreateBuiltinTask(ctx context.Context, taskTyp
 	return t.GetID(), nil
 }
 
-func (a *shareTaskControlAdapter) StartTasks(ctx context.Context, taskIds []int64) error {
+func (a *builtinTaskControlAdapter) StartTasks(ctx context.Context, taskIds []int64) error {
 	return a.getMgr().StartTaskTrees(ctx, taskIds)
 }
 
 // CreateBuiltinTaskTree 委托 task.Service 原子建树（父容器 + N 子任务，事务内父 ID 回填子 pid）
-func (a *shareTaskControlAdapter) CreateBuiltinTaskTree(ctx context.Context, taskType string, parentName string, children []task.BuiltinTaskChild) (*entity2.Task, error) {
+func (a *builtinTaskControlAdapter) CreateBuiltinTaskTree(ctx context.Context, taskType string, parentName string, children []task.BuiltinTaskChild) (*entity2.Task, error) {
 	return a.getTaskSvc().CreateBuiltinTaskTree(ctx, taskType, parentName, children)
 }
 
 // CreateBuiltinTaskParent 委托 task.Service 建父容器（收件建树先建父拿 parentID，再落盘共享清单后补子）
-func (a *shareTaskControlAdapter) CreateBuiltinTaskParent(ctx context.Context, taskType string, parentName string) (*entity2.Task, error) {
+func (a *builtinTaskControlAdapter) CreateBuiltinTaskParent(ctx context.Context, taskType string, parentName string) (*entity2.Task, error) {
 	return a.getTaskSvc().CreateBuiltinTaskParent(ctx, taskType, parentName)
 }
 
 // CreateBuiltinTaskChildren 委托 task.Service 在既有父任务下补建子任务，返回创建的子任务
 // （share 据此逐子任务写 share_task 领域行）
-func (a *shareTaskControlAdapter) CreateBuiltinTaskChildren(ctx context.Context, taskType string, parentID int64, children []task.BuiltinTaskChild) ([]*entity2.Task, error) {
+func (a *builtinTaskControlAdapter) CreateBuiltinTaskChildren(ctx context.Context, taskType string, parentID int64, children []task.BuiltinTaskChild) ([]*entity2.Task, error) {
 	return a.getTaskSvc().CreateBuiltinTaskChildren(ctx, taskType, parentID, children)
 }
 
 // DeleteTask 委托 task.Service 批量删除任务（含子任务；建树失败回滚用）
-func (a *shareTaskControlAdapter) DeleteTask(ctx context.Context, ids []int64) error {
+func (a *builtinTaskControlAdapter) DeleteTask(ctx context.Context, ids []int64) error {
 	return a.getTaskSvc().DeleteTask(ctx, ids)
 }
 
@@ -1587,10 +1592,19 @@ func (app *App) initHandlers() {
 	app.RecycleBinHandler = recycleBin.NewHandler(app.RecycleBinService, app.ShareLockRegistry)
 	app.ExportHandler = export.NewHandler(app.ExportService)
 	app.ShareHandler = share.NewHandler(app.ShareService)
-	// import：导出产物回灌导入 handler（入库能力为 ManifestIngestor，与 share-receive
-	// 任务执行器共用 app.manifestIngestor 同一实例；解包暂存落 staging/import/ 作用域、
-	// 入库走 persistentStore 入库事务能力）
-	app.ImportHandler = importer.NewHandler(app.manifestIngestor, app.SettingsService.GetWorkDir)
+	// import：导出产物回灌导入 handler——StartImport 建树入口（父容器「导入（N 项）」+ 每作品
+	// 一子任务 + import_task 领域行 + manifest 原字节落盘 staging/import/{父任务ID}/）。任务
+	// 创建/启动能力经适配器组合（task.Service 与 taskManager 均晚于此创建，闭包运行期取用，
+	// share 收件装配同款）；回灌 Ingest 归执行面策略（与 share-receive 执行器共用
+	// app.manifestIngestor 同一实例，不经 Handler）
+	app.ImportHandler = importer.NewHandler(
+		app.SettingsService.GetWorkDir,
+		&builtinTaskControlAdapter{
+			getTaskSvc: func() *task.Service { return app.TaskService },
+			getMgr:     func() *taskManager.Manager { return app.TaskManagerService },
+		},
+		importer.NewImportTaskRepository(app.db),
+	)
 	app.FsmonitorHandler = fsmonitor.NewHandler(app.FsmonitorService)
 	app.BackupGovernanceHandler = backupGovernance.NewHandler(app.BackupGovernanceService)
 	app.WorkDirGuardHandler = workdirGuard.NewHandler(app.WorkDirGuard)

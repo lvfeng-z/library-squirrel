@@ -33,7 +33,7 @@ type ShareRecordDTO struct {
 	Title             string  `json:"title"`
 	WorkIDs           []int64 `json:"workIds"`
 	WorkSetIDs        []int64 `json:"workSetIds"`
-	RelayAddress      string  `json:"relayAddress"`
+	RelayAddress      string  `json:"relayAddress"` // 链接 host 形态的中继地址（host[:port]，不含 scheme）：公网书写=TLS、回环/私网字面量=明文，凭该形态可还原拨号端点
 	KeyB64            string  `json:"keyB64"`
 	Link              string  `json:"link"` // 重建的完整分享链接（含 fragment 密钥）
 	PasswordProtected bool    `json:"passwordProtected"`

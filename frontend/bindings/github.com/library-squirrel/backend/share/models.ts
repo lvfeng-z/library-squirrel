@@ -149,6 +149,10 @@ export class ShareRecordDTO {
     "title": string;
     "workIds": number[];
     "workSetIds": number[];
+
+    /**
+     * 链接 host 形态的中继地址（host[:port]，不含 scheme）：公网书写=TLS、回环/私网字面量=明文，凭该形态可还原拨号端点
+     */
     "relayAddress": string;
     "keyB64": string;
 

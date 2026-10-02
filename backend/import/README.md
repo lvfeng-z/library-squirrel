@@ -12,7 +12,7 @@
 ## 对外接口（Handler）
 | 方法 | 作用 |
 | --- | --- |
-| `ImportFromZip(zipPath)` | 从导出 ZIP 产物回灌导入：解包读 manifest → 版本锚校验 → 入库 → 返回 `ImportResult` 摘要。同步执行（进度/取消形态归二期任务模块接入） |
+| `StartImport(zipPath)` | 从导出 ZIP 产物建导入任务树：读包内 manifest → 建树前校验（版本锚/作品非空/上限 10000/站点键）→ 两段式建树（父容器「导入（N 项）」＋每作品一子任务＋import_task 领域行＋manifest 原字节落盘 `staging/import/{父任务ID}/`）→ 整树启动，任一步失败显式删树回滚；进度/暂停/重试归任务面板（旧同步回灌入口已随任务化退役） |
 
 ## 核心概念
 - **ManifestIngestor**（能力接口）：`Ingest(ctx, manifest, fileSource)`——fileSource 为包内路径→内容流的文件源（zip 打开器与分享拉取流各自实现，导入核心不感知来源）。返回摘要 `ImportResult` 携带本次新建的 persistent_store 行 ID 清单（`CreatedStoreIDs`，导入事务提交后填充）——供调用方在导入成功后登记终态回滚（复活被替换旧代前先丢弃新建行）。

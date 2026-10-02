@@ -22,7 +22,8 @@ var removeAll = os.RemoveAll
 type ScopeOwnerAlive func(scopeKey string) bool
 
 // SweepAtStartup 启动清扫：遍历暂存总根下各登记属主根，按注册表策略逐作用域裁决——任务
-// 属主根按谓词判活（活=保留〔含暂停待恢复〕，死=回收）、import/merge 根一律回收、export 根
+// 属主根（download/share-receive/import）按谓词判活（活=保留〔含暂停待恢复〕，死=回收；
+// import 根下旧铸造键作用域非数字键判死回收——存量兼容）、merge 根一律回收、export 根
 // 按描述账本删目标目录临时文件，清理落定后回收本作用域（未落定保留作用域，下次启动凭账本
 // 重试）。
 // 时序契约：必须在启动序列中先于任何能创建作用域的服务启动处同步调用（app.go 装配保证）。

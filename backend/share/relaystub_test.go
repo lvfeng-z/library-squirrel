@@ -7,9 +7,16 @@ package share
 // 收件人半关闭转发 STREAM_CLOSE 给分享方、REVOKE 应答 RESULT 后断连。
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"sync"
 	"testing"
@@ -68,12 +75,28 @@ type relayStub struct {
 	bindCount      map[string]int
 }
 
-// startRelayStub 启动桩中继（监听 127.0.0.1 随机端口）
+// startRelayStub 启动桩中继（监听 127.0.0.1 随机端口，明文 TCP）
 func startRelayStub(t *testing.T) *relayStub {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("启动中继桩失败: %v", err)
 	}
+	return newRelayStub(t, ln)
+}
+
+// startRelayStubTLS 启动 TLS 监听模式的中继桩：明文监听器外裹 tls.NewListener，
+// TLS 终结在传输层之下、帧协议与桩逻辑零改动。cert 由 selfSignRelayCert 生成。
+func startRelayStubTLS(t *testing.T, cert tls.Certificate) *relayStub {
+	raw, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("启动中继桩失败: %v", err)
+	}
+	return newRelayStub(t, tls.NewListener(raw, &tls.Config{Certificates: []tls.Certificate{cert}}))
+}
+
+// newRelayStub 组装桩并启动接受循环；监听器的传输形态（明文 TCP 或 TLS）由调用方
+// 确定，桩内帧处理对传输形态零感知
+func newRelayStub(t *testing.T, ln net.Listener) *relayStub {
 	s := &relayStub{
 		t:         t,
 		ln:        ln,
@@ -501,4 +524,39 @@ func (s *relayStub) bindCountOf(token string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.bindCount[token]
+}
+
+// selfSignRelayCert 测试内自签中继证书（ECDSA P-256，SAN 覆盖 dnsNames 与 ips）。
+// TLS 桩用它作服务端证书，测试注入拨号器用返回证书构建信任池；生产路径信任系统
+// 根证书、无跳过校验选项，不经此函数。
+func selfSignRelayCert(t *testing.T, dnsNames []string, ips []net.IP) tls.Certificate {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("生成桩证书密钥失败: %v", err)
+	}
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 120))
+	if err != nil {
+		t.Fatalf("生成桩证书序列号失败: %v", err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: "library-squirrel-relay-test"},
+		NotBefore:             time.Now().Add(-time.Hour), // 回拨一小时，容忍本机时钟偏差
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		DNSNames:              dnsNames,
+		IPAddresses:           ips,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("自签桩证书失败: %v", err)
+	}
+	leaf, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("解析桩证书失败: %v", err)
+	}
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key, Leaf: leaf}
 }

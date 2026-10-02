@@ -123,12 +123,12 @@ func assertScopeDesc(t *testing.T, scopeDir, wantKey, wantShape string) {
 	}
 }
 
-// TestCleanupStagingByTaskIds 按任务 ID 清理两属主根：被删 ID 的下载与收件作用域均回收、
+// TestCleanupStagingByTaskIds 按任务 ID 清理三属主根：被删 ID 的下载/收件/导入作用域均回收、
 // 未涉及 ID 不受影响、空 workDir 与空集合静默返回
 func TestCleanupStagingByTaskIds(t *testing.T) {
 	workDir := t.TempDir()
 	for _, id := range []int64{1, 2, 3} {
-		for _, dir := range []string{DownloadStagingPath(workDir, id), ReceiveStagingPath(workDir, id)} {
+		for _, dir := range []string{DownloadStagingPath(workDir, id), ReceiveStagingPath(workDir, id), ImportStagingPath(workDir, id)} {
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				t.Fatalf("建暂存目录失败: %v", err)
 			}
@@ -137,18 +137,21 @@ func TestCleanupStagingByTaskIds(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ReceiveStagingPath(workDir, 1), "manifest.json"), []byte("{}"), 0o644); err != nil {
 		t.Fatalf("写清单失败: %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(ImportStagingPath(workDir, 1), "manifest.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("写导入清单失败: %v", err)
+	}
 
 	if err := CleanupStagingByTaskIds(workDir, []int64{1, 2}); err != nil {
 		t.Fatalf("清理失败: %v", err)
 	}
 	for _, id := range []int64{1, 2} {
-		for _, dir := range []string{DownloadStagingPath(workDir, id), ReceiveStagingPath(workDir, id)} {
+		for _, dir := range []string{DownloadStagingPath(workDir, id), ReceiveStagingPath(workDir, id), ImportStagingPath(workDir, id)} {
 			if _, err := os.Stat(dir); !os.IsNotExist(err) {
 				t.Fatalf("被删任务 %d 的暂存目录应回收: %s err=%v", id, dir, err)
 			}
 		}
 	}
-	for _, dir := range []string{DownloadStagingPath(workDir, 3), ReceiveStagingPath(workDir, 3)} {
+	for _, dir := range []string{DownloadStagingPath(workDir, 3), ReceiveStagingPath(workDir, 3), ImportStagingPath(workDir, 3)} {
 		if _, err := os.Stat(dir); err != nil {
 			t.Fatalf("未涉及任务的暂存目录不应受影响: %s: %v", dir, err)
 		}

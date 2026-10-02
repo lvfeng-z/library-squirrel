@@ -96,4 +96,4 @@
 
 - `SiteRecord.siteKey` **必填**——收件/导入侧按键直查本库站点行（find-only：注册键行由启动投影保证存在，行缺失显式报错，见第四节）；未注册键直接报错。
 - `SiteRecord` 其余站点字段（名称/主页）仅作展示参考，不参与任何匹配。
-- manifest `SchemaVersion` 当前为 **2**，版本门为严格相等校验——旧版本（1，站点记录只携带名称）的 manifest 一律拒绝。
+- manifest `SchemaVersion` 当前为 **3**，版本门为严格相等校验——旧版本一律拒绝（2：`files[]` 尚无 `contentFingerprint`；1：站点记录只携带名称）。

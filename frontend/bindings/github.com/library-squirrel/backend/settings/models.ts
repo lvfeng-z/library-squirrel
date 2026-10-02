@@ -461,7 +461,13 @@ export class Settings {
  */
 export class ShareSettings {
     /**
-     * RelayAddress 分享中继地址（host 或 host:port，可带 https:// 前缀；无端口默认 9527）。
+     * RelayAddress 分享中继地址（host 或 host:port，可带 https:// / http:// 前缀）。地址语义
+     * 判定见 share.normalizeRelayAddress（单一判据，发布/复原/收件共用）：
+     *   - 公网字面量（host / host:port）缺省 TLS，无端口缺省 443；显式 https:// 前缀与缺省等价
+     *   - 显式 http:// 前缀为明文逃生口，无端口缺省 9527
+     *   - 回环/RFC1918 私网/localhost 字面量缺省明文 9527（本机与局域网开发豁免，显式 https:// 可覆盖）
+     *   - tcp:// 前缀报错（明文统一写 http://）；裸公网 IP 不豁免 TLS，证书须含该 IP 的 SAN
+     * 地址不以 scheme 入库（分享记录只存链接 host 形态），凭书写形态即可还原拨号端点。
      * 官方中继占位默认值，可改为社区自建中继
      */
     "relayAddress": string;

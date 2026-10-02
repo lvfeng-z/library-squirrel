@@ -15,6 +15,8 @@ import { TaskQueryDTO } from '@bindings/github.com/library-squirrel/backend/task
 import { PluginCandidate } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { Operator, QueryAttribute } from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import type { PluginWithExtensionVO } from '@renderer/apis/http/wrappers/pluginTaskUrlListener'
+import { importStartImport } from '@renderer/apis/http/wrappers/import'
+import { FileFilter } from '@bindings/github.com/wailsapp/wails/v3/pkg/application/models'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model'
 import { TaskProgressTreeDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import { newPage } from '@renderer/utils/Pager.ts'
@@ -192,6 +194,23 @@ async function selectFile() {
   }
 }
 
+// 从导出包导入：弹 zip 文件选择器 → 建导入任务树（进度与暂停/停止/重试由任务面板承载）
+async function importFromZip() {
+  try {
+    const response = await fileSysUtilApi.fileSysUtilSelectFile('选择导出包', undefined, [
+      new FileFilter({ DisplayName: '导出包 (*.zip)', Pattern: '*.zip' })
+    ])
+    const zipSelectResult = response.data as { canceled: boolean; filePaths: string[] } | undefined
+    if (notNullish(zipSelectResult) && !zipSelectResult.canceled && arrayNotEmpty(zipSelectResult.filePaths)) {
+      await importStartImport(zipSelectResult.filePaths[0])
+      ElMessage.success('已创建导入任务，进度见作品下载')
+      downloadDialogState.value = false
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  }
+}
+
 function handleDownloadDialog(_event: PointerEvent, isLocal: boolean, newState?: boolean) {
   downloadMode.value = isLocal
   if (isLocal) {
@@ -320,6 +339,13 @@ async function handleSourceUrlInput() {
             @click="selectFile()"
           >
             选择单个文件导入
+          </el-button>
+          <el-button
+            type="primary"
+            icon="Box"
+            @click="importFromZip()"
+          >
+            从导出包导入
           </el-button>
         </div>
         <el-input

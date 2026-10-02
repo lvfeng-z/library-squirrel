@@ -152,7 +152,7 @@ func startL1Env(t *testing.T, n int, size int64, streamRate int64) *l1Env {
 		t.Fatalf("规划导出模型失败: %v", err)
 	}
 	em := newCaptureEmitter()
-	plainDial := func(addr string) (net.Conn, error) { return net.Dial("tcp", addr) }
+	plainDial := func(ep relayEndpoint) (net.Conn, error) { return net.Dial("tcp", ep.Addr) }
 	hostSvc := NewService(nil, &fakeCollector{model: model}, export.NewPacker(),
 		func() string { return stub.addr }, func() string { return hostWorkDir },
 		"test-instance-L1", em, nil, nil)

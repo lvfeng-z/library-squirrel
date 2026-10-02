@@ -19,7 +19,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"strings"
 )
 
 // shareKeyLen E2E 密钥长度（AES-256）
@@ -77,7 +76,10 @@ func (c *e2eCipher) openRecord(record []byte) ([]byte, error) {
 }
 
 // BuildShareLink 构造分享链接：`https://{relayHost}/s/{token}#k={base64url(密钥)}`。
-// 密钥只进 fragment——URL fragment 不随请求发往中继。
+// 密钥只进 fragment——URL fragment 不随请求发往中继。relayHost 为去 scheme 的链接
+// authority（host[:port]，IPv6 字面量带方括号）；链接 scheme 恒为 https，收件侧按
+// 地址语义从 authority 推断传输与端口（公网=TLS、回环/私网字面量=明文），scheme 不
+// 随分享记录存储、authority 形态即可还原拨号端点。
 func BuildShareLink(relayHost, token string, key []byte) string {
 	return fmt.Sprintf("https://%s/s/%s#k=%s", relayHost, token, base64.RawURLEncoding.EncodeToString(key))
 }
@@ -86,21 +88,4 @@ func BuildShareLink(relayHost, token string, key []byte) string {
 func PasswordHashHex(password string) string {
 	sum := sha256.Sum256([]byte(password))
 	return hex.EncodeToString(sum[:])
-}
-
-// SanitizeMetaText 净化落地页元数据文本：剔除控制字符（含 \r\n\t）并按 rune 截断到上限
-// （中继对 title/source 有长度与控制字符校验，客户端先行净化避免注册被 malformed 拒绝）
-func SanitizeMetaText(s string, maxRunes int) string {
-	var b strings.Builder
-	for _, r := range s {
-		if r < 0x20 || r == 0x7f {
-			continue
-		}
-		b.WriteRune(r)
-	}
-	runes := []rune(b.String())
-	if len(runes) > maxRunes {
-		runes = runes[:maxRunes]
-	}
-	return string(runes)
 }

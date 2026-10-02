@@ -6,139 +6,49 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
- * ImportResult 导入结果摘要。
+ * StartImportResult 建树结果摘要（成功提示引导用户去任务面板查看进度）。
  */
-export class ImportResult {
+export class StartImportResult {
     /**
-     * 新建作品数
+     * 父容器任务 ID
      */
-    "createdWorks": number;
+    "parentTaskId": number;
 
     /**
-     * 替换作品数（确认替换 + 自动增补 全集）
+     * manifest 作品数
      */
-    "replacedWorks": number;
+    "workCount": number;
 
     /**
-     * 经用户确认替换的作品数
+     * 净化后作品名（与子任务命名同源）
      */
-    "replacedConfirmed": number;
+    "workNames": string[];
 
-    /**
-     * 零交集命中自动增补的作品数
-     */
-    "replacedAuto": number;
-
-    /**
-     * 查重命中（site_id+site_work_id 已存在）跳过的作品数
-     */
-    "skippedWorks": number;
-
-    /**
-     * 新建作品集数
-     */
-    "createdWorkSets": number;
-
-    /**
-     * 查重命中跳过的作品集数
-     */
-    "skippedWorkSets": number;
-
-    /**
-     * 新建本地标签数（按名称 find-or-create）
-     */
-    "createdLocalTags": number;
-
-    /**
-     * 新建站点标签数（按站点+site_tag_id 匹配）
-     */
-    "createdSiteTags": number;
-
-    /**
-     * 新建本地作者数（按名称 find-or-create）
-     */
-    "createdLocalAuthors": number;
-
-    /**
-     * 新建站点作者数（按站点+site_author_id 匹配）
-     */
-    "createdSiteAuthors": number;
-
-    /**
-     * 落盘文件数
-     */
-    "extractedFiles": number;
-
-    /**
-     * 挂载缺席数（源文件缺失/无包内路径，决策4）
-     */
-    "absentStores": number;
-
-    /**
-     * CreatedStoreIDs 本次导入新建的 persistent_store 行 ID 清单（导入事务提交后填充）。
-     * 供调用方在导入成功后登记终态回滚：回滚复活被替换旧代前须先丢弃新建行，释放其占用的
-     * file_path（部分唯一索引对活行生效）；无新建行时为 nil
-     */
-    "createdStoreIds": number[];
-
-    /** Creates a new ImportResult instance. */
-    constructor($$source: Partial<ImportResult> = {}) {
-        if (!("createdWorks" in $$source)) {
-            this["createdWorks"] = 0;
+    /** Creates a new StartImportResult instance. */
+    constructor($$source: Partial<StartImportResult> = {}) {
+        if (!("parentTaskId" in $$source)) {
+            this["parentTaskId"] = 0;
         }
-        if (!("replacedWorks" in $$source)) {
-            this["replacedWorks"] = 0;
+        if (!("workCount" in $$source)) {
+            this["workCount"] = 0;
         }
-        if (!("replacedConfirmed" in $$source)) {
-            this["replacedConfirmed"] = 0;
-        }
-        if (!("replacedAuto" in $$source)) {
-            this["replacedAuto"] = 0;
-        }
-        if (!("skippedWorks" in $$source)) {
-            this["skippedWorks"] = 0;
-        }
-        if (!("createdWorkSets" in $$source)) {
-            this["createdWorkSets"] = 0;
-        }
-        if (!("skippedWorkSets" in $$source)) {
-            this["skippedWorkSets"] = 0;
-        }
-        if (!("createdLocalTags" in $$source)) {
-            this["createdLocalTags"] = 0;
-        }
-        if (!("createdSiteTags" in $$source)) {
-            this["createdSiteTags"] = 0;
-        }
-        if (!("createdLocalAuthors" in $$source)) {
-            this["createdLocalAuthors"] = 0;
-        }
-        if (!("createdSiteAuthors" in $$source)) {
-            this["createdSiteAuthors"] = 0;
-        }
-        if (!("extractedFiles" in $$source)) {
-            this["extractedFiles"] = 0;
-        }
-        if (!("absentStores" in $$source)) {
-            this["absentStores"] = 0;
-        }
-        if (!("createdStoreIds" in $$source)) {
-            this["createdStoreIds"] = [];
+        if (!("workNames" in $$source)) {
+            this["workNames"] = [];
         }
 
         Object.assign(this, $$source);
     }
 
     /**
-     * Creates a new ImportResult instance from a string or object.
+     * Creates a new StartImportResult instance from a string or object.
      */
-    static createFrom($$source: any = {}): ImportResult {
-        const $$createField13_0 = $$createType0;
+    static createFrom($$source: any = {}): StartImportResult {
+        const $$createField2_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("createdStoreIds" in $$parsedSource) {
-            $$parsedSource["createdStoreIds"] = $$createField13_0($$parsedSource["createdStoreIds"]);
+        if ("workNames" in $$parsedSource) {
+            $$parsedSource["workNames"] = $$createField2_0($$parsedSource["workNames"]);
         }
-        return new ImportResult($$parsedSource as Partial<ImportResult>);
+        return new StartImportResult($$parsedSource as Partial<StartImportResult>);
     }
 }
 

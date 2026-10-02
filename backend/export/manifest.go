@@ -8,7 +8,10 @@ import (
 // 版本纪律对齐插件 plugin_data 的 schemaVersion（见 doc/plugin-dev-guide.md「plugin_data 格式版本约定」）：
 // 仅在结构破坏性变更（删字段/改字段语义/改类型）时递增；加可选字段不必递增（向前兼容）。
 // v2：SiteRecord 加 siteKey 必填（站点匹配从按名升级为按键，同名不同键站点不得互相回灌）。
-const SchemaVersion = 2
+// v3：files[] 的 contentFingerprint 由「可选预填」升为契约必填面——zip 导出打包与分享宿主均
+// 逐文件预填头部指纹（回灌内容判定据此零读盘快筛；缺指纹条目按不匹配处理，旧版产物无此面）。
+// 不兼容 v2 及更早产物（决策2）：版本门为严格相等校验，旧包一律拒绝并提示用新版本重新导出。
+const SchemaVersion = 3
 
 // Manifest 导出产物清单（方案第3节契约）。导出格式一经上线即成为既有产物，
 // 不可回灌的导出等于半成品——字段增删必须受 SchemaVersion 约束。
@@ -198,7 +201,9 @@ type WorkSetLink struct {
 
 // FileEntry 文件条目（files[]；被 work 的 store 挂载按 StoreID 引用）。
 // Path/Size/Missing 由规划阶段填充（包内路径命名 + 源文件存在性检查）；内容哈希由产出方
-// 预填——zip 导出打包填 Sha256，分享宿主填 Sha256 与 ContentFingerprint 双字段。
+// 预填——zip 导出打包（Packer.Pack 逐文件读流顺带采样）与分享宿主（fillManifestFingerprints）
+// 均填 Sha256 与 ContentFingerprint 双字段（schemaVersion 3 起为空即契约违约，回灌内容判定
+// 对缺指纹条目按不匹配处理）。
 // 源文件缺失 → Missing=true，该 store 缺席、其余照常。
 type FileEntry struct {
 	// StoreID 源 persistent_store 行 ID（导出模型内锚：store 挂载按此引用文件条目）
@@ -209,8 +214,8 @@ type FileEntry struct {
 	Path string `json:"path"`
 	Size int64  `json:"size"`
 	// ContentFingerprint 文件内容头部指纹（size + 头部 64KB SHA256，`<size>:<hex>`，与库内
-	// persistent_store.content_fingerprint 同口径）；分享宿主会话开始时预计算，供收件方零读盘
-	// 快速判定本地是否已拥有同内容文件。
+	// persistent_store.content_fingerprint 同口径）；zip 导出打包（读流顺带采样）与分享宿主
+	// 会话开始时预计算，供回灌/收件方零读盘快速判定本地是否已拥有同内容文件。
 	ContentFingerprint string `json:"contentFingerprint,omitempty"`
 	// Sha256 文件内容全量 SHA256（hex）；「文件期望哈希」预下载参考——收件方下载前判定内容
 	// 身份、导入落盘时校验下载完整性。zip 导出打包与分享宿主会话开始时预计算。

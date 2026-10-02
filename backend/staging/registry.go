@@ -10,7 +10,7 @@ type reclaimPolicy int
 
 const (
 	// policyOwnerAlive 归属存活性驱动：谓词判活则保留（含暂停待恢复等在途态）、判死则回收。
-	// 任务属主根（download/share-receive）用——作用域键与属主行一一对应。
+	// 任务属主根（download/share-receive/import）用——作用域键与属主行一一对应。
 	policyOwnerAlive reclaimPolicy = iota
 	// policyStartupPurge 启动一律回收：非任务入库是单次操作，进程重启即无在途。
 	policyStartupPurge
@@ -30,7 +30,7 @@ type rootEntry struct {
 var rootRegistry = []rootEntry{
 	{owner: OwnerDownload, policy: policyOwnerAlive},
 	{owner: OwnerShareReceive, policy: policyOwnerAlive},
-	{owner: OwnerImport, policy: policyStartupPurge},
+	{owner: OwnerImport, policy: policyOwnerAlive},
 	{owner: OwnerMerge, policy: policyStartupPurge},
 	{owner: OwnerExport, policy: policyDescriptionLedger},
 	{owner: OwnerAuthorInfo, policy: policyStartupPurge},

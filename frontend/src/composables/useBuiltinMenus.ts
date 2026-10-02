@@ -88,7 +88,7 @@ export function initBuiltinMenus() {
           slotId: 'builtin-taskManage',
           index: 'taskManage',
           icon: markRaw(List),
-          label: '任务面板',
+          label: '作品下载',
           order: 41,
           viewId: 'taskManage'
         },

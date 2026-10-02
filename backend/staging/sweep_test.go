@@ -10,8 +10,9 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// TestSweepRootRegistryDispatch 根注册表派发：任务属主根按注入谓词判活去留（活=保留、死=回收），
-// import/merge 启动一律回收，export 按账本先删目标侧临时文件再回收作用域（账外文件不动——
+// TestSweepRootRegistryDispatch 根注册表派发：任务属主根（download/share-receive/import）
+// 按注入谓词判活去留（活=保留、死=回收；import 根下旧铸造键作用域非数字键判死回收——存量
+// 兼容），merge 启动一律回收，export 按账本先删目标侧临时文件再回收作用域（账外文件不动——
 // 描述即权威清单，不扫描目标目录）。
 func TestSweepRootRegistryDispatch(t *testing.T) {
 	workDir := t.TempDir()
@@ -25,6 +26,7 @@ func TestSweepRootRegistryDispatch(t *testing.T) {
 		{OwnerDownload, "200"},
 		{OwnerShareReceive, "300"},
 		{OwnerShareReceive, "301"},
+		{OwnerImport, "400"},
 	}
 	for _, p := range taskScopes {
 		if _, err := CreateScope(ctx, workDir, p.owner, p.key, "files"); err != nil {
@@ -34,11 +36,12 @@ func TestSweepRootRegistryDispatch(t *testing.T) {
 	// 在途暂存内容随回收一并消失
 	writeTextT(t, filepath.Join(ScopePath(workDir, OwnerDownload, "200"), "videoTrack_000.mp4.part"), "x")
 
+	// 任务化前存量的旧铸造键 import 作用域（hex 键非数字——判活谓词下判死回收，存量兼容）
 	importKey, err := MintScopeKey()
 	if err != nil {
 		t.Fatalf("铸造键失败: %v", err)
 	}
-	importDir, err := CreateScope(ctx, workDir, OwnerImport, importKey, "import-files")
+	legacyImportDir, err := CreateScope(ctx, workDir, OwnerImport, importKey, "import-files")
 	if err != nil {
 		t.Fatalf("创建 import 作用域失败: %v", err)
 	}
@@ -69,13 +72,14 @@ func TestSweepRootRegistryDispatch(t *testing.T) {
 		t.Fatalf("创建导出作用域失败: %v", err)
 	}
 
-	if err := SweepAtStartup(ctx, workDir, aliveFor("100", "300")); err != nil {
+	if err := SweepAtStartup(ctx, workDir, aliveFor("100", "300", "400")); err != nil {
 		t.Fatalf("清扫失败: %v", err)
 	}
 
 	for _, kept := range []string{
 		ScopePath(workDir, OwnerDownload, "100"),
 		ScopePath(workDir, OwnerShareReceive, "300"),
+		ScopePath(workDir, OwnerImport, "400"),
 	} {
 		if !pathExists(t, kept) {
 			t.Fatalf("在途作用域被误回收: %s", kept)
@@ -84,7 +88,7 @@ func TestSweepRootRegistryDispatch(t *testing.T) {
 	for _, gone := range []string{
 		ScopePath(workDir, OwnerDownload, "200"),
 		ScopePath(workDir, OwnerShareReceive, "301"),
-		importDir,
+		legacyImportDir,
 		mergeDir,
 		exportDir,
 	} {

@@ -136,6 +136,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&entity2.WorkTask{},
 		&entity2.ShareTask{},
 		&entity2.ExportTask{},
+		&entity2.ImportTask{},
 		&entity2.ShareRecord{},
 		&entity2.Resource{},
 		&entity2.ResourceStore{},

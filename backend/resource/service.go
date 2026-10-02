@@ -29,8 +29,8 @@ type Repository interface {
 	ListByWorkIds(ctx context.Context, workIds []int64) ([]*domain.Resource, error)
 }
 
-// StoreMountInfo 活行 store 挂载的内容判定载荷（分享收件逐文件内容判定与暂存拷贝用）。
-// 域类型归本包（对齐 StoreRef 先例）——share 侧经 StoreMountReader 接口引用，结构性实现免跨包回引。
+// StoreMountInfo 活行 store 挂载的内容判定载荷（回灌前置编排逐文件内容判定与暂存拷贝用）。
+// 域类型归本包（对齐 StoreRef 先例）——import 侧经 StoreMountReader 接口引用，结构性实现免跨包回引。
 type StoreMountInfo struct {
 	StoreType          string // store_type 角色
 	StoreSeq           int64  // store_seq 挂载序

@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/library-squirrel/backend/base/constant"
@@ -25,6 +26,7 @@ import (
 	"github.com/library-squirrel/backend/persistentStore"
 	"github.com/library-squirrel/backend/staging"
 	"github.com/library-squirrel/backend/storeRegistry"
+	"github.com/library-squirrel/backend/task"
 	"github.com/library-squirrel/backend/util"
 	"github.com/lvfeng-z/library-squirrel-sdk/identity"
 )
@@ -488,6 +490,11 @@ func (ing *ingestor) extractFiles(ctx context.Context, manifest *export.Manifest
 	// 逐条目解包：路径冲突消解 → 暂存落点 → 流式写入（边读边算 sha）→ sha 校验
 	claimed := make(map[string]struct{}, len(needed))
 	for _, entry := range needed {
+		// 逐条目取消检查点：暂停/停止（RunCtx 取消）在条目边界即时打断解包相位，不上抛
+		// 分类错误交调用方按取消分流（收件轨/导入轨共用本相位，取消即无终态上报）
+		if err := ctx.Err(); err != nil {
+			return result, fmt.Errorf("解包被暂停/停止中断: %w", err)
+		}
 		if entry.Missing || entry.Path == "" || entry.StorePath == "" {
 			continue // 挂载缺席，入库相位按挂载级统计
 		}
@@ -587,46 +594,45 @@ func (ing *ingestor) claimPath(ctx context.Context, desired string, claimed map[
 	}
 }
 
-// zipUnpackContentShape zip 解包作用域的内容形态标签：条目按解包序号平铺命名（无子目录）。
-const zipUnpackContentShape = "flat-by-extract-index"
-
-// ZipUnpackStaging zip 解包轨暂存层（IngestStaging 的 zip 回灌实现）：首次解包时铸造作用域
-// 键、经 staging 能力包原子入口创建 {workDir}/staging/import/{铸造键}/ 作用域，条目内容按
-// 解包序号平铺落文件（随后的落位把文件同卷 rename 进最终路径）。撤回处置=丢弃：解包产物是
-// 一次性副本，导入包整包在手可重新导入，无续传语义。
+// ZipUnpackStaging zip 解包轨暂存层（IngestStaging 的 zip 回灌实现，任务作用域化）：作用域
+// 键=任务 ID（{workDir}/staging/import/{taskID}/，父/子任务各占一个作用域；import 属主根按
+// 任务行存在性判活——暂停/崩溃残留保留供恢复全量重跑复用，任务删除链与启动清扫按存活回收）。
+// 条目按清单内路径镜像命名落文件（与内容判定的暂存拷贝共用 StagingPath 的「包内路径 → 暂存
+// 落点」映射——匹配文件免解包重读；随后的落位把文件同卷 rename 进最终路径）。撤回处置=丢弃：
+// 解包产物是一次性副本，导入包整包在手可重新导入，无续传语义。
 type ZipUnpackStaging struct {
 	workDirGetter func() string // 库根读取器（每次读取最新值）
-	scopeKey      string        // 作用域键（首次 Stage 时铸造；空=尚未创建作用域）
-	scopeAbs      string        // 作用域目录绝对路径（absPath 域，仅供 os.* 写入现场消费）
-	next          int           // 下一个解包序号（作用域内暂存文件名成分）
+	taskID        int64         // 所属任务 ID（作用域键）
 }
 
-// NewZipUnpackStaging 创建 zip 解包暂存层（作用域惰性创建——无待解包条目时不建目录）。
-func NewZipUnpackStaging(workDirGetter func() string) *ZipUnpackStaging {
-	return &ZipUnpackStaging{workDirGetter: workDirGetter}
+// NewZipUnpackStaging 创建 zip 解包暂存层（taskID 为所属子任务 ID，作用域键=任务 ID）。
+func NewZipUnpackStaging(workDirGetter func() string, taskID int64) *ZipUnpackStaging {
+	return &ZipUnpackStaging{workDirGetter: workDirGetter, taskID: taskID}
 }
 
-// Stage 解包条目的暂存落点：作用域内按序号平铺命名（保留条目扩展名），返回写入句柄与
-// 登记行暂存路径（relPath 域正斜杠）。
+// JournalRel 条目在任务作用域内暂存落点的 workDir 相对路径（relPath 域正斜杠）：登记行
+// 暂存路径的派生单点（落位 rename 的源路径、已暂存条目旁路的登记值）。
+func (z *ZipUnpackStaging) JournalRel(entryPath string) string {
+	return path.Join(staging.RootName, string(staging.OwnerImport), strconv.FormatInt(z.taskID, 10), entryPath)
+}
+
+// Stage 解包条目的暂存落点：确保任务作用域存在（幂等——暂停/崩溃残留复用）后按清单内路径
+// 镜像命名创建暂存文件（MkdirAll 父目录；os.Create 截断历史半成品——恢复全量重跑语义下
+// 残余部分写入不残留），返回写入句柄与登记行暂存路径。
 func (z *ZipUnpackStaging) Stage(ctx context.Context, entryPath string) (io.WriteCloser, string, error) {
-	if z.scopeAbs == "" {
-		key, err := staging.MintScopeKey()
-		if err != nil {
-			return nil, "", err
-		}
-		dir, err := staging.CreateScope(ctx, z.workDirGetter(), staging.OwnerImport, key, zipUnpackContentShape)
-		if err != nil {
-			return nil, "", fmt.Errorf("创建导入暂存作用域失败: %w", err)
-		}
-		z.scopeKey, z.scopeAbs = key, dir
+	dir, err := task.EnsureImportScope(ctx, z.workDirGetter(), z.taskID)
+	if err != nil {
+		return nil, "", fmt.Errorf("创建导入暂存作用域失败: %w", err)
 	}
-	name := fmt.Sprintf("%04d%s", z.next, path.Ext(entryPath))
-	z.next++
-	f, err := os.Create(filepath.Join(z.scopeAbs, name))
+	target := StagingPath(dir, entryPath)
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return nil, "", fmt.Errorf("创建导入暂存子目录失败: %w", err)
+	}
+	f, err := os.Create(target)
 	if err != nil {
 		return nil, "", fmt.Errorf("创建导入暂存文件失败: %w", err)
 	}
-	return f, path.Join(staging.RootName, string(staging.OwnerImport), z.scopeKey, name), nil
+	return f, z.JournalRel(entryPath), nil
 }
 
 // AbortAction 撤回处置声明：丢弃（解包产物可由导入包整体重产，无续传语义）。
@@ -634,13 +640,14 @@ func (z *ZipUnpackStaging) AbortAction() entity.IngestAbortAction {
 	return entity.AbortActionDiscard
 }
 
-// Release 回收导入暂存作用域（未创建时为空操作；回收失败残留由启动清扫兜底——import 属主
-// 根启动一律回收）。
+// Release 回收任务暂存作用域（作用域未建时为空操作；回收失败残留由启动清扫按任务存活
+// 兜底）。导入退出路径统一调用——zip 解包可随时重产，成功/失败/中断均不留续传态。
 func (z *ZipUnpackStaging) Release(ctx context.Context) {
-	if z.scopeAbs == "" {
-		return
+	key := strconv.FormatInt(z.taskID, 10)
+	if _, err := os.Stat(staging.ScopePath(z.workDirGetter(), staging.OwnerImport, key)); err != nil {
+		return // 作用域未建（无待解包条目）
 	}
-	if err := staging.RemoveScope(ctx, z.workDirGetter(), staging.OwnerImport, z.scopeKey); err != nil {
+	if err := staging.RemoveScope(ctx, z.workDirGetter(), staging.OwnerImport, key); err != nil {
 		logger.Log.Warnf("回收导入暂存作用域失败（残留交启动清扫）: %v", err)
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -29,6 +30,7 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/export"
+	importer "github.com/library-squirrel/backend/import"
 	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/task"
 	"github.com/library-squirrel/backend/util"
@@ -95,8 +97,12 @@ type hostParams struct {
 	Password      string // 访问密码明文（仅本机使用，线上只走 sha256 摘要；空=无密码）
 }
 
-// 默认中继 TCP 端口（中继配置 listenAddr 默认 0.0.0.0:9527）
-const defaultRelayPort = "9527"
+// 中继拨号缺省端口：明文 9527（中继配置 listenAddr 默认 0.0.0.0:9527，回环/私网
+// 豁免网段与 http:// 逃生口共用）；TLS 443（对齐浏览器打开 https 链接的缺省）
+const (
+	defaultRelayPlainPort = "9527"
+	defaultRelayTLSPort   = "443"
+)
 
 // instanceIDPattern 中继对 instanceId 的形态约束（[A-Za-z0-9-]{8,128}）
 var instanceIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{8,128}$`)
@@ -551,7 +557,7 @@ func (s *Service) hostSessionBody(ctx context.Context, shareID string, p hostPar
 	if rec != nil {
 		relayCfg = rec.RelayAddress
 	}
-	dialAddr, relayHost, err := normalizeRelayAddress(relayCfg)
+	endpoint, relayHost, err := normalizeRelayAddress(relayCfg)
 	if err != nil {
 		fail(err.Error())
 		return
@@ -589,9 +595,9 @@ func (s *Service) hostSessionBody(ctx context.Context, shareID string, p hostPar
 
 	cfg := sessionConfig{
 		id:            shareID,
-		title:         SanitizeMetaText(defaultTitle(len(p.WorkIDs), len(p.WorkSetIDs), p.Title), 200),
+		title:         importer.SanitizeMetaText(defaultTitle(len(p.WorkIDs), len(p.WorkSetIDs), p.Title), 200),
 		instanceID:    s.instanceID,
-		relayDial:     dialAddr,
+		relayDial:     endpoint,
 		relayHost:     relayHost,
 		workDir:       workDir,
 		key:           key,
@@ -697,6 +703,7 @@ func (s *Service) persistActiveRecord(shareID string, p hostParams, relayHost st
 	rec.Title = snap.Title
 	rec.WorkIDs = marshalInt64s(p.WorkIDs)
 	rec.WorkSetIDs = marshalInt64s(p.WorkSetIDs)
+	// 链接 host 形态入账（host[:port]，不含 scheme）：凭书写形态即可还原拨号端点
 	rec.RelayAddress = relayHost
 	rec.KeyB64 = base64.RawURLEncoding.EncodeToString(key)
 	rec.PasswordProtected = p.Password != ""
@@ -859,23 +866,82 @@ func defaultTitle(workCount, workSetCount int, userTitle string) string {
 	}
 }
 
-// normalizeRelayAddress 规范化中继地址：剥离 scheme；无端口补默认 9527（拨号用）；
-// 链接 host 保留用户书写形态（host 或 host:port）。
-func normalizeRelayAddress(addr string) (dialAddr, host string, err error) {
+// relayEndpoint 中继拨号端点：地址与是否 TLS 两字段显式分离，语义判定完成后
+// 拨号方式不再编码在地址字符串里。
+type relayEndpoint struct {
+	Addr string // 拨号地址 host:port（缺省端口已按传输形态补齐，IPv6 字面量带方括号）
+	TLS  bool   // true = TLS 拨号；false = 明文 TCP
+}
+
+// normalizeRelayAddress 中继地址语义判定（发布/复原/收件三处共用的单一判据）：
+//
+//	书写形态                                     传输    拨号地址
+//	host / host:port（公网字面量）                TLS     host:443 / host:port
+//	https://host[:port]                          TLS     host:443 / host:port
+//	http://host[:port]                           明文    host:9527 / host:port
+//	host[:port]（回环/RFC1918 私网/localhost）    明文    host:9527 / host:port
+//
+// scheme 缺省按地址类别取缺省：公网即 TLS（与浏览器打开 https 链接的缺省一致；裸公网
+// IP 同样不豁免，证书须含该 IP 的 SAN）；回环与私网字面量走明文本机豁免。显式前缀总是
+// 覆盖类别缺省；tcp:// 前缀报错（明文逃生口统一为 http:// 前缀）。返回的 host 为链接
+// authority：去 scheme 的 host[:port]（IPv6 字面量带方括号）；分享记录只存该形态，
+// scheme 不入库，凭书写形态即可还原拨号端点。收件侧输入恒为链接 authority（无
+// scheme），http:// 行天然不可达——链接永远表现为 https 形态，公网即 TLS。
+func normalizeRelayAddress(addr string) (relayEndpoint, string, error) {
 	a := strings.TrimSpace(addr)
-	a = strings.TrimPrefix(a, "https://")
-	a = strings.TrimPrefix(a, "http://")
-	a = strings.TrimPrefix(a, "tcp://")
+	scheme := ""
+	for _, p := range [...]string{"https://", "http://", "tcp://"} {
+		if len(a) >= len(p) && strings.EqualFold(a[:len(p)], p) {
+			scheme, a = p[:len(p)-3], a[len(p):]
+			break
+		}
+	}
+	if scheme == "tcp" {
+		return relayEndpoint{}, "", fmt.Errorf("分享中继地址不支持 tcp:// 前缀，明文中继请写 http:// 前缀: %q", addr)
+	}
 	a = strings.TrimSuffix(a, "/")
 	if a == "" || strings.ContainsAny(a, " /\\") {
-		return "", "", fmt.Errorf("分享中继地址非法: %q", addr)
+		return relayEndpoint{}, "", fmt.Errorf("分享中继地址非法: %q", addr)
 	}
-	host = a
-	dialAddr = a
-	if !strings.Contains(a, ":") {
-		dialAddr = a + ":" + defaultRelayPort
+	host, port := a, ""
+	explicitPort := false
+	if h, p, err := net.SplitHostPort(a); err == nil {
+		host = h
+		if p != "" {
+			port, explicitPort = p, true
+		}
+	} else if bare := strings.TrimSuffix(strings.TrimPrefix(a, "["), "]"); bare != a && !strings.ContainsAny(bare, "[]") {
+		host = bare // 裸 [IPv6] 形态（无端口）：去方括号得纯 host，端口按缺省补齐
 	}
-	return dialAddr, host, nil
+	useTLS := scheme == "https" || (scheme == "" && !isLocalLiteralHost(host))
+	if port == "" {
+		if useTLS {
+			port = defaultRelayTLSPort
+		} else {
+			port = defaultRelayPlainPort
+		}
+	}
+	// 链接 authority 保留书写形态：缺省补齐的端口不回填（裸公网 host 即隐含 TLS 443）
+	linkHost := host
+	if strings.Contains(host, ":") {
+		linkHost = "[" + host + "]" // IPv6 字面量作 URL authority 须带方括号
+	}
+	if explicitPort {
+		linkHost += ":" + port
+	}
+	return relayEndpoint{Addr: net.JoinHostPort(host, port), TLS: useTLS}, linkHost, nil
+}
+
+// isLocalLiteralHost 明文豁免网段判定：localhost 名与回环/RFC1918 私网 IP 字面量
+// （127.0.0.0/8、::1、10/8、172.16/12、192.168/16，IPv6 唯一本地同属私网）。
+// 纯字面量匹配、不做 DNS 解析——自定义 hosts 名指向本机中继不在豁免之列，
+// 按公网缺省走 TLS。
+func isLocalLiteralHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && (ip.IsLoopback() || ip.IsPrivate())
 }
 
 // cancelAwareMsg ctx 已取消（用户主动中止）时报「已取消」，否则透传原始错误

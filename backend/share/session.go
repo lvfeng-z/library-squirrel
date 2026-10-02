@@ -17,6 +17,7 @@ package share
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +29,7 @@ import (
 	"time"
 
 	"github.com/library-squirrel/backend/export"
+	importer "github.com/library-squirrel/backend/import"
 )
 
 // 会话状态（终态：revoked/expired/failed——不可逆，不再重连）
@@ -90,7 +92,7 @@ type sessionRuntimeOptions struct {
 	streamReqWait         time.Duration
 	writeWait             time.Duration
 	dialTimeout           time.Duration
-	dialFn                func(addr string) (net.Conn, error)
+	dialFn                func(ep relayEndpoint) (net.Conn, error) // 中继拨号器：按端点传输形态（明文/TLS）建立连接
 	maxRequestRecordBytes int
 	dialCoordinator       *DialCoordinator // 收件拨号统筹器（nil=回落进程级默认门控；单测注入无限制桩绕过）
 }
@@ -106,10 +108,35 @@ func defaultRuntimeOptions() sessionRuntimeOptions {
 		writeWait:             30 * time.Second,
 		dialTimeout:           15 * time.Second,
 		maxRequestRecordBytes: maxRequestRecordBytes,
-		dialFn: func(addr string) (net.Conn, error) {
-			return net.DialTimeout("tcp", addr, 15*time.Second)
-		},
+		dialFn:                dialRelayEndpoint,
 	}
+}
+
+// dialRelayEndpoint 默认中继拨号器：按端点传输形态拨号。明文即 TCP 直连（超时 15s，
+// 与既有拨号预算一致）；TLS 走 tls.Dialer——SNI 与证书校验主机名取地址 host、系统根
+// 证书严格校验（无跳过校验选项），net.Dialer 的超时同时约束 TCP 连接与 TLS 握手全程
+// （tls.Dialer 契约：拨号器超时/截止覆盖连接与握手）。证书校验失败单独包装文案，
+// 与「连接被拒」类网络错误可区分；其余网络错误原样透传（与明文路径同形态）。
+func dialRelayEndpoint(ep relayEndpoint) (net.Conn, error) {
+	if !ep.TLS {
+		return net.DialTimeout("tcp", ep.Addr, 15*time.Second)
+	}
+	host, _, err := net.SplitHostPort(ep.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("中继拨号地址非法 %q: %w", ep.Addr, err)
+	}
+	conn, err := (&tls.Dialer{
+		NetDialer: &net.Dialer{Timeout: 15 * time.Second},
+		Config:    &tls.Config{ServerName: host},
+	}).Dial("tcp", ep.Addr)
+	if err != nil {
+		var certErr *tls.CertificateVerificationError
+		if errors.As(err, &certErr) {
+			return nil, fmt.Errorf("中继 TLS 证书校验失败（证书不受信任或与中继地址不匹配）: %w", err)
+		}
+		return nil, err
+	}
+	return conn, nil
 }
 
 // withOverrides 以非零字段覆写默认参数
@@ -164,8 +191,8 @@ type sessionConfig struct {
 	id           string
 	title        string
 	instanceID   string
-	relayDial    string // 中继 TCP 拨号地址（host:port）
-	relayHost    string // 链接 host（host 或 host:port，链接 https://{relayHost}/s/{token}）
+	relayDial    relayEndpoint // 中继拨号端点（host:port 地址 + 是否 TLS）
+	relayHost    string        // 链接 host（host 或 host:port，链接 https://{relayHost}/s/{token}）
 	workDir      string
 	key          []byte
 	model        *export.ExportModel
@@ -408,34 +435,16 @@ func (s *shareSession) metaSource() string {
 	for _, n := range names[1:] {
 		src += "/" + n
 	}
-	return SanitizeMetaText(src, 100)
+	return importer.SanitizeMetaText(src, 100)
 }
 
-// sanitizedWorkName 作品名净化（与 title/source 同款）：site_work_name 优先、次 nick_name、
-// 全空以「作品 {ID}」占位，净化控制字符并截断到 200 rune。收件侧子任务命名与落地页 worksName
-// 三处共用同一净化后作品名；relay 侧对 worksName 单名校验 ≤200 rune 且禁控制字符，不净化会被
-// 中继以 malformed 拒绝（跨仓契约，见方案风险8）。
-func sanitizedWorkName(w *export.WorkRecord) string {
-	name := ""
-	if w.SiteWorkName != nil {
-		name = *w.SiteWorkName
-	}
-	if name == "" && w.NickName != nil {
-		name = *w.NickName
-	}
-	if name == "" {
-		name = fmt.Sprintf("作品 %d", w.ID)
-	}
-	return SanitizeMetaText(name, 200)
-}
-
-// metaWorksName 落地页作品名列表：按 manifest.Works 顺序取净化后作品名（与收件侧子任务命名一致）。
-// 仅 register 上传，bind 复原不携带。
+// metaWorksName 落地页作品名列表：按 manifest.Works 顺序取净化后作品名（与收件侧子任务命名一致；
+// 净化能力在 import 模块，回灌链多处命名共用同一契约）。仅 register 上传，bind 复原不携带。
 func (s *shareSession) metaWorksName() []string {
 	works := s.cfg.model.Manifest.Works
 	names := make([]string, 0, len(works))
 	for i := range works {
-		names = append(names, sanitizedWorkName(&works[i]))
+		names = append(names, importer.SanitizedWorkName(&works[i]))
 	}
 	return names
 }

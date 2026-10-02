@@ -57,9 +57,10 @@ func newTestSetup(t *testing.T) (ManifestIngestor, *gorm.DB, *persistentStore.Se
 	return ing, db, psService, workDir
 }
 
-// zipStagingFor 测试用 zip 解包暂存层（真实 ZipUnpackStaging，库根指向测试临时目录）。
+// zipStagingFor 测试用 zip 解包暂存层（真实 ZipUnpackStaging，库根指向测试临时目录；
+// 任务作用域化后键=固定测试任务 ID——各用例独立 workDir，作用域互不串扰）。
 func zipStagingFor(workDir string) IngestStaging {
-	return NewZipUnpackStaging(func() string { return workDir })
+	return NewZipUnpackStaging(func() string { return workDir }, 9001)
 }
 
 // assertNoImportScopeResidual 断言 zip 解包暂存属主根下无残留作用域（属主根目录自身可留空壳——
@@ -460,12 +461,13 @@ func TestIngestSchemaVersionRejected(t *testing.T) {
 	}
 }
 
-// TestManifestSchemaVersionGate 版本门锚：v1 旧 manifest（SiteRecord 尚无 siteKey 的契约代）被
-// 版本门严格拒绝（!= 当前版本即拒），不落任何数据。
+// TestManifestSchemaVersionGate 版本门锚：v2 旧 manifest（上一代产物：files[] 尚无
+// contentFingerprint，回灌内容判定无从零读盘快筛的契约代）被版本门严格拒绝（!= 当前版本即拒），
+// 不落任何数据。字面量版本号（决策2：不兼容旧版，锚点升级即拒绝）。
 func TestManifestSchemaVersionGate(t *testing.T) {
 	ing, db, _, workDir := newTestSetup(t)
 	manifest, files := buildFixture()
-	manifest.SchemaVersion = 1
+	manifest.SchemaVersion = 2
 	_, err := ing.Ingest(context.Background(), manifest, mapFileSource(files), zipStagingFor(workDir), nil)
 	if !errors.Is(err, ErrSchemaVersionUnsupported) {
 		t.Fatalf("旧版本 manifest 应被版本门拒绝，实际 err=%v", err)
@@ -603,39 +605,6 @@ func TestIngestPathCollisionVariant(t *testing.T) {
 	}
 	if got := queryInt64(t, db, "SELECT COUNT(*) FROM persistent_store WHERE file_path LIKE 'store/work/作者甲/%'"); got != 3 {
 		t.Fatalf("占用+导入两文件应三行记录，实际 %d", got)
-	}
-}
-
-// TestHandlerImportFromZip ZIP 入口链路：manifest.json + 文件经 handler 导入成功；
-// 缺 manifest 的包报错。
-func TestHandlerImportFromZip(t *testing.T) {
-	_, db, _, workDir := newTestSetup(t)
-	manifest, files := buildFixture()
-	manifestData, err := manifest.Serialize()
-	if err != nil {
-		t.Fatalf("序列化 manifest 失败: %v", err)
-	}
-	entries := map[string][]byte{"manifest.json": manifestData}
-	for name, content := range files {
-		entries[name] = []byte(content)
-	}
-	zipPath := writeZip(t, entries)
-
-	handler := NewHandler(NewIngestor(duplicate.NewRepository(db), NewRepository(db), &testTransactor{db: db},
-		persistentStore.NewService(persistentStore.NewRepository(db), nil, func() string { return workDir })),
-		func() string { return workDir })
-	resp := handler.ImportFromZip(context.Background(), zipPath)
-	if !resp.Success {
-		t.Fatalf("ZIP 导入失败: %s", resp.Msg)
-	}
-	if resp.Data.CreatedWorks != 1 || resp.Data.ExtractedFiles != 2 {
-		t.Fatalf("ZIP 导入结果不符: %+v", resp.Data)
-	}
-	// 缺 manifest 的包：报错且无数据落库
-	emptyZip := writeZip(t, map[string][]byte{"other.txt": []byte("x")})
-	resp2 := handler.ImportFromZip(context.Background(), emptyZip)
-	if resp2.Success {
-		t.Fatalf("缺 manifest 的包应报错")
 	}
 }
 
@@ -1004,15 +973,17 @@ func TestIngestReplaceTransactionRollback(t *testing.T) {
 	assertNoImportScopeResidual(t, workDir)
 }
 
-// TestZipUnpackStagingScopeLifecycle zip 解包暂存层生命周期：惰性建作用域（staging 能力包
-// 原子入口 + 自证描述在位）、条目按序号平铺互不覆盖、登记路径落 relPath 域正斜杠、Release
-// 回收作用域、撤回处置声明=丢弃。
+// TestZipUnpackStagingScopeLifecycle zip 解包暂存层生命周期（任务作用域化）：作用域键=任务
+// ID（staging/import/{taskID}/）、条目按清单内路径镜像命名（与内容判定拷贝同一映射）、登记
+// 路径落 relPath 域正斜杠、Release 回收任务作用域、撤回处置声明=丢弃。
 func TestZipUnpackStagingScopeLifecycle(t *testing.T) {
 	workDir := t.TempDir()
-	z := NewZipUnpackStaging(func() string { return workDir })
+	const taskID = int64(777)
+	scopeDir := filepath.Join(workDir, "staging", "import", "777")
+	z := NewZipUnpackStaging(func() string { return workDir }, taskID)
 
 	// 未解包任何条目前不建作用域
-	if _, err := os.Stat(filepath.Join(workDir, "staging", "import")); !os.IsNotExist(err) {
+	if _, err := os.Stat(scopeDir); !os.IsNotExist(err) {
 		t.Fatalf("无条目时不应创建解包暂存作用域")
 	}
 
@@ -1031,10 +1002,14 @@ func TestZipUnpackStagingScopeLifecycle(t *testing.T) {
 		if strings.ContainsRune(rel, '\\') || strings.HasPrefix(rel, "/") {
 			t.Fatalf("登记暂存路径应属 relPath 域正斜杠: %q", rel)
 		}
-		if !strings.HasPrefix(rel, "staging/import/") {
-			t.Fatalf("登记暂存路径应落在 import 属主根: %q", rel)
+		if !strings.HasPrefix(rel, "staging/import/777/") {
+			t.Fatalf("登记暂存路径应落在任务作用域内: %q", rel)
 		}
+		// 镜像命名：条目路径原样落在作用域子路径（与 StagingPath 映射一致）
 		abs := filepath.Join(workDir, filepath.FromSlash(rel))
+		if want := filepath.Join(scopeDir, filepath.FromSlash(entry)); abs != want {
+			t.Fatalf("暂存落点应为清单路径镜像: %q want %q", abs, want)
+		}
 		data, err := os.ReadFile(abs)
 		if err != nil || string(data) != "content" {
 			t.Fatalf("暂存文件内容不符: %q err=%v", string(data), err)
@@ -1045,8 +1020,7 @@ func TestZipUnpackStagingScopeLifecycle(t *testing.T) {
 			t.Fatalf("不同条目应落到不同暂存文件: %q", rel)
 		}
 	}
-	// 作用域自证描述在位（原子入口写好描述后才定名）
-	scopeDir := filepath.Dir(filepath.Join(workDir, filepath.FromSlash(firstRel)))
+	// 作用域自证描述在位（确保入口写好描述后才建文件）
 	if _, err := os.Stat(filepath.Join(scopeDir, "scope.json")); err != nil {
 		t.Fatalf("作用域自证描述缺失: %v", err)
 	}
@@ -1060,5 +1034,5 @@ func TestZipUnpackStagingScopeLifecycle(t *testing.T) {
 	}
 	assertNoImportScopeResidual(t, workDir)
 	// 未建作用域的实例 Release 为空操作（不报错）
-	NewZipUnpackStaging(func() string { return workDir }).Release(context.Background())
+	NewZipUnpackStaging(func() string { return workDir }, 888).Release(context.Background())
 }

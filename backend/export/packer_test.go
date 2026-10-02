@@ -6,10 +6,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/library-squirrel/backend/util/fingerprint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -67,6 +72,27 @@ func packFixture(t *testing.T, workDir string, model *ExportModel, target string
 	return zr.File
 }
 
+// readPackedManifest 读回产物内 manifest.json 并反序列化为清单（往返断言入口）。
+func readPackedManifest(t *testing.T, files []*zip.File) *Manifest {
+	t.Helper()
+	for _, zf := range files {
+		if zf.Name != "manifest.json" {
+			continue
+		}
+		rc, err := zf.Open()
+		require.NoError(t, err)
+		defer func() { _ = rc.Close() }()
+		var buf bytes.Buffer
+		_, err = buf.ReadFrom(rc)
+		require.NoError(t, err)
+		m, err := Deserialize(buf.Bytes())
+		require.NoError(t, err)
+		return m
+	}
+	t.Fatal("产物内应含 manifest.json")
+	return nil
+}
+
 // TestPackStructure 锚定 zip 结构：manifest.json + works/<目录>/<文件>，缺失文件不写入。
 func TestPackStructure(t *testing.T) {
 	workDir, model := buildPackFixture(t)
@@ -83,27 +109,87 @@ func TestPackStructure(t *testing.T) {
 	assert.NotContains(t, names, "works/作品1/missing.jpg", "缺失源文件不应写入 zip")
 
 	// manifest.json 内容包含缺失标记与 sha256
-	var manifest *zip.File
-	for _, zf := range files {
-		if zf.Name == "manifest.json" {
-			manifest = zf
-		}
-	}
-	require.NotNil(t, manifest)
-	rc, err := manifest.Open()
-	require.NoError(t, err)
-	defer func() { _ = rc.Close() }()
-	var buf bytes.Buffer
-	_, err = buf.ReadFrom(rc)
-	require.NoError(t, err)
-	m, err := Deserialize(buf.Bytes())
-	require.NoError(t, err)
+	m := readPackedManifest(t, files)
 	require.Len(t, m.Files, 3)
 	assert.True(t, m.Files[2].Missing, "缺失源文件应标注 Missing")
 	assert.Empty(t, m.Files[2].Sha256)
 	assert.False(t, m.Files[0].Missing)
 	assert.NotEmpty(t, m.Files[0].Sha256)
 	assert.Equal(t, int64(len("image-data-1")), m.Files[0].Size)
+}
+
+// TestPackContentFingerprint 锚定打包为 files[] 补填头部指纹（方案第八节，schemaVersion 3 起为
+// 契约必填面）：往返断言——写包 → 读包内 manifest.json → 非缺失条目 ContentFingerprint 与库内
+// 同口径指纹器（backend/util/fingerprint）对源文件直算一致，缺失条目留空。
+func TestPackContentFingerprint(t *testing.T) {
+	workDir, model := buildPackFixture(t)
+	target := filepath.Join(t.TempDir(), "out.zip")
+	files := packFixture(t, workDir, model, target)
+	m := readPackedManifest(t, files)
+	require.Len(t, m.Files, 3)
+
+	computer := fingerprint.NewHeadComputer()
+	for _, f := range m.Files {
+		if f.Missing {
+			assert.Empty(t, f.ContentFingerprint, "缺失源文件不填头部指纹: %s", f.StorePath)
+			continue
+		}
+		require.NotEmpty(t, f.ContentFingerprint, "非缺失条目应填头部指纹: %s", f.StorePath)
+		want, err := computer.Fingerprint(context.Background(), filepath.Join(workDir, filepath.FromSlash(f.StorePath)))
+		require.NoError(t, err)
+		assert.Equal(t, want.Digest, f.ContentFingerprint, "头部指纹须与库内同口径指纹器直算一致: %s", f.StorePath)
+
+		// 格式 `<size>:<hex>`（回灌/收件侧解析前提）
+		parts := strings.SplitN(f.ContentFingerprint, ":", 2)
+		require.Len(t, parts, 2, "头部指纹格式应为 <size>:<hex>: %s", f.ContentFingerprint)
+		assert.Equal(t, strconv.FormatInt(f.Size, 10), parts[0], "指纹 size 分量应等于条目字节数")
+	}
+}
+
+// TestPackContentFingerprintLargeFile 头部采样窗口锚定：>64KB 文件只采样前 64KB（与库内口径
+// 一致），且采样不截断写入流——包内条目字节与源文件全量一致、全量 sha256 为整个文件的哈希。
+func TestPackContentFingerprintLargeFile(t *testing.T) {
+	workDir := t.TempDir()
+	content := bytes.Repeat([]byte("0123456789abcdef"), 130*1024/16) // 130KB
+	abs := filepath.Join(workDir, "store", "work", "b", "big.bin")
+	require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+	require.NoError(t, os.WriteFile(abs, content, 0o644))
+
+	model := NewExportModel(&Manifest{
+		SchemaVersion: SchemaVersion,
+		Meta:          Meta{ExportedAt: 1725000000000},
+		Works: []WorkRecord{{ID: 1, SiteWorkName: strp("B"), Resources: []ResourceRecord{
+			{ID: 10, Stores: []StoreMount{{StoreType: "image", StoreSeq: 0, StoreID: 100}}},
+		}}},
+		Files: []FileEntry{{StoreID: 100, StorePath: "store/work/b/big.bin"}},
+	})
+	target := filepath.Join(t.TempDir(), "out.zip")
+	files := packFixture(t, workDir, model, target)
+	m := readPackedManifest(t, files)
+	require.Len(t, m.Files, 1)
+	entry := m.Files[0]
+
+	headSum := sha256.Sum256(content[:64*1024])
+	assert.Equal(t, fmt.Sprintf("%d:%s", len(content), hex.EncodeToString(headSum[:])), entry.ContentFingerprint,
+		"头部指纹应只采样前 64KB")
+	fullSum := sha256.Sum256(content)
+	assert.Equal(t, hex.EncodeToString(fullSum[:]), entry.Sha256, "全量哈希应为整个文件的哈希")
+	assert.Equal(t, int64(len(content)), entry.Size)
+
+	packed := false
+	for _, zf := range files {
+		if zf.Name != entry.Path {
+			continue
+		}
+		rc, err := zf.Open()
+		require.NoError(t, err)
+		got, err := io.ReadAll(rc)
+		require.NoError(t, err)
+		require.NoError(t, rc.Close())
+		assert.Equal(t, content, got, "头部采样不应截断包内条目字节")
+		packed = true
+	}
+	assert.True(t, packed, "应写入条目 %s", entry.Path)
 }
 
 // TestPackMethodMode 锚定压缩模式：manifest deflate，媒体文件 store 模式（风险5）。

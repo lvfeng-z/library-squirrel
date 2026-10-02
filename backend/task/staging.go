@@ -3,11 +3,12 @@ package task
 // 任务暂存目录基建：任务属主作用域的派生、创建与清理，暂存文件命名，归属判活谓词。
 // 暂存模式：下载内容先写 {workDir}/staging/download/{taskID}/，全部轨道写满后由下载执行面在
 // 提交点统一 rename 进 store/ 最终路径——暂存期内长下载全程零 DB 副作用。
-// 任务暂存作用域分两个属主根（staging/download 与 staging/share-receive），作用域键恒为任务 ID，
-// 同根承载两种目录内容形态：
+// 任务暂存作用域分三个属主根（staging/download、staging/share-receive 与 staging/import），
+// 作用域键恒为任务 ID，同根承载两种目录内容形态：
 //   - 插件下载任务（download 根）：role_seq 键命名的暂存文件（见 StagingFileName）；
-//   - 收件任务（share-receive 根）：父任务目录含共享 manifest.json，子任务目录为按清单内路径
-//     镜像命名的暂存文件——父/子任务各占一个作用域，互为平级不嵌套。
+//   - 收件任务（share-receive 根）与导入任务（import 根）：父任务目录含共享 manifest.json，
+//     子任务目录为按清单内路径镜像命名的暂存文件（导入子任务为 zip 解包暂存）——
+//     父/子任务各占一个作用域，互为平级不嵌套。
 // 作用域创建经 staging 能力包原子入口（临时名目录写好自证描述后 rename 正式名），目录派生与
 // 创建/清理在本文件收口为任务 ID 维度的薄封装；启动清扫与回收策略由 staging 包统一派发。
 // 暂存总根不在 store/ 白名单子树（storeRegistry.RegisteredDirs）与 backup/ 域内，
@@ -33,6 +34,9 @@ const (
 	// receiveScopeContentShape 收件任务作用域：父任务目录含共享 manifest.json，子任务目录为
 	// 按清单内路径镜像命名的暂存文件。
 	receiveScopeContentShape = "manifest-or-mirror"
+	// importScopeContentShape 导入任务作用域：目录形态镜像收件根（父任务目录含共享 manifest.json，
+	// 子任务目录为 zip 解包暂存文件）。
+	importScopeContentShape = "manifest-or-mirror"
 )
 
 // DownloadStagingPath 下载任务暂存目录派生单点：{workDir}/staging/download/{taskID}/。
@@ -55,6 +59,19 @@ func ReceiveManifestRelPath(parentTaskID int64) string {
 	return path.Join(staging.RootName, string(staging.OwnerShareReceive), strconv.FormatInt(parentTaskID, 10), "manifest.json")
 }
 
+// ImportStagingPath 导入任务暂存目录派生单点：{workDir}/staging/import/{taskID}/
+// （父/子任务各占一个作用域）。absPath 域语义同 DownloadStagingPath。
+func ImportStagingPath(workDir string, taskID int64) string {
+	return staging.ScopePath(workDir, staging.OwnerImport, strconv.FormatInt(taskID, 10))
+}
+
+// ImportManifestRelPath 导入共享清单的 workDir 相对路径（relPath 域正斜杠）：
+// staging/import/{父任务ID}/manifest.json。import_task 领域行的 manifest_rel 列存此值，
+// 子任务执行面按列值直读。
+func ImportManifestRelPath(parentTaskID int64) string {
+	return path.Join(staging.RootName, string(staging.OwnerImport), strconv.FormatInt(parentTaskID, 10), "manifest.json")
+}
+
 // EnsureDownloadScope 确保下载任务暂存作用域存在：不存在则经 staging 原子入口创建（写自证
 // 描述），已存在（暂停/崩溃后恢复的续传场景）直接复用。返回作用域目录绝对路径（absPath 域）。
 func EnsureDownloadScope(ctx context.Context, workDir string, taskID int64) (string, error) {
@@ -65,6 +82,12 @@ func EnsureDownloadScope(ctx context.Context, workDir string, taskID int64) (str
 // EnsureDownloadScope。
 func EnsureReceiveScope(ctx context.Context, workDir string, taskID int64) (string, error) {
 	return ensureTaskScope(ctx, workDir, staging.OwnerShareReceive, taskID, receiveScopeContentShape)
+}
+
+// EnsureImportScope 确保导入任务暂存作用域存在（父/子任务同入口，键=任务 ID）。复用语义同
+// EnsureDownloadScope。
+func EnsureImportScope(ctx context.Context, workDir string, taskID int64) (string, error) {
+	return ensureTaskScope(ctx, workDir, staging.OwnerImport, taskID, importScopeContentShape)
 }
 
 // ensureTaskScope 任务属主作用域的确保语义：CreateScope 首建，ErrScopeExists（作用域已在的
@@ -88,10 +111,11 @@ func StagingFileName(role string, storeSeq int, ext string) string {
 	return fmt.Sprintf("%s_%03d%s", role, storeSeq, ext)
 }
 
-// CleanupStagingByTaskIds 按任务 ID 集合清理任务暂存作用域（下载与收件通用：任务删除链以被删
-// 全量 ID〔含子任务〕调用，收件父作用域〔含共享 manifest〕与子任务作用域随任务消亡一并清理；
-// work 删除链治理：作品资源即删，残留暂存会在任务恢复时误续传已删作品的下载产物）。被删集合
-// 可混两类任务，逐 ID 对两个任务属主根各回收一次（目录不存在为容忍态）；任一删除失败即返回。
+// CleanupStagingByTaskIds 按任务 ID 集合清理任务暂存作用域（下载/收件/导入三根通用：任务删除链
+// 以被删全量 ID〔含子任务〕调用，收件与导入的父作用域〔含共享 manifest〕及各子任务作用域随
+// 任务消亡一并清理；work 删除链治理：作品资源即删，残留暂存会在任务恢复时误续传已删作品的
+// 下载产物）。被删集合可混多类任务，逐 ID 对三个任务属主根各回收一次（目录不存在为容忍态）；
+// 任一删除失败即返回。
 func CleanupStagingByTaskIds(workDir string, taskIds []int64) error {
 	if workDir == "" || len(taskIds) == 0 {
 		return nil
@@ -104,6 +128,9 @@ func CleanupStagingByTaskIds(workDir string, taskIds []int64) error {
 			return err
 		}
 		if err := os.RemoveAll(ReceiveStagingPath(workDir, id)); err != nil {
+			return err
+		}
+		if err := os.RemoveAll(ImportStagingPath(workDir, id)); err != nil {
 			return err
 		}
 	}

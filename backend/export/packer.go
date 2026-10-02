@@ -6,11 +6,50 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"path/filepath"
 	"time"
 )
+
+// headFingerprintBytes 头部指纹读取上限（头部 64KB）——口径唯一来源
+// `backend/util/fingerprint`（头部指纹 = `<size>:<头部 64KB SHA256 hex>`，与库内
+// persistent_store.content_fingerprint 同口径）。打包逐文件读流时顺带采样，
+// 不二次打开源文件（避免流式写入与指纹读取之间源文件被改动致两者不一致）。
+const headFingerprintBytes = 64 * 1024
+
+// headSampleWriter 头部指纹采样写入器：只把前 headFingerprintBytes 字节喂给内部哈希器，
+// 超出部分静默丢弃并始终报告全部写入（io.MultiWriter 按短写判定失败，须返回 len(p)）。
+type headSampleWriter struct {
+	sum       hash.Hash
+	remaining int64
+}
+
+// newHeadSampleWriter 创建头部指纹采样器。
+func newHeadSampleWriter() *headSampleWriter {
+	return &headSampleWriter{sum: sha256.New(), remaining: headFingerprintBytes}
+}
+
+// Write 采样写入（只吸收头部窗口内的字节，永远报告全部字节已写）。
+func (s *headSampleWriter) Write(p []byte) (int, error) {
+	if s.remaining > 0 {
+		n := int64(len(p))
+		if n > s.remaining {
+			n = s.remaining
+		}
+		if _, err := s.sum.Write(p[:n]); err != nil {
+			return 0, err
+		}
+		s.remaining -= n
+	}
+	return len(p), nil
+}
+
+// digest 头部指纹串（`<size>:<hex>`）；size 由调用方传入文件实际字节数（=写入包内字节数）。
+func (s *headSampleWriter) digest(size int64) string {
+	return fmt.Sprintf("%d:%s", size, hex.EncodeToString(s.sum.Sum(nil)))
+}
 
 // zipEntryTime zip 条目的写入时间：固定为导出时刻（manifest.meta.exportedAt）。
 // zip 头默认嵌当前时间，写入时间不定则同输入同输出的字节级可复现不成立——固定时间保证确定性。
@@ -76,7 +115,8 @@ func (p *Packer) Plan(ctx context.Context, workDir string, model *ExportModel, f
 
 // Pack 打包导出 zip 到 targetPath。依赖 Plan 已填充的 Path/Size/Missing（调用方先 Plan 预检，再 Pack 写入）。
 // manifest.json deflate 压缩；媒体文件（其余全部条目）store 模式不压缩（风险5，大文件免重复压缩）。
-// 逐文件流式写入并计算 sha256（回灌校验用）；onProgress 每写一个文件回调一次。
+// 逐文件流式写入并计算 sha256（回灌校验用）与头部指纹（ContentFingerprint，回灌内容判定零读盘快筛用，
+// schemaVersion 3 起为契约必填面）；onProgress 每写一个文件回调一次。
 // 失败时不负责清理 targetPath（调用方 runner 持有临时文件生命周期）。
 func (p *Packer) Pack(ctx context.Context, workDir string, model *ExportModel, targetPath string, stats *PackStats, onProgress ProgressFn) error {
 	m := model.Manifest
@@ -93,7 +133,7 @@ func (p *Packer) Pack(ctx context.Context, workDir string, model *ExportModel, t
 	entryTime := zipEntryTime(m.Meta.ExportedAt)
 	var processedFiles, processedBytes int64
 
-	// 媒体文件按 store 模式写入（不压缩），流式复制同时计算 sha256
+	// 媒体文件按 store 模式写入（不压缩），流式复制同时计算 sha256 与头部指纹
 	for i := range m.Files {
 		entry := &m.Files[i]
 		if entry.Path == "" || entry.Missing {
@@ -114,7 +154,8 @@ func (p *Packer) Pack(ctx context.Context, workDir string, model *ExportModel, t
 			return fmt.Errorf("创建 zip 条目失败 %s: %w", entry.Path, err)
 		}
 		hasher := sha256.New()
-		written, copyErr := io.Copy(io.MultiWriter(w, hasher), src)
+		headHasher := newHeadSampleWriter()
+		written, copyErr := io.Copy(io.MultiWriter(w, hasher, headHasher), src)
 		closeErr := src.Close()
 		if copyErr != nil {
 			return fmt.Errorf("写入文件失败 %s: %w", entry.StorePath, copyErr)
@@ -124,6 +165,7 @@ func (p *Packer) Pack(ctx context.Context, workDir string, model *ExportModel, t
 		}
 		entry.Size = written
 		entry.Sha256 = hex.EncodeToString(hasher.Sum(nil))
+		entry.ContentFingerprint = headHasher.digest(written)
 		processedFiles++
 		processedBytes += written
 		if onProgress != nil {

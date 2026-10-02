@@ -20,6 +20,7 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/export"
+	importer "github.com/library-squirrel/backend/import"
 	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/task"
 )
@@ -52,10 +53,10 @@ var shareTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
 
 // ReceiveTarget 一次收件拉取的目标参数（链接解析产物，进任务载荷）
 type ReceiveTarget struct {
-	RelayDial string // 中继 TCP 拨号地址（host:port，无端口已补默认 9527）
-	RelayHost string // 链接 host 形态（host 或 host:port，展示用）
-	Token     string // 中继会话 token（访问凭证）
-	Key       []byte // E2E 密钥（AES-256，32 字节；只存在于分享双方，不经中继）
+	Relay     relayEndpoint // 中继拨号端点（host:port 地址 + 是否 TLS：公网 TLS 443 / 豁免网段明文 9527）
+	RelayHost string        // 链接 host 形态（host 或 host:port，展示用）
+	Token     string        // 中继会话 token（访问凭证）
+	Key       []byte        // E2E 密钥（AES-256，32 字节；只存在于分享双方，不经中继）
 }
 
 // ParseShareLink 解析分享链接，接受两种形态：
@@ -64,6 +65,9 @@ type ReceiveTarget struct {
 //
 // 校验：token 字符集（22 字符 base64url）、中继地址字符集（复用发布侧规范化）、
 // 密钥 base64url 解码后恰为 32 字节。恶意深链是新输入面（scheme/host/token/密钥全字段白名单校验）。
+// 拨号端点由链接 authority（去 scheme 的 host[:port]）经 normalizeRelayAddress 推断，
+// 与发布侧同一判据：公网走 TLS（缺省 443，含裸公网 IP），回环/私网字面量走明文豁免
+// （缺省 9527）；链接永远表现为 https 形态，明文逃生口书写（http:// 前缀）不经链接表达。
 func ParseShareLink(link string) (*ReceiveTarget, error) {
 	s := strings.TrimSpace(link)
 	if s == "" || len(s) > 2048 || strings.ContainsAny(s, " \t\r\n") {
@@ -96,7 +100,7 @@ func ParseShareLink(link string) (*ReceiveTarget, error) {
 	if !shareTokenPattern.MatchString(token) {
 		return nil, fmt.Errorf("%w：token 形态不合法", ErrShareLinkInvalid)
 	}
-	dialAddr, host, err := normalizeRelayAddress(relayHost)
+	endpoint, host, err := normalizeRelayAddress(relayHost)
 	if err != nil {
 		return nil, fmt.Errorf("%w：中继地址不合法", ErrShareLinkInvalid)
 	}
@@ -104,7 +108,7 @@ func ParseShareLink(link string) (*ReceiveTarget, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ReceiveTarget{RelayDial: dialAddr, RelayHost: host, Token: token, Key: key}, nil
+	return &ReceiveTarget{Relay: endpoint, RelayHost: host, Token: token, Key: key}, nil
 }
 
 // parseShareLinkKey 提取并校验链接携带的 E2E 密钥（fragment 优先，兼容 query 形态）。
@@ -132,11 +136,11 @@ func parseShareLinkKey(u *url.URL) ([]byte, error) {
 // receiveConnParams 收件连接参数载体：链接解析产物（含密码摘要化），预拉 manifest 阶段
 // 任务行尚未创建时持有；建子任务后同字段转入各任务的 share_task 领域行
 type receiveConnParams struct {
-	RelayDial    string // 中继 TCP 拨号地址（host:port）
-	RelayHost    string // 中继展示地址
-	Token        string // 会话 token
-	KeyB64       string // E2E 密钥（base64url）
-	PasswordHash string // 访问密码摘要（sha256 hex；空=无密码）
+	Relay        relayEndpoint // 中继拨号端点（地址 + 是否 TLS）
+	RelayHost    string        // 中继展示地址（链接 host 形态；任务行复原端点的判据源）
+	Token        string        // 会话 token
+	KeyB64       string        // E2E 密钥（base64url）
+	PasswordHash string        // 访问密码摘要（sha256 hex；空=无密码）
 }
 
 // buildReceiveConnParams 从链接解析产物构建连接参数（明文密码在此转为摘要）
@@ -146,7 +150,7 @@ func buildReceiveConnParams(target *ReceiveTarget, password string) *receiveConn
 		hash = PasswordHashHex(password)
 	}
 	return &receiveConnParams{
-		RelayDial:    target.RelayDial,
+		Relay:        target.Relay,
 		RelayHost:    target.RelayHost,
 		Token:        target.Token,
 		KeyB64:       base64.RawURLEncoding.EncodeToString(target.Key),
@@ -154,12 +158,29 @@ func buildReceiveConnParams(target *ReceiveTarget, password string) *receiveConn
 	}
 }
 
+// receiveConnParamsFromTaskRow 从 share_task 领域行复原收件连接参数：拨号端点经
+// normalizeRelayAddress 由 relay_host（链接 host 形态）重判——与链接解析同一判据
+// （公网即 TLS、豁免网段明文），任务行不另存传输形态，凭书写形态即可还原端点。
+func receiveConnParamsFromTaskRow(st *entity.ShareTask) (*receiveConnParams, error) {
+	ep, _, err := normalizeRelayAddress(st.RelayHost)
+	if err != nil {
+		return nil, fmt.Errorf("收件任务的中继地址不合法: %w", err)
+	}
+	return &receiveConnParams{
+		Relay:        ep,
+		RelayHost:    st.RelayHost,
+		Token:        st.Token,
+		KeyB64:       st.KeyB64,
+		PasswordHash: st.PasswordHash,
+	}, nil
+}
+
 // newChildShareTask 构建收件子任务的 share_task 领域行（工厂以子任务 id 绑定共享主键；
 // ManifestPath 为共享 manifest 的 workDir 相对路径，ManifestID 为本任务负责的 manifest
 // 作品 ID——子任务只存连接参数+清单定位，不重复存 manifest 内容）
 func newChildShareTask(childID int64, conn *receiveConnParams, manifestPath string, manifestID int64) *entity.ShareTask {
 	st := entity.NewShareTask(childID)
-	st.RelayDial = conn.RelayDial
+	st.RelayDial = conn.Relay.Addr
 	st.RelayHost = conn.RelayHost
 	st.Token = conn.Token
 	st.KeyB64 = conn.KeyB64
@@ -248,10 +269,11 @@ func (s *Service) Receive(ctx context.Context, link string, password string) (*S
 	if len(manifest.Works) == 0 {
 		return nil, errors.New("分享清单中没有作品，无法接收")
 	}
-	// 作品名（净化后）为子任务命名与返回 DTO workNames 的共同来源（与落地页 worksName 三处一致）
+	// 作品名（净化后）为子任务命名与返回 DTO workNames 的共同来源（与落地页 worksName 三处一致；
+	// 净化能力在 import 模块，回灌链多处命名共用同一契约）
 	names := make([]string, 0, len(manifest.Works))
 	for i := range manifest.Works {
-		names = append(names, sanitizedWorkName(&manifest.Works[i]))
+		names = append(names, importer.SanitizedWorkName(&manifest.Works[i]))
 	}
 
 	// 两段式建树：先建父容器拿 parentID（子任务领域行的 ManifestPath 依赖父目录路径），
