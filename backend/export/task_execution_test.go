@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,8 +154,9 @@ func idJSON(t *testing.T, ids []int64) string {
 	return s
 }
 
-// seedExportTask 建任务核心行 + export_task 领域行（Created 状态），返回任务 ID
-func seedExportTask(t *testing.T, db *gorm.DB, workIDsJSON, workSetIDsJSON, outputDir string) int64 {
+// seedExportTask 建任务核心行 + export_task 领域行（Created 状态），返回任务 ID；
+// title 为领域行标题载荷（空串=未设置）
+func seedExportTask(t *testing.T, db *gorm.DB, workIDsJSON, workSetIDsJSON, outputDir, title string) int64 {
 	t.Helper()
 	tk := entity.NewTask()
 	tk.TaskName = sql.NullString{String: "导出（1 项）", Valid: true}
@@ -166,6 +168,7 @@ func seedExportTask(t *testing.T, db *gorm.DB, workIDsJSON, workSetIDsJSON, outp
 	et.WorkIDs = workIDsJSON
 	et.WorkSetIDs = workSetIDsJSON
 	et.OutputDir = outputDir
+	et.Title = title
 	require.NoError(t, NewExportTaskRepository(db).CreateForTask(context.Background(), tk.GetID(), et))
 	return tk.GetID()
 }
@@ -187,11 +190,25 @@ func findSingleExportZip(t *testing.T, dir string) string {
 	return zips[0]
 }
 
+// readExportManifestJSON 读取导出产物 zip 内 manifest.json 的字节内容。
+func readExportManifestJSON(t *testing.T, zipPath string) []byte {
+	t.Helper()
+	zr, err := zip.OpenReader(zipPath)
+	require.NoError(t, err)
+	defer func() { _ = zr.Close() }()
+	zf, err := zr.Open("manifest.json")
+	require.NoError(t, err)
+	defer func() { _ = zf.Close() }()
+	data, err := io.ReadAll(zf)
+	require.NoError(t, err)
+	return data
+}
+
 // TestExportExecutionSuccessFinish 成功收口：Finish 终态 + 产物 zip 结构正确 + 进度按字节
 // 语义上报（末次 total=processed=源文件总字节）+ 无临时残留
 func TestExportExecutionSuccessFinish(t *testing.T) {
 	env := newExportExecEnv(t)
-	taskID := seedExportTask(t, env.db, idJSON(t, []int64{env.f.w1ID}), idJSON(t, nil), "")
+	taskID := seedExportTask(t, env.db, idJSON(t, []int64{env.f.w1ID}), idJSON(t, nil), "", "")
 
 	h := &fakeStrategyHandle{task: newExecTaskEntity(taskID), runCtx: context.Background()}
 	env.exec.Execute(h)
@@ -215,6 +232,10 @@ func TestExportExecutionSuccessFinish(t *testing.T) {
 	// 目录与文件名同模板渲染（同基底）：作者（作品关联本地作者）+ 站点作品 ID + 作品名 + 源文件扩展名
 	assert.Contains(t, names, "works/[画师A]_[w-1]_作品1/[画师A]_[w-1]_作品1.jpg")
 
+	// 空标题：manifest 序列化不含 title 字段（omitempty，与现状产物一致）
+	manifestData := readExportManifestJSON(t, zipPath)
+	assert.NotContains(t, string(manifestData), `"title"`)
+
 	// 进度：单源文件 13 字节（"image-content"），末次上报 total=processed=13
 	require.NotEmpty(t, progresses)
 	last := progresses[len(progresses)-1]
@@ -222,10 +243,31 @@ func TestExportExecutionSuccessFinish(t *testing.T) {
 	assert.Equal(t, int64(13), last[1])
 }
 
+// TestExportExecutionTitleIntoManifest 执行面标题注入：领域行 Title 在 Collect 后注入
+// manifest.Meta.Title，产物 manifest.json 序列化含 title 字段且值为领域行载荷。
+func TestExportExecutionTitleIntoManifest(t *testing.T) {
+	env := newExportExecEnv(t)
+	taskID := seedExportTask(t, env.db, idJSON(t, []int64{env.f.w1ID}), "[]", "", "精选集")
+
+	h := &fakeStrategyHandle{task: newExecTaskEntity(taskID), runCtx: context.Background()}
+	env.exec.Execute(h)
+
+	h.mu.Lock()
+	finished := h.finished
+	h.mu.Unlock()
+	require.True(t, finished, "应上报 Finish 终态")
+
+	manifestData := readExportManifestJSON(t, findSingleExportZip(t, env.workDir))
+	assert.Contains(t, string(manifestData), `"title"`)
+	m, err := Deserialize(manifestData)
+	require.NoError(t, err)
+	assert.Equal(t, "精选集", m.Meta.Title)
+}
+
 // TestExportExecutionEmptySelectionFail 选择空（领域行两数组均空）：显式 Fail 且不产出 zip。
 func TestExportExecutionEmptySelectionFail(t *testing.T) {
 	env := newExportExecEnv(t)
-	taskID := seedExportTask(t, env.db, idJSON(t, nil), idJSON(t, nil), "")
+	taskID := seedExportTask(t, env.db, idJSON(t, nil), idJSON(t, nil), "", "")
 
 	h := &fakeStrategyHandle{task: newExecTaskEntity(taskID), runCtx: context.Background()}
 	env.exec.Execute(h)
@@ -240,7 +282,7 @@ func TestExportExecutionEmptySelectionFail(t *testing.T) {
 // TestExportExecutionCorruptRowFail 领域行 JSON 损坏：按过时载荷显式 Fail（防御文案），不产出 zip。
 func TestExportExecutionCorruptRowFail(t *testing.T) {
 	env := newExportExecEnv(t)
-	taskID := seedExportTask(t, env.db, "{bad json", "[]", "")
+	taskID := seedExportTask(t, env.db, "{bad json", "[]", "", "")
 
 	h := &fakeStrategyHandle{task: newExecTaskEntity(taskID), runCtx: context.Background()}
 	env.exec.Execute(h)
@@ -271,7 +313,7 @@ func TestExportExecutionRowMissingFail(t *testing.T) {
 // TestExportExecutionDiskSpaceFail 磁盘预检不足：Fail 带容量文案，不产出 zip。
 func TestExportExecutionDiskSpaceFail(t *testing.T) {
 	env := newExportExecEnv(t)
-	taskID := seedExportTask(t, env.db, idJSON(t, []int64{env.f.w1ID}), "[]", "")
+	taskID := seedExportTask(t, env.db, idJSON(t, []int64{env.f.w1ID}), "[]", "", "")
 	env.exec.freeSpaceFn = func(string) (uint64, error) { return 1, nil } // 仅 1 字节可用
 
 	h := &fakeStrategyHandle{task: newExecTaskEntity(taskID), runCtx: context.Background()}
@@ -290,7 +332,7 @@ func TestExportExecutionDiskSpaceFail(t *testing.T) {
 func TestExportExecutionCancelCleansTempAndScope(t *testing.T) {
 	env := newExportExecEnv(t)
 	outDir := t.TempDir() // 自选输出目录（区别于 workDir，锚定账本登记的目标位置）
-	taskID := seedExportTask(t, env.db, idJSON(t, []int64{env.f.w1ID}), "[]", outDir)
+	taskID := seedExportTask(t, env.db, idJSON(t, []int64{env.f.w1ID}), "[]", outDir, "")
 
 	bp := &blockingExporter{entered: make(chan struct{})}
 	exec := NewExportExecution(env.svc, bp, fixedFormatProvider{})
@@ -544,7 +586,7 @@ func TestStartExportTwoStepTaskCreation(t *testing.T) {
 	ctl := &fakeTaskControl{db: env.db}
 	env.svc.SetTaskControl(ctl)
 
-	res, err := env.svc.StartExport(context.Background(), []int64{env.f.w1ID}, []int64{env.f.wsAID}, "D:/exports")
+	res, err := env.svc.StartExport(context.Background(), []int64{env.f.w1ID}, []int64{env.f.wsAID}, "D:/exports", "")
 	require.NoError(t, err)
 
 	assert.Equal(t, TaskTypeExport, ctl.taskType)
@@ -557,6 +599,25 @@ func TestStartExportTwoStepTaskCreation(t *testing.T) {
 	assert.Equal(t, idJSON(t, []int64{env.f.w1ID}), et.WorkIDs)
 	assert.Equal(t, idJSON(t, []int64{env.f.wsAID}), et.WorkSetIDs)
 	assert.Equal(t, "D:/exports", et.OutputDir)
+	assert.Empty(t, et.Title, "空标题领域行应落空串（未设置）")
+}
+
+// TestStartExportTitleSanitizeAndTaskName 带标题导出：入口净化（控制字符剔除 + 200 rune
+// 截断）后落领域行 Title，任务名「导出：{标题}（N 项）」用净化值。
+func TestStartExportTitleSanitizeAndTaskName(t *testing.T) {
+	env := newExportExecEnv(t)
+	ctl := &fakeTaskControl{db: env.db}
+	env.svc.SetTaskControl(ctl)
+
+	title := "精\r选\n集\t\x07" + strings.Repeat("卷", 300)
+	res, err := env.svc.StartExport(context.Background(), []int64{env.f.w1ID}, nil, "", title)
+	require.NoError(t, err)
+
+	want := "精选集" + strings.Repeat("卷", 197) // 控制字符剔除后按 rune 截断到 200
+	assert.Equal(t, "导出："+want+"（1 项）", ctl.taskName)
+	et, err := env.svc.exportTasks.GetById(context.Background(), res.TaskID)
+	require.NoError(t, err)
+	assert.Equal(t, want, et.Title)
 }
 
 // TestStartExportEmptySelectionNoTask 空选择前置校验：同步报错且不建任务行。
@@ -565,7 +626,7 @@ func TestStartExportEmptySelectionNoTask(t *testing.T) {
 	ctl := &fakeTaskControl{db: env.db}
 	env.svc.SetTaskControl(ctl)
 
-	_, err := env.svc.StartExport(context.Background(), nil, []int64{}, "")
+	_, err := env.svc.StartExport(context.Background(), nil, []int64{}, "", "")
 	assert.ErrorIs(t, err, ErrExportEmptySelection)
 	assert.Empty(t, ctl.startedIDs, "空选择不应建任务行")
 	assert.Empty(t, ctl.deletedIDs)
@@ -589,7 +650,7 @@ func TestStartExportRollbackOnDomainRowFailure(t *testing.T) {
 	ctl := &fakeTaskControl{db: env.db, fixedNextID: pre.GetID()}
 	env.svc.SetTaskControl(ctl)
 
-	_, err := env.svc.StartExport(context.Background(), []int64{env.f.w1ID}, nil, "")
+	_, err := env.svc.StartExport(context.Background(), []int64{env.f.w1ID}, nil, "", "")
 	require.Error(t, err)
 	assert.Equal(t, []int64{pre.GetID()}, ctl.deletedIDs, "领域行写入失败应回滚删除任务行")
 	assert.Empty(t, ctl.startedIDs)
@@ -601,7 +662,7 @@ func TestStartExportRollbackOnDomainRowFailure(t *testing.T) {
 // 分发执行 → Finished 终态即时落盘 + 产物产出
 func TestExportExecutionViaManager(t *testing.T) {
 	env := newExportExecEnv(t)
-	taskID := seedExportTask(t, env.db, idJSON(t, []int64{env.f.w1ID}), "[]", "")
+	taskID := seedExportTask(t, env.db, idJSON(t, []int64{env.f.w1ID}), "[]", "", "")
 
 	wtRepo := download.NewWorkTaskRepository(env.db)
 	mgrRepo := task.NewRepository(env.db, wtRepo, wtRepo)

@@ -24,6 +24,10 @@ const TaskTypeImport = "import"
 // importBuildTreeMaxWorks 建树作品数上限（对齐导出收集上限保护）：超限拒绝建树提示分批导出。
 const importBuildTreeMaxWorks = 10000
 
+// importTitleMaxRunes 父任务名所用导出标题的 rune 上限：manifest 为可手改的外部文件，
+// 消费前与导出侧标题、回灌侧作品名同款口径净化（剔控制字符 + 截断到上限）。
+const importTitleMaxRunes = 200
+
 // 错误定义。
 var (
 	// ErrImportTaskControlNil 未注入任务控制能力（装配缺失）
@@ -78,7 +82,8 @@ func NewHandler(workDirGetter func() string, taskCtl TaskControl, taskStore Impo
 }
 
 // StartImport 从导出 ZIP 产物建导入任务树：读包内 manifest → 建树前校验（版本锚/非空/上限/
-// 站点键——提前失败，不建「注定全失败」的任务树）→ 两段式建树（父容器「导入（N 项）」→
+// 站点键——提前失败，不建「注定全失败」的任务树）→ 两段式建树（父容器名由 manifest 标题
+// 派生：「导入：{标题}（N 项）」，无标题为「导入（N 项）」→
 // manifest 原字节落盘父作用域 → 子任务 + import_task 领域行）→ 整树启动。建树各步失败显式
 // 删树回滚不留孤儿任务（share 收件同款失败语义）；执行进度/暂停/重试归任务面板（执行面策略）。
 func (h *Handler) StartImport(ctx context.Context, zipPath string) *model.ApiResponse[*StartImportResult] {
@@ -130,8 +135,7 @@ func (h *Handler) startImport(ctx context.Context, zipPath string) (*StartImport
 
 	// 两段式建树：先建父容器拿 parentID（import_task 领域行的 ManifestRel 依赖父目录路径），
 	// manifest 原字节落盘父作用域后补建子任务（核心行 + import_task 领域行）
-	parent, err := h.taskCtl.CreateBuiltinTaskParent(ctx, TaskTypeImport,
-		fmt.Sprintf("导入（%d 项）", len(manifest.Works)))
+	parent, err := h.taskCtl.CreateBuiltinTaskParent(ctx, TaskTypeImport, importParentTaskName(manifest))
 	if err != nil {
 		return nil, err
 	}
@@ -175,6 +179,16 @@ func (h *Handler) startImport(ctx context.Context, zipPath string) (*StartImport
 		return nil, err
 	}
 	return &StartImportResult{ParentTaskID: parentID, WorkCount: len(manifest.Works), WorkNames: names}, nil
+}
+
+// importParentTaskName 导入父容器命名：manifest 标题净化后非空则命名「导入：{标题}（N 项）」，
+// 空（未设置标题的旧产物、或净化后全为控制字符）维持「导入（N 项）」。
+func importParentTaskName(manifest *export.Manifest) string {
+	count := len(manifest.Works)
+	if title := export.SanitizeMetaText(manifest.Meta.Title, importTitleMaxRunes); title != "" {
+		return fmt.Sprintf("导入：%s（%d 项）", title, count)
+	}
+	return fmt.Sprintf("导入（%d 项）", count)
 }
 
 // readManifest 读取包内 manifest.json：返回反序列化结果与条目原字节（建树侧原样落盘共享

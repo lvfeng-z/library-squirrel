@@ -10,6 +10,8 @@ import (
 // v2：SiteRecord 加 siteKey 必填（站点匹配从按名升级为按键，同名不同键站点不得互相回灌）。
 // v3：files[] 的 contentFingerprint 由「可选预填」升为契约必填面——zip 导出打包与分享宿主均
 // 逐文件预填头部指纹（回灌内容判定据此零读盘快筛；缺指纹条目按不匹配处理，旧版产物无此面）。
+// v3 内新增可选面：meta.title（导出自定义标题）——可选字段不递增版本（向前兼容），旧版读取方
+// 按未知字段忽略，空标题经 omitempty 不落字段。
 // 不兼容 v2 及更早产物（决策2）：版本门为严格相等校验，旧包一律拒绝并提示用新版本重新导出。
 const SchemaVersion = 3
 
@@ -28,10 +30,11 @@ type Manifest struct {
 	Files         []FileEntry     `json:"files"`
 }
 
-// Meta 导出元信息：导出时间、来源 app 版本、各域计数。
+// Meta 导出元信息：导出时间、来源 app 版本、各域计数、导出自定义标题。
 type Meta struct {
-	ExportedAt       int64  `json:"exportedAt"` // 导出时间（毫秒时间戳）
-	AppVersion       string `json:"appVersion"` // 来源 app 版本
+	ExportedAt       int64  `json:"exportedAt"`      // 导出时间（毫秒时间戳）
+	AppVersion       string `json:"appVersion"`      // 来源 app 版本
+	Title            string `json:"title,omitempty"` // 导出自定义标题（执行面自领域行注入净化值；空串=未设置不落字段，分享链路恒空）
 	SiteCount        int    `json:"siteCount"`
 	LocalAuthorCount int    `json:"localAuthorCount"`
 	SiteAuthorCount  int    `json:"siteAuthorCount"`

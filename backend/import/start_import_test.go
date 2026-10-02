@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -168,6 +169,59 @@ func TestStartImportBuildsTaskTree(t *testing.T) {
 	require.Equal(t, parent.GetID(), resp.Data.ParentTaskID)
 	require.Equal(t, n, resp.Data.WorkCount)
 	require.Len(t, resp.Data.WorkNames, n)
+}
+
+// TestStartImportParentTaskNameByTitle 父容器命名的三形态：manifest 标题净化后非空 →
+// 「导入：{标题}（N 项）」；无标题（旧产物）→ 维持「导入（N 项）」；超长/含控制字符标题
+// （手改 manifest 注入）→ 与导出侧同款口径净化（剔控制字符 + 200 rune 截断）后入名。
+func TestStartImportParentTaskNameByTitle(t *testing.T) {
+	workDir := t.TempDir()
+
+	t.Run("带标题", func(t *testing.T) {
+		manifest, _ := buildFixture()
+		manifest.Meta.Title = "夏日收藏"
+		zipPath, _ := buildStartImportZip(t, manifest)
+		ctl := &fakeImportTaskControl{nextTaskID: 100}
+		resp := NewHandler(func() string { return workDir }, ctl, &fakeImportTaskStore{}).StartImport(context.Background(), zipPath)
+		require.True(t, resp.Success, "建树失败: %s", resp.Msg)
+		require.Equal(t, fmt.Sprintf("导入：夏日收藏（%d 项）", len(manifest.Works)), ctl.parent.TaskName.String)
+	})
+
+	t.Run("无标题维持现状", func(t *testing.T) {
+		manifest, _ := buildFixture()
+		manifest.Meta.Title = ""
+		zipPath, _ := buildStartImportZip(t, manifest)
+		ctl := &fakeImportTaskControl{nextTaskID: 200}
+		resp := NewHandler(func() string { return workDir }, ctl, &fakeImportTaskStore{}).StartImport(context.Background(), zipPath)
+		require.True(t, resp.Success, "建树失败: %s", resp.Msg)
+		require.Equal(t, fmt.Sprintf("导入（%d 项）", len(manifest.Works)), ctl.parent.TaskName.String)
+	})
+
+	t.Run("超长含控制字符标题净化截断", func(t *testing.T) {
+		manifest, _ := buildFixture()
+		// 超长（205 rune > 200）+ 混入控制字符：净化后应为 200 rune 且无控制字符
+		manifest.Meta.Title = "\x00" + strings.Repeat("超", 205) + "\r\n\t\x7f"
+		zipPath, _ := buildStartImportZip(t, manifest)
+		ctl := &fakeImportTaskControl{nextTaskID: 300}
+		resp := NewHandler(func() string { return workDir }, ctl, &fakeImportTaskStore{}).StartImport(context.Background(), zipPath)
+		require.True(t, resp.Success, "建树失败: %s", resp.Msg)
+
+		want := fmt.Sprintf("导入：%s（%d 项）", strings.Repeat("超", 200), len(manifest.Works))
+		require.Equal(t, want, ctl.parent.TaskName.String)
+		require.Equal(t, want, fmt.Sprintf("导入：%s（%d 项）",
+			export.SanitizeMetaText(manifest.Meta.Title, 200), len(manifest.Works)),
+			"命名应为净化口径的消费结果")
+	})
+
+	t.Run("全控制字符标题视为无标题", func(t *testing.T) {
+		manifest, _ := buildFixture()
+		manifest.Meta.Title = "\x01\r\n"
+		zipPath, _ := buildStartImportZip(t, manifest)
+		ctl := &fakeImportTaskControl{nextTaskID: 400}
+		resp := NewHandler(func() string { return workDir }, ctl, &fakeImportTaskStore{}).StartImport(context.Background(), zipPath)
+		require.True(t, resp.Success, "建树失败: %s", resp.Msg)
+		require.Equal(t, fmt.Sprintf("导入（%d 项）", len(manifest.Works)), ctl.parent.TaskName.String)
+	})
 }
 
 // TestStartImportRollbackOnFailure 建树中途失败显式删树回滚（不留孤儿任务）：建子失败与

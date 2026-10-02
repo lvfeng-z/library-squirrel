@@ -27,6 +27,8 @@ const startError = ref('')
 // 本次导出的输出目录（'' = 使用工作目录）；初始值来自设置页配置的导出默认目录（exportSettings.outputDir），
 // 弹窗内浏览选择为仅本次生效的临时覆盖，不写回设置
 const outputDir = ref('')
+// 本次导出的自定义标题（'' = 不设置，任务名与 manifest 回退无标题形态）；弹窗内输入，仅本次生效
+const title = ref('')
 
 // 是否还有可消费的选中（空选择时后端会报错，前端也可先行提示）
 const hasSelection = computed(() => arrayNotEmpty(props.workIds) || arrayNotEmpty(props.workSetIds))
@@ -37,7 +39,7 @@ async function startExport() {
   starting.value = true
   startError.value = ''
   try {
-    const result = await exportStartExport(props.workIds, props.workSetIds, outputDir.value)
+    const result = await exportStartExport(props.workIds, props.workSetIds, outputDir.value, title.value)
     // 登记任务类型：任务通知条目按类型路由到导出视图
     useTaskStore().setTaskType(result.data.taskId, 'export')
     closeDialog()
@@ -100,10 +102,11 @@ function closeDialog() {
   state.value = false
 }
 
-// 打开弹窗：复位本次导出状态并载入设置页配置的导出默认目录，等待用户点 [开始导出]
+// 打开弹窗：复位本次导出状态（标题/输出目录）并载入设置页配置的导出默认目录，等待用户点 [开始导出]
 watch(state, (open) => {
   if (!open) return
   startError.value = ''
+  title.value = ''
   outputDir.value = ''
   void loadDefaultOutputDir()
 })
@@ -160,6 +163,15 @@ watch(state, (open) => {
       v-else
       class="export-dialog-body"
     >
+      <div class="export-dialog-config-label">
+        标题
+      </div>
+      <el-input
+        v-model="title"
+        maxlength="200"
+        placeholder="默认：导出（N 项）"
+        clearable
+      />
       <div class="export-dialog-config-label">
         输出目录
       </div>

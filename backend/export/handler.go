@@ -28,8 +28,10 @@ func (h *Handler) Collect(ctx context.Context, workIDs []int64, workSetIDs []int
 // StartExport 创建导出任务并启动（两步建任务：前置校验 → 建任务核心行 + export_task 领域行 →
 // 启动执行）。返回新建任务 ID——执行进度与终态经任务面板统一承载。
 // outputDir 为空时落盘到工作目录根（默认）；非空为自选输出目录（前端经文件选择器挑选并持久化）。
-func (h *Handler) StartExport(ctx context.Context, workIDs []int64, workSetIDs []int64, outputDir string) *model.ApiResponse[*ExportTaskResult] {
-	result, err := h.svc.StartExport(ctx, workIDs, workSetIDs, outputDir)
+// title 为导出自定义标题：入口净化后非空时任务名带标题、manifest.meta.title 落净化值；
+// 空串=未设置，全链路回退无标题形态。
+func (h *Handler) StartExport(ctx context.Context, workIDs []int64, workSetIDs []int64, outputDir string, title string) *model.ApiResponse[*ExportTaskResult] {
+	result, err := h.svc.StartExport(ctx, workIDs, workSetIDs, outputDir, title)
 	if err != nil {
 		return model.HandleError[*ExportTaskResult](err)
 	}

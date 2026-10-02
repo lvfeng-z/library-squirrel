@@ -329,7 +329,7 @@ export class Manifest {
 }
 
 /**
- * Meta 导出元信息：导出时间、来源 app 版本、各域计数。
+ * Meta 导出元信息：导出时间、来源 app 版本、各域计数、导出自定义标题。
  */
 export class Meta {
     /**
@@ -341,6 +341,11 @@ export class Meta {
      * 来源 app 版本
      */
     "appVersion": string;
+
+    /**
+     * 导出自定义标题（执行面自领域行注入净化值；空串=未设置不落字段，分享链路恒空）
+     */
+    "title"?: string;
     "siteCount": number;
     "localAuthorCount": number;
     "siteAuthorCount": number;

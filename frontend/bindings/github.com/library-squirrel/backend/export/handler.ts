@@ -31,9 +31,11 @@ export function Collect(workIDs: number[], workSetIDs: number[]): $CancellablePr
  * StartExport 创建导出任务并启动（两步建任务：前置校验 → 建任务核心行 + export_task 领域行 →
  * 启动执行）。返回新建任务 ID——执行进度与终态经任务面板统一承载。
  * outputDir 为空时落盘到工作目录根（默认）；非空为自选输出目录（前端经文件选择器挑选并持久化）。
+ * title 为导出自定义标题：入口净化后非空时任务名带标题、manifest.meta.title 落净化值；
+ * 空串=未设置，全链路回退无标题形态。
  */
-export function StartExport(workIDs: number[], workSetIDs: number[], outputDir: string): $CancellablePromise<model$0.ApiResponse<$models.ExportTaskResult | null> | null> {
-    return $Call.ByID(3732176901, workIDs, workSetIDs, outputDir).then(($result: any) => {
+export function StartExport(workIDs: number[], workSetIDs: number[], outputDir: string, title: string): $CancellablePromise<model$0.ApiResponse<$models.ExportTaskResult | null> | null> {
+    return $Call.ByID(3732176901, workIDs, workSetIDs, outputDir, title).then(($result: any) => {
         return $$createType7($result);
     });
 }

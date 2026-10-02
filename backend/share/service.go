@@ -30,7 +30,6 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/export"
-	importer "github.com/library-squirrel/backend/import"
 	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/task"
 	"github.com/library-squirrel/backend/util"
@@ -595,7 +594,7 @@ func (s *Service) hostSessionBody(ctx context.Context, shareID string, p hostPar
 
 	cfg := sessionConfig{
 		id:            shareID,
-		title:         importer.SanitizeMetaText(defaultTitle(len(p.WorkIDs), len(p.WorkSetIDs), p.Title), 200),
+		title:         export.SanitizeMetaText(defaultTitle(len(p.WorkIDs), len(p.WorkSetIDs), p.Title), 200),
 		instanceID:    s.instanceID,
 		relayDial:     endpoint,
 		relayHost:     relayHost,

@@ -120,6 +120,10 @@ func (e *ExportExecution) Execute(h taskManager.StrategyHandle) {
 		return
 	}
 
+	// 领域行标题注入内存态导出模型：Collect 只收集库内数据（不含发起侧标题），序列化进
+	// zip 前补位；空串=未设置，omitempty 不落字段（分享链路不设本值，行为不变）
+	model.Manifest.Meta.Title = et.Title
+
 	workDir := e.svc.workDir()
 	if workDir == "" {
 		// 请求期导出拒绝：领域文案经任务终态呈现，同时经统一发射口通知前端引导配置
@@ -256,7 +260,11 @@ func marshalIDList(ids []int64) (string, error) {
 	return string(b), nil
 }
 
-// exportTaskName 导出任务名：N 为创建时点的选择计数（作品数 + 作品集数）。
-func exportTaskName(count int) string {
+// exportTaskName 导出任务名：N 为创建时点的选择计数（作品数 + 作品集数）；title 非空
+// （入口已净化）时带标题，空串维持无标题形态。
+func exportTaskName(title string, count int) string {
+	if title != "" {
+		return fmt.Sprintf("导出：%s（%d 项）", title, count)
+	}
 	return fmt.Sprintf("导出（%d 项）", count)
 }

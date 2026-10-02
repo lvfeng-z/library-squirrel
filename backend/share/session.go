@@ -435,7 +435,7 @@ func (s *shareSession) metaSource() string {
 	for _, n := range names[1:] {
 		src += "/" + n
 	}
-	return importer.SanitizeMetaText(src, 100)
+	return export.SanitizeMetaText(src, 100)
 }
 
 // metaWorksName 落地页作品名列表：按 manifest.Works 顺序取净化后作品名（与收件侧子任务命名一致；

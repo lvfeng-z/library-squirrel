@@ -65,13 +65,16 @@ func (s *Service) Collect(ctx context.Context, workIDs []int64, workSetIDs []int
 // StartExport 创建导出任务并启动（两步建任务）：前置校验选择非空（失败不建任务行）→ 建任务
 // 核心行 → 补写 export_task 领域行 → 启动执行；任一步失败显式删除任务行回滚（不留孤儿任务）。
 // 返回新建任务 ID。outputDir 为空时沿用工作目录作落盘根，非空为自选输出目录。
-func (s *Service) StartExport(ctx context.Context, workIDs []int64, workSetIDs []int64, outputDir string) (*ExportTaskResult, error) {
+// title 为导出自定义标题：入口净化（剔控制字符 + 200 rune 截断，与分享标题同口径）；
+// 净化后空串=未设置，任务名与领域行均按空值回退无标题形态。
+func (s *Service) StartExport(ctx context.Context, workIDs []int64, workSetIDs []int64, outputDir string, title string) (*ExportTaskResult, error) {
 	if s.taskCtl == nil {
 		return nil, ErrTaskControlNil
 	}
 	if len(workIDs) == 0 && len(workSetIDs) == 0 {
 		return nil, ErrExportEmptySelection
 	}
+	sanitizedTitle := SanitizeMetaText(title, 200)
 	workIDsJSON, err := marshalIDList(workIDs)
 	if err != nil {
 		return nil, err
@@ -80,7 +83,7 @@ func (s *Service) StartExport(ctx context.Context, workIDs []int64, workSetIDs [
 	if err != nil {
 		return nil, err
 	}
-	taskID, err := s.taskCtl.CreateBuiltinTask(ctx, TaskTypeExport, exportTaskName(len(workIDs)+len(workSetIDs)))
+	taskID, err := s.taskCtl.CreateBuiltinTask(ctx, TaskTypeExport, exportTaskName(sanitizedTitle, len(workIDs)+len(workSetIDs)))
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +91,7 @@ func (s *Service) StartExport(ctx context.Context, workIDs []int64, workSetIDs [
 	et.WorkIDs = workIDsJSON
 	et.WorkSetIDs = workSetIDsJSON
 	et.OutputDir = outputDir
+	et.Title = sanitizedTitle
 	if err := s.exportTasks.CreateForTask(ctx, taskID, et); err != nil {
 		_ = s.taskCtl.DeleteTask(ctx, []int64{taskID})
 		return nil, err
