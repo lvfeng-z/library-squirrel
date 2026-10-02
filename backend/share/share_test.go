@@ -1625,6 +1625,161 @@ func TestRestoreRelayUnreachable(t *testing.T) {
 	waitRecordState(t, repo, "share-9002", RecordStateActive)
 }
 
+// TestReactivateRecordRevives 重新激活复活链：failed 记录（中继侧会话仍在——状态文件
+// 恢复后回归的形态）经用户显式激活 → 行回 active → 复原主体原 token bind 重绑 → 在线
+// 复活；token 不变（链接不变）、失败原因清空、供流恢复（收件人可拨号）
+func TestReactivateRecordRevives(t *testing.T) {
+	stub := startRelayStub(t)
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+	em := newCaptureEmitter()
+	svc := newRecordTestService(t, repo, stub, workDir, model, em)
+
+	shareID, comp := publishAndWait(t, svc, em, SharePublishOptions{Title: "重新激活分享"})
+	if !comp.Success {
+		t.Fatalf("发布失败: %s", comp.ErrMsg)
+	}
+	token := comp.Session.Token
+	rec := waitRecordState(t, repo, shareID, RecordStateActive)
+
+	// 记录行直落 failed（复现 bind 被中继 not_found 误判终态的账本形态）
+	if err := repo.UpdateTerminal(context.Background(), rec.GetID(), RecordStateFailed,
+		"中继拒绝: not_found: 分享不存在", 0); err != nil {
+		t.Fatal(err)
+	}
+	// 终止发布主体（先断隧道解除读阻塞，再取消主体）；桩侧会话保持 active（状态回归形态）
+	stub.dropTunnel(token)
+	svc.CancelPublish(context.Background(), shareID)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		svc.mu.Lock()
+		_, inflight := svc.hostCancels[shareID]
+		svc.mu.Unlock()
+		if !inflight {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("等待发布主体退出超时")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// 重新激活：回 active + 复原主体原 token bind
+	if err := svc.ReactivateRecord(context.Background(), shareID); err != nil {
+		t.Fatalf("重新激活失败: %v", err)
+	}
+	// 复活断言：会话在线（主体异步启动，先等在线再验拨号）、记录 active 且失败原因清空、
+	// token 不变（链接不变）
+	online := false
+	deadline = time.Now().Add(8 * time.Second)
+	for !online {
+		for _, s := range svc.Sessions(context.Background()) {
+			if s.ShareID == shareID && s.State == stateOnline {
+				online = true
+			}
+		}
+		if online || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !online {
+		t.Fatalf("重新激活后会话未在线")
+	}
+	if got := stub.bindCountOf(token); got < 1 {
+		t.Fatalf("重新激活应触发 bind 重绑, 实际 %d 次", got)
+	}
+	rec2 := waitRecordState(t, repo, shareID, RecordStateActive)
+	if rec2.ErrMsg != "" {
+		t.Fatalf("重新激活应清空失败原因: %q", rec2.ErrMsg)
+	}
+	if rec2.Token != token {
+		t.Fatalf("重新激活不得换 token（链接不变）: %s / %s", rec2.Token, token)
+	}
+	// 供流恢复：收件人拨号可达
+	conn, derr := recipientDial(t, stub.addr, token, "")
+	if derr != nil {
+		t.Fatalf("复活后收件人拨号失败: %v", derr)
+	}
+	_ = conn.Close()
+}
+
+// TestReactivateRecordNotFoundAgain 重新激活后中继侧会话确已消失：复原 bind 仍被
+// not_found 拒 → 行再落 failed 记原因（激活入口可反复使用，非一次性）
+func TestReactivateRecordNotFoundAgain(t *testing.T) {
+	stub := startRelayStub(t)
+	repo := NewRepository(openRecordTestDB(t))
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+
+	key := make([]byte, shareKeyLen)
+	rec := entity.NewShareRecord()
+	rec.ShareID = "share-9101"
+	rec.Token = fmt.Sprintf("stubtoken%013d", 9101)
+	rec.Title = "真丢分享"
+	rec.WorkIDs = marshalInt64s([]int64{1})
+	rec.RelayAddress = stub.addr
+	rec.KeyB64 = base64.RawURLEncoding.EncodeToString(key)
+	rec.ExpireSeconds = -1
+	rec.State = RecordStateFailed
+	rec.ErrMsg = "中继拒绝: not_found: 分享不存在"
+	if err := repo.Create(context.Background(), rec); err != nil {
+		t.Fatal(err)
+	}
+
+	em := newCaptureEmitter()
+	svc := newRecordTestService(t, repo, stub, workDir, model, em)
+	if err := svc.ReactivateRecord(context.Background(), "share-9101"); err != nil {
+		t.Fatalf("重新激活失败: %v", err)
+	}
+	// 激活先行置 active，复原 bind 被拒后回落 failed 记原因
+	rec2 := waitRecordState(t, repo, "share-9101", RecordStateFailed)
+	if !strings.Contains(rec2.ErrMsg, errCodeNotFound) {
+		t.Fatalf("失败原因应含中继错误码 %s: %q", errCodeNotFound, rec2.ErrMsg)
+	}
+}
+
+// TestReactivateRecordRejectsNonFailed 重新激活仅对 failed 行开放：revoked/active 行与
+// 不存在行拒绝；分享对象清单损坏的 failed 行报数据损坏不激活
+func TestReactivateRecordRejectsNonFailed(t *testing.T) {
+	repo := NewRepository(openRecordTestDB(t))
+	mk := func(shareID, state, workIDs string) {
+		t.Helper()
+		key := make([]byte, shareKeyLen)
+		rec := entity.NewShareRecord()
+		rec.ShareID = shareID
+		rec.Token = fmt.Sprintf("stubtoken%013d", len(shareID))
+		rec.WorkIDs = workIDs
+		rec.KeyB64 = base64.RawURLEncoding.EncodeToString(key)
+		rec.State = state
+		if err := repo.Create(context.Background(), rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("share-9201", RecordStateRevoked, marshalInt64s([]int64{1}))
+	mk("share-9202", RecordStateActive, marshalInt64s([]int64{1}))
+	mk("share-9203", RecordStateFailed, "{bad json")
+
+	svc := NewService(repo, &fakeCollector{}, export.NewPacker(),
+		func() string { return "" }, func() string { return t.TempDir() },
+		"test-instance-0001", newCaptureEmitter(), nil, nil)
+	ctx := context.Background()
+	if err := svc.ReactivateRecord(ctx, "share-9201"); !errors.Is(err, ErrShareRecordNotFailed) {
+		t.Fatalf("revoked 行应拒绝激活: %v", err)
+	}
+	if err := svc.ReactivateRecord(ctx, "share-9202"); !errors.Is(err, ErrShareRecordNotFailed) {
+		t.Fatalf("active 行应拒绝激活: %v", err)
+	}
+	if err := svc.ReactivateRecord(ctx, "share-9999"); !errors.Is(err, ErrShareNotFound) {
+		t.Fatalf("不存在行应报不存在: %v", err)
+	}
+	err := svc.ReactivateRecord(ctx, "share-9203")
+	if err == nil || !strings.Contains(err.Error(), "不可解析") {
+		t.Fatalf("清单损坏应报数据损坏: %v", err)
+	}
+}
+
 // TestMetaPayloadWorksName 设计十：register 帧 meta 携带 worksName（顺序对齐 manifest.Works、
 // site_work_name 优先、次 nick_name、全空名以「作品 {ID}」占位）；bind 帧不携带；空清单不出现该键。
 func TestMetaPayloadWorksName(t *testing.T) {

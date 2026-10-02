@@ -5,7 +5,8 @@ package share
 // 发布直跑（不经任务模块）：Publish 校验通过即以受监督 goroutine 驱动宿主主体
 // （收集 → 规划 → 注册 → 隧道维持至会话终态），进度/完成/状态经 share-events 推送，
 // 弹窗「取消」经 CancelPublish 直达主体取消；首次在线起生命周期落 share_record 行，
-// 跨重启由启动自动复原（RestoreAll：active 行原 token bind 重绑，链接不变）复活。
+// 跨重启由启动自动复原（RestoreAll：active 行原 token bind 重绑，链接不变）复活；
+// failed 行经用户显式重新激活（ReactivateRecord）回 active，走同一复原链。
 // 收件拉取（Receive）仍走任务模块（share-receive 任务承载断点续传/暂停恢复语义）。
 
 import (
@@ -51,6 +52,9 @@ var (
 	ErrShareTaskStoreNil = errors.New("收件任务参数存储能力未装配")
 	// ErrShareRecordKeyBad 分享记录的 E2E 密钥不合法（非 32 字节 base64url）
 	ErrShareRecordKeyBad = errors.New("分享记录密钥不合法")
+	// ErrShareRecordNotFailed 分享记录不在 failed 终态（重新激活仅对 failed 行开放——
+	// revoked 是用户撤销意图、expired 是寿命终结，均不复活）
+	ErrShareRecordNotFailed = errors.New("仅失败状态的分享记录可重新激活")
 )
 
 // 内置任务类型（登记于 task.task_type，注册进 taskManager 执行面策略表）
@@ -320,6 +324,45 @@ func (s *Service) DeleteRecord(ctx context.Context, shareID string) error {
 		return ErrShareNotFound
 	}
 	return s.repo.DeleteUnscoped(ctx, rec.GetID())
+}
+
+// ReactivateRecord 重新激活 failed 终态的分享记录（用户显式入口）：state 置回 active 并
+// 立即拉起复原主体——凭记录行原 token 经 bind 重绑，链接不变。中继侧会话仍在（状态文件
+// 恢复后回归等）即复活在线；确已消失则复原按原语义再落终态（not_found/收集失败 → failed，
+// 用户可再次激活）。revoked/expired 不开放激活（撤销意图/寿命终结）。
+func (s *Service) ReactivateRecord(ctx context.Context, shareID string) error {
+	if s.repo == nil {
+		return ErrShareNotFound
+	}
+	rec, err := s.repo.GetByShareID(ctx, shareID)
+	if err != nil {
+		return err
+	}
+	if rec == nil {
+		return ErrShareNotFound
+	}
+	if rec.State != RecordStateFailed {
+		return ErrShareRecordNotFailed
+	}
+	workIDs, werr := unmarshalInt64s(rec.WorkIDs)
+	workSetIDs, serr := unmarshalInt64s(rec.WorkSetIDs)
+	if werr != nil || serr != nil {
+		return fmt.Errorf("分享记录数据损坏（分享对象清单不可解析），无法重新激活")
+	}
+	if err := s.repo.Reactivate(ctx, rec.GetID()); err != nil {
+		return err
+	}
+	logger.Log.Infof("[share] 重新激活分享记录 shareId=%s token=%s", rec.ShareID, rec.Token)
+	if !s.startHostSupervised(rec.ShareID, hostParams{
+		WorkIDs:       workIDs,
+		WorkSetIDs:    workSetIDs,
+		Title:         rec.Title,
+		ExpireSeconds: rec.ExpireSeconds,
+	}, rec) {
+		// 同 shareID 主体在驻（并发激活竞态）：行已置 active，在驻主体继续驱动后续状态
+		logger.Log.Infof("[share] 分享主体在驻跳过重新激活拨号 shareId=%s", rec.ShareID)
+	}
+	return nil
 }
 
 // Sessions 全部会话快照（含终态会话；按创建时间升序）

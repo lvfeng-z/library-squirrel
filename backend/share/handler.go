@@ -65,6 +65,15 @@ func (h *Handler) ShareDeleteRecord(ctx context.Context, shareID string) *model.
 	return model.Success[any](nil)
 }
 
+// ShareReactivateRecord 重新激活 failed 终态的分享记录：state 置回 active 并立即复原
+//（原 token bind 重绑，链接不变；中继侧会话仍在即复活在线，确已消失则再落 failed 可再试）
+func (h *Handler) ShareReactivateRecord(ctx context.Context, shareID string) *model.ApiResponse[any] {
+	if err := h.svc.ReactivateRecord(ctx, shareID); err != nil {
+		return model.HandleError[any](err)
+	}
+	return model.Success[any](nil)
+}
+
 // ShareReceiveResult 收件拉取建树结果（决策4 之①：作品名列表供收件侧创建反馈展示）
 type ShareReceiveResult struct {
 	ParentTaskID int64    `json:"parentTaskId"` // 父任务 ID（进度/终态由任务面板树形承载）

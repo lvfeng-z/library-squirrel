@@ -63,6 +63,14 @@ export async function shareDeleteRecord(shareId: string): Promise<void> {
 }
 
 /**
+ * 重新激活 failed 终态的分享记录（用户显式入口）：state 置回 active 并立即复原
+ * （原 token bind 重绑，链接不变；中继侧会话仍在即复活在线，确已消失则再落 failed 可再试）。
+ */
+export async function shareReactivateRecord(shareId: string): Promise<void> {
+  requireResponse(await ShareHandler.ShareReactivateRecord(shareId), '重新激活分享', false)
+}
+
+/**
  * 启动收件拉取：解析分享链接（深链或 https 分享链接，可含访问密码）→ 同步拉取 manifest →
  * 创建并启动 share-receive 父子任务树（父任务聚合进度 + 每作品一子任务）。
  * 返回建树结果（父任务 ID/作品数/作品名列表——作品名供收件侧创建反馈展示，进度/终态由任务面板树形承载）。

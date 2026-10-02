@@ -8,7 +8,7 @@ import { Thead } from '@renderer/model/util/Thead.ts'
 import { newPage } from '@renderer/utils/Pager.ts'
 import { Page } from '@bindings/github.com/library-squirrel/backend/base/model'
 import type { ShareRecordDTO } from '@bindings/github.com/library-squirrel/backend/share/models'
-import { shareDeleteRecord, shareRecords, shareRevoke } from '@renderer/apis/http/wrappers/share'
+import { shareDeleteRecord, shareRecords, shareReactivateRecord, shareRevoke } from '@renderer/apis/http/wrappers/share'
 import { useShareStore } from '@renderer/store/UseShareStore'
 import { useShareReceiveStore } from '@renderer/store/UseShareReceiveStore'
 import { arrayNotEmpty } from '@renderer/utils/CommonUtil'
@@ -39,6 +39,8 @@ const allRecords: Ref<ShareRecordDTO[]> = ref([])
 const revokingId = ref('')
 // 删除执行中的 shareId（记录行按钮防重复）
 const deletingId = ref('')
+// 重新激活执行中的 shareId（failed 记录行按钮防重复）
+const reactivatingId = ref('')
 
 // 会话终态判定（与 UseShareStore 后端状态机一致：revoked/expired/failed 不可逆）
 function isTerminalSessionState(state: string): boolean {
@@ -261,6 +263,22 @@ async function handleDeleteRecord(record: ShareRecordDTO): Promise<void> {
   }
 }
 
+// 重新激活 failed 记录行（用户显式入口）：state 置回 active 并立即复原（原 token bind 重绑，
+// 链接不变）；中继侧会话仍在即复活在线，确已消失则再落 failed（可再试）
+async function handleReactivateRecord(record: ShareRecordDTO): Promise<void> {
+  if (reactivatingId.value) return
+  reactivatingId.value = record.shareId
+  try {
+    await shareReactivateRecord(record.shareId)
+    ElMessage.success('已发起重新激活，会话在线后分享恢复可用')
+    await refreshAll()
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '重新激活失败')
+  } finally {
+    reactivatingId.value = ''
+  }
+}
+
 // 打开接收分享对话框（粘贴他人分享的链接拉取入库；弹窗挂在 MainLayout）
 function handleReceive(): void {
   useShareReceiveStore().openWith('')
@@ -364,7 +382,7 @@ function canCopySessionLink(link: string): boolean {
         :selectable="false"
         :multi-select="false"
         :custom-operation-button="true"
-        :operation-width="180"
+        :operation-width="250"
       >
         <template #toolbarMain>
           <div class="share-manage-toolbar">
@@ -378,6 +396,15 @@ function canCopySessionLink(link: string): boolean {
         </template>
         <template #customOperations="{ row }">
           <div class="share-manage-record-operations">
+            <el-button
+              v-if="(row as ShareRecordDTO).state === 'failed'"
+              size="small"
+              type="primary"
+              :loading="reactivatingId === (row as ShareRecordDTO).shareId"
+              @click="handleReactivateRecord(row as ShareRecordDTO)"
+            >
+              重新激活
+            </el-button>
             <el-button
               size="small"
               :disabled="!canCopyRecordLink(row as ShareRecordDTO)"

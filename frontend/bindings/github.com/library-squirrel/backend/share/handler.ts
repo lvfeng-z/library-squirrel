@@ -67,6 +67,16 @@ export function SharePublish(workIDs: number[], workSetIDs: number[], options: $
 }
 
 /**
+ * ShareReactivateRecord 重新激活 failed 终态的分享记录：state 置回 active 并立即复原
+ * （原 token bind 重绑，链接不变；中继侧会话仍在即复活在线，确已消失则再落 failed 可再试）
+ */
+export function ShareReactivateRecord(shareID: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(3363932982, shareID).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * ShareReceive 启动收件拉取：解析分享链接（深链或 https 分享链接，可含访问密码）→ 同步预拉
  * manifest → 建父子任务树（父容器 + 每作品一子任务）→ 共享 manifest 落盘 → 整树启动。
  * 返回 {parentTaskId, workCount, workNames}（进度/终态由任务面板承载）。

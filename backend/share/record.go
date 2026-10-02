@@ -2,7 +2,8 @@ package share
 
 // 分享记录（share_record）：分享方持久化账本。运行态（connecting/online/reconnecting）
 // 不入表——运行期由进程内会话注册表 + state 事件实时推；本表记录首次在线起的分享参数
-// 与终态，并承载启动自动复原（active 行原 token bind 重绑复活，链接不变）。
+// 与终态，并承载启动自动复原（active 行原 token bind 重绑复活，链接不变）；failed 行
+// 可经用户显式重新激活回 active，走同一复原链。
 
 import (
 	"encoding/base64"
@@ -12,7 +13,8 @@ import (
 	"github.com/library-squirrel/backend/base/model/entity"
 )
 
-// 记录状态（active 可复原；其余为终态不可逆）
+// 记录状态（active 可复原；revoked/expired 为终态不可逆；failed 为失败终态，可经用户
+// 显式重新激活回 active）
 const (
 	// RecordStateActive 在线/可复原（启动时自动 bind 重绑）
 	RecordStateActive = "active"
@@ -20,7 +22,8 @@ const (
 	RecordStateRevoked = "revoked"
 	// RecordStateExpired 已过期（终态）
 	RecordStateExpired = "expired"
-	// RecordStateFailed 失败终态（复原失败等；err_msg 记原因）
+	// RecordStateFailed 失败终态（复原失败/中继 not_found 等；err_msg 记原因；可经用户
+	// 显式重新激活回 active）
 	RecordStateFailed = "failed"
 )
 

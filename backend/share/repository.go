@@ -79,6 +79,13 @@ func (r *Repository) UpdateTerminal(ctx context.Context, id int64, state, errMsg
 		Updates(map[string]any{"state": state, "err_msg": errMsg, "revoked_at": revokedAt}).Error
 }
 
+// Reactivate failed 终态行重新激活：state 置回 active 并清空失败原因/撤销时刻
+// （用户显式入口；激活后由复原主体凭原 token bind 重绑，链接不变）
+func (r *Repository) Reactivate(ctx context.Context, id int64) error {
+	return r.dbFromCtx(ctx).WithContext(ctx).Model(&entity.ShareRecord{}).Where("id = ?", id).
+		Updates(map[string]any{"state": RecordStateActive, "err_msg": "", "revoked_at": 0}).Error
+}
+
 // RefreshOnline 复原在线后刷新记录行（到期时刻按中继 WELCOME 回填、统计按重新规划值刷新；
 // 会话与记录的其余参数在发布时已固定，复原不换 token/密钥/链接）
 func (r *Repository) RefreshOnline(ctx context.Context, id int64, expiresAt, fileCount, totalBytes, missingFiles int64) error {
