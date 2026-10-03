@@ -157,8 +157,8 @@ func TestMapExpireSeconds(t *testing.T) {
 	if v := mapExpireSeconds(-1); v != nil {
 		t.Fatal("-1 应映射为 nil（中继默认）")
 	}
-	if v := mapExpireSeconds(0); v == nil || *v != 0 {
-		t.Fatal("0 应映射为 &0（无限期）")
+	if v := mapExpireSeconds(0); v != nil {
+		t.Fatal("0（无限期，已停用）应映射为 nil（中继默认兜底），不再产出 &0")
 	}
 	if v := mapExpireSeconds(3600); v == nil || *v != 3600 {
 		t.Fatal(">0 应映射为自定义秒数")

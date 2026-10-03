@@ -158,7 +158,7 @@ type helloPayload struct {
 	Token          string       `json:"token,omitempty"`          // bind 必填
 	InstanceID     string       `json:"instanceId"`               // 设备绑定实例 ID
 	PasswordHash   string       `json:"passwordHash,omitempty"`   // hex(sha256(访问密码))，仅 register
-	ExpireSeconds  *int64       `json:"expireSeconds,omitempty"`  // 仅 register：nil=中继默认；0=无限期；>0=自定义秒
+	ExpireSeconds  *int64       `json:"expireSeconds,omitempty"`  // 仅 register：nil=中继默认；>0=自定义秒数（0=无限期已停用，客户端不再发送）
 	Meta           *metaPayload `json:"meta,omitempty"`           // 仅 register：落地页文字元数据
 	CandidateAddrs []string     `json:"candidateAddrs,omitempty"` // V2 直连预留位，本客户端不携带
 }

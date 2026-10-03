@@ -44,6 +44,9 @@ var (
 	ErrShareRelayNotConfigured = errors.New("未配置分享中继地址，请先在设置中配置")
 	// ErrShareWorkDirEmpty 工作目录未配置
 	ErrShareWorkDirEmpty = errors.New("工作目录未配置，无法分享")
+	// ErrShareExpireDisabled 无限期分享（ExpireSeconds=0）已停用：发布入口前置拒绝，
+	// 不发起任何拨号/注册
+	ErrShareExpireDisabled = errors.New("无限期分享已停用：请选择中继默认或自定义有效期")
 	// ErrShareNotFound 分享会话不存在
 	ErrShareNotFound = errors.New("分享会话不存在")
 	// ErrShareTaskControlNil 未注入任务控制能力（装配缺失）
@@ -96,7 +99,7 @@ type hostParams struct {
 	WorkIDs       []int64
 	WorkSetIDs    []int64
 	Title         string
-	ExpireSeconds int64  // -1=中继默认 / 0=无限期 / >0=自定义秒
+	ExpireSeconds int64  // -1=中继默认 / >0=自定义秒数（0=无限期已停用：发布入口前置拒绝）
 	Password      string // 访问密码明文（仅本机使用，线上只走 sha256 摘要；空=无密码）
 }
 
@@ -128,7 +131,7 @@ type ExportPlanner interface {
 type SharePublishOptions struct {
 	// Title 落地页标题；空=默认标题（已选 N 项分享）
 	Title string `json:"title"`
-	// ExpireSeconds 有效期秒数：-1=中继默认(7 天)；0=无限期；>0=自定义秒数
+	// ExpireSeconds 有效期秒数：-1=中继默认(7 天)；>0=自定义秒数（0=无限期已停用，前置拒绝）
 	ExpireSeconds int64 `json:"expireSeconds"`
 	// Password 访问密码；空=无密码（明文仅在本机使用，线上只走 sha256 摘要；落记录行的只有有无标记）
 	Password string `json:"password"`
@@ -250,6 +253,11 @@ func (s *Service) Publish(ctx context.Context, workIDs []int64, workSetIDs []int
 	if s.workDir() == "" {
 		settings.NotifyWorkDirUnconfigured("share")
 		return "", ErrShareWorkDirEmpty
+	}
+	// 无限期（0）已停用：前置拒绝——先于任何拨号/注册动作（startHostSupervised 及其
+	// 后的收集/HELLO 均不触发），不发网络请求即报错
+	if options.ExpireSeconds == 0 {
+		return "", ErrShareExpireDisabled
 	}
 	shareID := nextShareID()
 	s.startHostSupervised(shareID, hostParams{
@@ -879,18 +887,15 @@ func nextShareID() string {
 	}
 }
 
-// mapExpireSeconds 选项映射 HELLO expireSeconds：-1→nil（中继默认）；0→&0（无限期）；>0→&n
+// mapExpireSeconds 选项映射 HELLO expireSeconds：-1→nil（中继默认）；>0→&n（自定义秒数）。
+// 0（无限期）已停用：发布入口前置拒绝（ErrShareExpireDisabled），本函数不再产出 &0；
+// 0 意外到达（历史 0 记录复原等）回落 nil（中继默认），且复原 bind 分支本就不携带该字段。
 func mapExpireSeconds(opt int64) *int64 {
-	switch {
-	case opt < 0:
-		return nil
-	case opt == 0:
-		zero := int64(0)
-		return &zero
-	default:
+	if opt > 0 {
 		v := opt
 		return &v
 	}
+	return nil
 }
 
 // defaultTitle 落地页标题：用户提供则用之，否则「分享 N 个作品/M 个作品集」

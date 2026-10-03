@@ -22,8 +22,8 @@ const props = defineProps<{
 // —— 配置项（打开弹窗时复位） ——
 // 落地页标题（空=默认「分享 N 个作品…」）
 const title = ref('')
-// 有效期模式：default=中继默认(7 天) / custom=自定义天数 / never=无限期
-const expireMode = ref<'default' | 'custom' | 'never'>('default')
+// 有效期模式：default=中继默认 / custom=自定义天数（「无限期」已下架，后端对 ExpireSeconds==0 前置拒绝）
+const expireMode = ref<'default' | 'custom'>('default')
 // 自定义天数（expireMode=custom 时生效）
 const customDays = ref(7)
 // 访问密码（空=无密码）
@@ -60,9 +60,8 @@ const relayReconnecting = computed(
 // 取消按钮可用性：发布运行中（收集/注册阶段）
 const canCancel = computed(() => shareId.value !== null && publishing.value?.status === 'running')
 
-// ExpireSeconds 映射：-1=中继默认；0=无限期；>0=自定义秒
+// ExpireSeconds 映射：-1=中继默认；>0=自定义秒（无 0 分支——0=无限期已停用）
 const expireSeconds = computed<number>(() => {
-  if (expireMode.value === 'never') return 0
   if (expireMode.value === 'custom') return Math.max(1, Math.floor(customDays.value)) * 86400
   return -1
 })
@@ -241,14 +240,12 @@ watch(state, (open) => {
         有效期
       </div>
       <el-radio-group v-model="expireMode">
+        <!-- 「30 天」为中继部署配置的当前默认有效期（纯展示文本，随部署调整需同步改此处） -->
         <el-radio-button value="default">
-          默认 7 天
+          中继默认（30 天）
         </el-radio-button>
         <el-radio-button value="custom">
           自定义
-        </el-radio-button>
-        <el-radio-button value="never">
-          无限期
         </el-radio-button>
       </el-radio-group>
       <div v-if="expireMode === 'custom'" class="share-dialog-config-row">
@@ -260,6 +257,7 @@ watch(state, (open) => {
           step-strictly
         />
         <span class="share-dialog-hint-inline">天</span>
+        <span class="share-dialog-hint-inline">超出中继上限时按上限生效</span>
       </div>
       <div class="share-dialog-config-label">
         访问密码（可选）

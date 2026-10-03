@@ -256,10 +256,21 @@ func newTestService(t *testing.T, stub *relayStub, workDir string, model *export
 	return svc
 }
 
+// normalizePublishOptions 测试夹具选项适配：无限期（ExpireSeconds=0）已在发布入口停用
+// （ErrShareExpireDisabled），既有用例的零值默认选项统一回落 -1（中继默认）——
+// 这些用例不关注有效期语义，仅取「发布成功」路径。关注 0 拒绝语义的用例直接调
+// svc.Publish 断言（TestPublishExpireZeroRejected），不经本函数。
+func normalizePublishOptions(opts SharePublishOptions) SharePublishOptions {
+	if opts.ExpireSeconds == 0 {
+		opts.ExpireSeconds = -1
+	}
+	return opts
+}
+
 // publishAndWait 经发布入口（Publish 直跑）启动宿主主体并等待完成事件
 func publishAndWait(t *testing.T, svc *Service, em *captureEmitter, opts SharePublishOptions) (string, ShareCompleteData) {
 	t.Helper()
-	shareID, err := svc.Publish(context.Background(), []int64{1}, nil, opts)
+	shareID, err := svc.Publish(context.Background(), []int64{1}, nil, normalizePublishOptions(opts))
 	if err != nil {
 		t.Fatalf("发布启动失败: %v", err)
 	}
@@ -795,7 +806,7 @@ func TestCancelPublish(t *testing.T) {
 		"test-instance-0001", em, nil, nil)
 	svc.setTunables(sessionRuntimeOptions{streamRate: 8 << 20})
 
-	shareID, err := svc.Publish(context.Background(), []int64{1}, nil, SharePublishOptions{})
+	shareID, err := svc.Publish(context.Background(), []int64{1}, nil, SharePublishOptions{ExpireSeconds: -1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -952,6 +963,42 @@ func TestPublishPreconditionRejected(t *testing.T) {
 		"test-instance-0001", nil, nil, nil)
 	if _, err := svc.Publish(context.Background(), []int64{1}, nil, SharePublishOptions{}); err != ErrShareRelayNotConfigured {
 		t.Fatalf("中继未配置应拒绝: %v", err)
+	}
+}
+
+// TestPublishExpireZeroRejected 无限期分享（ExpireSeconds=0）已停用：发布选项 0 在服务层
+// 前置拒绝——错误文案含「无限期」，且拒绝先于任何拨号/注册（中继桩零会话、拨号器零字节、
+// 服务零在驻会话），不发网络请求。
+func TestPublishExpireZeroRejected(t *testing.T) {
+	stub := startRelayStub(t)
+	workDir := t.TempDir()
+	model, _ := buildTestModel(t, workDir)
+	em := newCaptureEmitter()
+	dialer := &recordingDialer{}
+	svc := newTestService(t, stub, workDir, model, em, dialer, nil)
+
+	_, err := svc.Publish(context.Background(), []int64{1}, nil, SharePublishOptions{ExpireSeconds: 0})
+	if err == nil {
+		t.Fatal("发布选项 ExpireSeconds=0 应被前置拒绝")
+	}
+	if !errors.Is(err, ErrShareExpireDisabled) {
+		t.Fatalf("应返回 ErrShareExpireDisabled: %v", err)
+	}
+	if !strings.Contains(err.Error(), "无限期") {
+		t.Fatalf("错误文案应含「无限期」: %v", err)
+	}
+	// 无网络副作用：拒绝先于任何 HELLO——中继桩未产生任何注册会话、拨号器未发出任何字节
+	stub.mu.Lock()
+	sessions := len(stub.sessions)
+	stub.mu.Unlock()
+	if sessions != 0 {
+		t.Fatalf("前置拒绝不应发生注册，实际桩侧会话 %d 个", sessions)
+	}
+	if sent := dialer.snapshot(); len(sent) != 0 {
+		t.Fatalf("前置拒绝不应发出任何字节（含 HELLO），实际 %d 字节", len(sent))
+	}
+	if n := len(svc.Sessions(context.Background())); n != 0 {
+		t.Fatalf("前置拒绝不应启动会话主体，实际在驻会话 %d 个", n)
 	}
 }
 
@@ -1207,7 +1254,7 @@ func buildSelectionModel(t *testing.T, workDir string, fileWorkIDs, bareWorkIDs,
 // （publishAndWait 固定作品 [1]）
 func publishSelectionAndWait(t *testing.T, svc *Service, em *captureEmitter, workIDs, workSetIDs []int64, opts SharePublishOptions) ShareCompleteData {
 	t.Helper()
-	shareID, err := svc.Publish(context.Background(), workIDs, workSetIDs, opts)
+	shareID, err := svc.Publish(context.Background(), workIDs, workSetIDs, normalizePublishOptions(opts))
 	if err != nil {
 		t.Fatalf("发布启动失败: %v", err)
 	}

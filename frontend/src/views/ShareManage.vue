@@ -76,7 +76,9 @@ function sessionStatusKey(state: string): string {
   return `share-${state}`
 }
 
-// 有效期展示：0=无限期
+// 有效期展示：0=无限期（存量展示分支——发布弹窗已下架「无限期」模式且后端对
+// ExpireSeconds==0 前置拒绝，新发布不再产生 0 值；但历史库中 expires_at=0 的存量
+// 行（发布时未设期限、现多已撤销）仍需如实展示原语义，故保留该分支）
 function formatExpires(expiresAt: number): string {
   if (expiresAt <= 0) return '无限期'
   return new Date(expiresAt).toLocaleString()
