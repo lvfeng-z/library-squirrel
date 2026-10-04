@@ -58,7 +58,7 @@ export class SharePublishOptions {
     "title": string;
 
     /**
-     * ExpireSeconds 有效期秒数：-1=中继默认(7 天)；0=无限期；>0=自定义秒数
+     * ExpireSeconds 有效期秒数：-1=中继默认(7 天)；>0=自定义秒数（0=无限期已停用，前置拒绝）
      */
     "expireSeconds": number;
 
