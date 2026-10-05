@@ -130,6 +130,7 @@ func main() {
 			application.NewService(app.PluginHandler),
 			application.NewService(app.PluginSettingHandler),
 			application.NewService(app.StickyMemoryHandler),
+			application.NewService(app.PluginPreferenceHandler),
 			application.NewService(app.TaskHandler),
 			application.NewService(app.TaskManagerHandler),
 			application.NewService(app.FrontendExtensionHandler),

@@ -9,6 +9,7 @@ export {
     PersistentStoreDTO,
     PluginCandidate,
     PluginDTO,
+    PluginPreferenceEntryDTO,
     RankedLocalAuthor,
     RankedLocalAuthorWithWorkId,
     RankedSiteAuthor,

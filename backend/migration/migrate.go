@@ -129,6 +129,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&entity2.Poi{},
 		&entity2.Plugin{},
 		&entity2.PluginStorage{},
+		// 插件偏好记忆（插件经问答沉淀的用户决策；plugin_id 外键声明见 foreign_keys.go）
+		entity2.NewPluginPreference(),
 		entity2.NewTagNamespace(),
 		entity2.NewAuthorRole(),
 		&entity2.Task{},

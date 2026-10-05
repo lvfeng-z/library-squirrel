@@ -92,6 +92,9 @@ var fkBatches = []fkTable{
 	{Table: "plugin_storage", FKs: []fkSpec{
 		{Column: "plugin_id", Parent: "plugin"},
 	}},
+	{Table: "plugin_preference", FKs: []fkSpec{
+		{Column: "plugin_id", Parent: "plugin"},
+	}},
 	{Table: "persistent_store", FKs: []fkSpec{
 		{Column: "backup_id", Parent: "backup"},
 	}},
@@ -537,6 +540,8 @@ func cleanDanglingAssociations(db *gorm.DB) error {
 		"DELETE FROM resource_store WHERE store_id <> 0 AND NOT EXISTS (SELECT 1 FROM persistent_store WHERE id = resource_store.store_id)",
 		"DELETE FROM resource WHERE work_id <> 0 AND NOT EXISTS (SELECT 1 FROM work WHERE id = resource.work_id)",
 		"DELETE FROM plugin_storage WHERE plugin_id <> 0 AND NOT EXISTS (SELECT 1 FROM plugin WHERE id = plugin_storage.plugin_id)",
+		// 插件偏好记忆行同理：归属插件行消亡即记忆失去意义，整行 DELETE
+		"DELETE FROM plugin_preference WHERE plugin_id <> 0 AND NOT EXISTS (SELECT 1 FROM plugin WHERE id = plugin_preference.plugin_id)",
 	}
 	nulls := []string{
 		"UPDATE work SET site_id = NULL WHERE site_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM site WHERE id = work.site_id)",

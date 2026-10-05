@@ -451,6 +451,80 @@ export class PluginDTO {
 }
 
 /**
+ * PluginPreferenceEntryDTO 插件偏好管理条目：记忆管理页（按插件分组）与插件设置区
+ * （只读列表）共用的展示形态——值信封拆出的标题/描述 + 条目身份与归属插件显示信息。
+ * 管理面只读展示 + 删除，无编辑
+ */
+export class PluginPreferenceEntryDTO {
+    "id": number;
+    "pluginId": number;
+
+    /**
+     * PluginPublicId 归属插件公开 ID（前端定位插件/分组的稳定标识）
+     */
+    "pluginPublicId": string;
+
+    /**
+     * PluginName 归属插件显示名（plugin 表 name 列）
+     */
+    "pluginName": string;
+
+    /**
+     * PrefKey 插件自定义键
+     */
+    "prefKey": string;
+
+    /**
+     * Title 偏好标题（值信封携带；空值时组装方回落偏好键，管理面恒有可读文本）
+     */
+    "title": string;
+
+    /**
+     * Description 偏好描述（值信封携带，管理面次级说明文本）
+     */
+    "description": string;
+    "updateTime": number;
+
+    /** Creates a new PluginPreferenceEntryDTO instance. */
+    constructor($$source: Partial<PluginPreferenceEntryDTO> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("pluginId" in $$source)) {
+            this["pluginId"] = 0;
+        }
+        if (!("pluginPublicId" in $$source)) {
+            this["pluginPublicId"] = "";
+        }
+        if (!("pluginName" in $$source)) {
+            this["pluginName"] = "";
+        }
+        if (!("prefKey" in $$source)) {
+            this["prefKey"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("description" in $$source)) {
+            this["description"] = "";
+        }
+        if (!("updateTime" in $$source)) {
+            this["updateTime"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PluginPreferenceEntryDTO instance from a string or object.
+     */
+    static createFrom($$source: any = {}): PluginPreferenceEntryDTO {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new PluginPreferenceEntryDTO($$parsedSource as Partial<PluginPreferenceEntryDTO>);
+    }
+}
+
+/**
  * RankedLocalAuthor 带排序的本地作者
  */
 export class RankedLocalAuthor {
