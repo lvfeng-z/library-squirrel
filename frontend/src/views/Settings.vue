@@ -10,10 +10,10 @@ import ResFileNameFormatEnum from '@renderer/constants/ResFileNameFormatEnum.ts'
 import HighlightRing from '@renderer/components/common/HighlightRing.vue'
 import { useTourTargets } from '@renderer/composables/useTourTargets'
 import { useTourCenterStore } from '@renderer/store/UseTourCenterStore'
-import { settingsApi, fileSysUtilApi, fsmonitorApi, workdirGuardApi, stickyMemoryApi } from '@renderer/apis/http'
+import { settingsApi, fileSysUtilApi, fsmonitorApi, workdirGuardApi, stickyMemoryApi, pluginPreferenceApi } from '@renderer/apis/http'
 import { shareProtocolStatus, shareUnregisterProtocol } from '@renderer/apis/http/wrappers/share'
 import type { ShareProtocolRegStatus } from '@bindings/github.com/library-squirrel/backend/share/models'
-import type { StickyMemoryEntryDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
+import type { PluginPreferenceEntryDTO, StickyMemoryEntryDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import type { Settings } from '@bindings/github.com/library-squirrel/backend/settings/models'
 import { emptySettings } from '@renderer/model/util/Settings.js'
 import { useThemeStore } from '@renderer/store/UseThemeStore.ts'
@@ -29,6 +29,7 @@ onBeforeMount(() => {
   loadSettings()
   void loadProtocolStatus()
   void loadStickyMemories()
+  void loadPluginPreferences()
 })
 
 // 变量
@@ -146,6 +147,55 @@ function stickyMemorySelectedName(entry: StickyMemoryEntryDTO): string {
 }
 // 记住时间（本地化展示）
 function stickyMemoryTime(timestamp: number): string {
+  return timestamp > 0 ? new Date(timestamp).toLocaleString() : '—'
+}
+// 插件偏好（插件经问答沉淀的用户决策偏好：按插件分组展示，只删除不编辑；删除即忘掉，插件下次重新询问）
+const pluginPreferences: Ref<PluginPreferenceEntryDTO[]> = ref([])
+// 加载插件偏好列表（设置页挂载时拉取；加载失败提示错误不阻塞其余设置项）
+async function loadPluginPreferences(): Promise<void> {
+  try {
+    const response = await pluginPreferenceApi.pluginPreferenceListAll()
+    pluginPreferences.value = response.data
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  }
+}
+// 插件偏好分组：按归属插件公开 ID 分组（组头为插件显示名，空名回落公开 ID），组名排序、组内按更新时间倒序
+const pluginPreferenceGroups = computed<Array<{ pluginPublicId: string; pluginName: string; entries: PluginPreferenceEntryDTO[] }>>(() => {
+  const groups = new Map<string, { pluginPublicId: string; pluginName: string; entries: PluginPreferenceEntryDTO[] }>()
+  for (const entry of pluginPreferences.value) {
+    let group = groups.get(entry.pluginPublicId)
+    if (isNullish(group)) {
+      group = {
+        pluginPublicId: entry.pluginPublicId,
+        pluginName: isNotBlank(entry.pluginName) ? entry.pluginName : entry.pluginPublicId,
+        entries: []
+      }
+      groups.set(entry.pluginPublicId, group)
+    }
+    group.entries.push(entry)
+  }
+  return Array.from(groups.values())
+    .sort((a, b) => a.pluginName.localeCompare(b.pluginName))
+    .map((group) => ({ ...group, entries: [...group.entries].sort((a, b) => b.updateTime - a.updateTime) }))
+})
+// 删除一条插件偏好（确认后删除；删除即忘掉，该插件下次遇到相同情况会重新询问；删除后即时刷新列表）
+async function deletePluginPreference(entry: PluginPreferenceEntryDTO): Promise<void> {
+  const confirm = await ElMessageBox.confirm(
+    `删除后「${entry.title}」将被忘掉，${entry.pluginName} 下次遇到相同情况时会重新询问。`,
+    '删除插件偏好',
+    { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+  ).then(() => true).catch(() => false)
+  if (!confirm) return
+  try {
+    await pluginPreferenceApi.pluginPreferenceDelete(entry.id)
+    await loadPluginPreferences()
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  }
+}
+// 偏好更新时间（本地化展示）
+function pluginPreferenceTime(timestamp: number): string {
   return timestamp > 0 ? new Date(timestamp).toLocaleString() : '—'
 }
 // 路由实例
@@ -1035,6 +1085,49 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                     暂无记住的选择
                   </el-text>
                 </div>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">插件偏好</span>
+                    <el-text
+                      type="info"
+                      size="small"
+                    >
+                      插件经问答记住的使用偏好，删除即忘掉，下次会重新询问
+                    </el-text>
+                  </div>
+                  <template
+                    v-for="group in pluginPreferenceGroups"
+                    :key="group.pluginPublicId"
+                  >
+                    <div class="settings-plugin-preference-group">
+                      {{ group.pluginName }}
+                    </div>
+                    <div
+                      v-for="entry in group.entries"
+                      :key="entry.id"
+                      class="settings-plugin-preference-row"
+                    >
+                      <span class="settings-plugin-preference-title">{{ entry.title }}</span>
+                      <span class="settings-plugin-preference-time">{{ pluginPreferenceTime(entry.updateTime) }}</span>
+                      <el-button
+                        type="danger"
+                        class="tone-fail"
+                        size="small"
+                        @click="deletePluginPreference(entry)"
+                      >
+                        删除
+                      </el-button>
+                    </div>
+                  </template>
+                  <el-text
+                    v-if="arrayIsEmpty(pluginPreferences)"
+                    type="info"
+                    size="small"
+                    class="settings-plugin-preference-empty"
+                  >
+                    暂无插件偏好
+                  </el-text>
+                </div>
               </div>
               <div id="recycleBinSettings">
               <el-text class="settings-section-title">
@@ -1406,6 +1499,32 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
   color: var(--app-text-secondary);
 }
 .settings-sticky-memory-empty {
+  display: block;
+  padding: 6px 0;
+}
+/* 插件偏好分区：插件组头 + 条目行（标题 + 更新时间 + 删除按钮），窄容器下允许折行 */
+.settings-plugin-preference-group {
+  padding: 4px 0;
+  font-weight: 500;
+  color: var(--app-text-primary);
+}
+.settings-plugin-preference-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 6px 0;
+}
+.settings-plugin-preference-title {
+  font-weight: 500;
+  color: var(--app-text-primary);
+}
+.settings-plugin-preference-time {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--app-text-secondary);
+}
+.settings-plugin-preference-empty {
   display: block;
   padding: 6px 0;
 }
