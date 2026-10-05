@@ -1864,6 +1864,7 @@ func (p *pluginProcessParticipant) Activate(ctx context.Context, plugin *entity2
 			onEventFunc: func() func(topic string, callback func(data any)) func() { return app.frontendEventOn },
 		},
 		LibraryQuery: extension2.NewLibraryQueryProvider(app.pluginLibraryQueryDeps),
+		Preference:   app.PluginPreferenceService,
 	})
 
 	logger.Log.Infof("插件 %s: 正在启动子进程 %s", publicId, pluginPath)

@@ -587,6 +587,7 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		TaskCreateProvider:    &hostTaskCreateProvider{ctx: deps.PluginCtx},
 		FrontendEventProvider: &hostFrontendEventProvider{ctx: deps.PluginCtx},
 		LibraryQueryProvider:  &hostLibraryQueryProvider{ctx: deps.PluginCtx},
+		PreferenceProvider:    &hostPreferenceProvider{ctx: deps.PluginCtx},
 		LogFunc: func(level int32, template string, args []string, loggerName string) {
 			sugar := deps.PluginCtx.(*pluginContext).ResolveLogger(loggerName)
 			anyArgs := make([]any, len(args))
@@ -878,6 +879,25 @@ func (p *hostStorageProvider) DeleteValue(_ context.Context, key string) error {
 
 func (p *hostStorageProvider) GetAllValues(_ context.Context) (map[string]*sdkdto.StorageValue, error) {
 	return p.ctx.GetAllValues()
+}
+
+// hostPreferenceProvider 将 PluginContext 的偏好域方法组适配为 HostDeps 的
+// dto.PreferenceProvider（context.Context 形态），供 HostService 偏好三 RPC 委托；
+// 未注入偏好服务时 pluginContext 内部产生 Unimplemented 语义码并经本适配器原样透传
+type hostPreferenceProvider struct {
+	ctx sdkdto.PluginContext
+}
+
+func (p *hostPreferenceProvider) GetPreference(_ context.Context, key string) (*sdkdto.PreferenceValue, bool, error) {
+	return p.ctx.GetPreference(key)
+}
+
+func (p *hostPreferenceProvider) SetPreference(_ context.Context, key string, value *sdkdto.PreferenceValue) error {
+	return p.ctx.SetPreference(key, value)
+}
+
+func (p *hostPreferenceProvider) ListMyPreferences(_ context.Context) ([]string, error) {
+	return p.ctx.ListMyPreferences()
 }
 
 type hostPluginRootProvider struct {

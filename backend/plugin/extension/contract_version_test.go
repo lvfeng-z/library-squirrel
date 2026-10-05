@@ -39,11 +39,12 @@ func TestValidateContractVersion(t *testing.T) {
 	}
 }
 
-// TestContractVersionBaseline 契约版本双点基线锚定：SDK 当前版本与主程序最低支持版本均为 12
-// （扩展点正名：作品拉取 workFetch 的破坏性分界），任一侧升版须同步更新本基线
+// TestContractVersionBaseline 契约版本双点基线锚定：SDK 当前版本 13（偏好域三 RPC，
+// 线级新增非破坏），主程序最低支持版本 12（扩展点正名的破坏性分界——偏好域不升 min：
+// 契约 12 插件在新宿主照常运行，只是调偏好面得 Unimplemented），任一侧升版须同步更新本基线
 func TestContractVersionBaseline(t *testing.T) {
-	if pluginsdktransport.ContractVersion != 12 {
-		t.Errorf("SDK 当前契约版本 = %d, 期望 12", pluginsdktransport.ContractVersion)
+	if pluginsdktransport.ContractVersion != 13 {
+		t.Errorf("SDK 当前契约版本 = %d, 期望 13", pluginsdktransport.ContractVersion)
 	}
 	if minSupportedContractVersion != 12 {
 		t.Errorf("最低支持契约版本 = %d, 期望 12", minSupportedContractVersion)

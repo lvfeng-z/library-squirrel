@@ -2,10 +2,12 @@ package extension
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 
 	"github.com/library-squirrel/backend/base/logger"
+	"github.com/library-squirrel/backend/pluginpreference"
 	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -25,6 +27,15 @@ type PluginStorageService interface {
 	GetAllValues(ctx context.Context, pluginID int64) (map[string]*pluginsdkdto.StorageValue, error)
 }
 
+// PluginPreferenceService 插件偏好服务（由 pluginpreference 包实现）：读（无记录返回
+// nil 不报错）/ 整值覆写 / 列键三能力；无删除——「忘掉」是用户权利，删除仅经该模块
+// ManagementService（宿主记忆管理面）
+type PluginPreferenceService interface {
+	Get(ctx context.Context, pluginID int64, prefKey string) (*pluginpreference.PreferenceValue, error)
+	Set(ctx context.Context, pluginID int64, prefKey string, value *pluginpreference.PreferenceValue) error
+	ListKeys(ctx context.Context, pluginID int64) ([]string, error)
+}
+
 // TaskCreateProvider 任务创建
 type TaskCreateProvider interface {
 	CreateTaskByURL(ctx context.Context, url string) (*pluginsdkdto.CreateTaskResult, error)
@@ -39,6 +50,8 @@ type PluginContextDeps struct {
 	FrontendEvent pluginsdkdto.FrontendEventProvider
 	// LibraryQuery 库查询核心（Tier 1 只读查询；装配处构造一次全体插件共享）
 	LibraryQuery *libraryQueryProvider
+	// Preference 插件偏好服务（偏好域读写列；未注入时插件偏好调用得 Unimplemented）
+	Preference PluginPreferenceService
 }
 
 // --- Implementation ---
@@ -50,6 +63,7 @@ type pluginContext struct {
 	taskCreate    TaskCreateProvider
 	frontendEvent pluginsdkdto.FrontendEventProvider
 	query         *libraryQueryProvider
+	preference    PluginPreferenceService
 	scopedLogger  *zap.SugaredLogger
 	logger        pluginsdkdto.Logger
 }
@@ -70,6 +84,7 @@ func NewPluginContext(deps PluginContextDeps) pluginsdkdto.PluginContext {
 		taskCreate:    deps.TaskCreate,
 		frontendEvent: deps.FrontendEvent,
 		query:         deps.LibraryQuery,
+		preference:    deps.Preference,
 		scopedLogger:  sugar,
 		logger:        newHostLogger(sugar),
 	}
@@ -95,6 +110,80 @@ func (pc *pluginContext) DeleteValue(key string) error {
 
 func (pc *pluginContext) GetAllValues() (map[string]*pluginsdkdto.StorageValue, error) {
 	return pc.storage.GetAllValues(context.Background(), pc.pluginInfo.ID)
+}
+
+// --- 用户决策偏好（偏好域）---
+// 与统一 KV 配置面正交：问答沉淀的用户决策记忆（删掉后会被重新问），调用方插件身份
+// 由 pluginInfo.ID 锚定（与 plugin_storage 同一先例），跨插件键天然隔离
+
+// preferenceCore 偏好域依赖取用，未注入时返回 Unimplemented
+func (pc *pluginContext) preferenceCore() (PluginPreferenceService, error) {
+	if pc.preference == nil {
+		return nil, status.Error(codes.Unimplemented, "偏好域能力未配置")
+	}
+	return pc.preference, nil
+}
+
+// GetPreference 读偏好：无记录返回 (nil,false,nil) 不报错——无记录是合法状态（用户
+// 已删除或从未写入），调用方据此重新发起问答。出线方向：主仓信封负载（any）序列化
+// 为线级 JSON 文本
+func (pc *pluginContext) GetPreference(key string) (*pluginsdkdto.PreferenceValue, bool, error) {
+	svc, err := pc.preferenceCore()
+	if err != nil {
+		return nil, false, err
+	}
+	v, err := svc.Get(context.Background(), pc.pluginInfo.ID, key)
+	if err != nil {
+		return nil, false, err
+	}
+	if v == nil {
+		return nil, false, nil
+	}
+	data := ""
+	if v.Data != nil {
+		raw, err := json.Marshal(v.Data)
+		if err != nil {
+			return nil, false, fmt.Errorf("偏好值负载序列化失败: %w", err)
+		}
+		data = string(raw)
+	}
+	return &pluginsdkdto.PreferenceValue{
+		SchemaVersion: int32(v.SchemaVersion),
+		Title:         v.Title,
+		Description:   v.Description,
+		Data:          data,
+	}, true, nil
+}
+
+// SetPreference 整值覆写。入线方向：线级 JSON 文本经 json.RawMessage 原样字节嵌入
+// 主仓信封（不做解码再编码的往返），非法 JSON 在落库序列化时报错回传插件
+func (pc *pluginContext) SetPreference(key string, value *pluginsdkdto.PreferenceValue) error {
+	svc, err := pc.preferenceCore()
+	if err != nil {
+		return err
+	}
+	if value == nil {
+		return pluginpreference.ErrNilPreferenceValue
+	}
+	var data any
+	if value.Data != "" {
+		data = json.RawMessage(value.Data)
+	}
+	return svc.Set(context.Background(), pc.pluginInfo.ID, key, &pluginpreference.PreferenceValue{
+		SchemaVersion: int(value.SchemaVersion),
+		Title:         value.Title,
+		Description:   value.Description,
+		Data:          data,
+	})
+}
+
+// ListMyPreferences 列本插件全部偏好键（插件自身域）
+func (pc *pluginContext) ListMyPreferences() ([]string, error) {
+	svc, err := pc.preferenceCore()
+	if err != nil {
+		return nil, err
+	}
+	return svc.ListKeys(context.Background(), pc.pluginInfo.ID)
 }
 
 // --- 任务 ---

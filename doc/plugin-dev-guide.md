@@ -109,7 +109,7 @@ type MyWorkFetcher struct{}
 | `description` | string | 否 | 描述 |
 | `entryFile` | string | 条件必填 | 可执行文件名（运行时插件必填，纯 UI 插件不需要） |
 | `activation.type` | number | 是 | `0`=手动激活，`1`=启动时自动激活 |
-| `contractVersion` | number | 是 | 编译期契约版本（主程序据此协商加载，见「契约版本协商」）。**显式手填、不随 SDK 自动跟随**——SDK 升版后须自行改本字段；当前 = 12 |
+| `contractVersion` | number | 是 | 编译期契约版本（主程序据此协商加载，见「契约版本协商」）。**显式手填、不随 SDK 自动跟随**——SDK 升版后须自行改本字段；当前 = 13 |
 | `configSchemaVersion` | number | 否 | 配置 schema 版本（0/缺省=legacy 不管理；启用配置迁移时从 1 起递增，见 8.3）。与 contractVersion 正交：前者管插件配置结构，后者管 host↔plugin 协议 |
 | `settings` | `[SettingDeclaration]` | 否 | 用户可配置项声明，住清单根级（见「settings 用户设置声明」与 8.2）；`extensions` 子对象内出现 `settings` 键（值 `null` 亦然）即判不合格 |
 | `settingsResolver` | `{script, contractVersion}` | 否 | 设置驱动参与度 resolver 声明：`script` 为住插件包根目录的脚本文件名、`contractVersion` 当前唯一受支持值 1；安装时对脚本做在场/体积/语法/默认值 dry-run 校验，见 8.4 |
@@ -202,7 +202,7 @@ type MyWorkFetcher struct{}
 
 ### 契约版本协商
 
-`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 12，直接引用 SDK `transport.ContractVersion` 常量，`backend/plugin/extension/loader.go:41`）与 `minSupportedContractVersion`（当前 12，`backend/plugin/extension/loader.go:47`），插件 manifest 声明自己编译时锁定的 `contractVersion`。**该字段是 plugin.json 的显式手填字段，不随 SDK 自动跟随**——SDK 提升 `ContractVersion` 常量后，你必须自行把它改到 plugin.json 里；漏改即被主程序按「过旧」拒载。
+`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 13，直接引用 SDK `transport.ContractVersion` 常量，`backend/plugin/extension/loader.go:41`）与 `minSupportedContractVersion`（当前 12，`backend/plugin/extension/loader.go:47`），插件 manifest 声明自己编译时锁定的 `contractVersion`。**该字段是 plugin.json 的显式手填字段，不随 SDK 自动跟随**——SDK 提升 `ContractVersion` 常量后，你必须自行把它改到 plugin.json 里；漏改即被主程序按「过旧」拒载。
 
 **校验**（安装期预检 + 加载期终检，硬拒绝 + 清晰提示）：
 - 插件 `contractVersion` > 主程序 `current` → 插件太新，拒（提示升级主程序）。
@@ -222,8 +222,9 @@ type MyWorkFetcher struct{}
 - 10 — 插件清单结构变更：用户设置项声明（settings 段）住清单根级，`extensions` 段只承载能力包声明、不承载 settings 子段（其子对象内该键在场即判不合格）。段位置变更属宿主读清单的源级破坏——主程序 `minSupportedContractVersion` 同步升 10（低于 10 的清单拒载，捆绑包随之重建）。
 - 11 — **注册面声明化 + siteAuthorFetch 实例化**：`extensions.siteAuthorFetch` 由单对象 `{sites}` 改**数组** `[{id,name,sites}]`（条目 id 插件内唯一、name 必填）；拉取请求 `FetchSiteAuthorInfoRequest` 加 `extensionId`（插件侧服务端按条目 id 分派、未命中报 `InvalidArgument`，SDK `WithSiteAuthorFetcher(id, fetcher)` 改为可按条目多次注册）；`workFetch/siteBrowsers` 的 `name` 变必填并由宿主**激活期按清单条目派生注册**（元数据 name/description 取清单）；`workFetch[]` 加可选 `urlPatterns`（URL 监听迁清单，宿主激活期建派生索引）；HostService 五个运行时注册/监听 RPC（五个旧 RPC 名与线级破坏细节见 SDK 契约版本历史 `library-squirrel-sdk/transport/contract.go` 第 11 条）与 `PluginContext` 对应方法整体退役。**删 RPC 属线级破坏**——主程序 `minSupportedContractVersion` 同步升 11（v10 及以下插件包拒载并提示升级，捆绑包随之重建）。
 - 12 — **扩展点正名**：作品拉取扩展点（`workFetch` / `WorkFetcher` / `WorkFetchService`）由上一代旧名正名而来——其旧名标识符与线级破坏细节见 SDK 契约版本历史 `library-squirrel-sdk/transport/contract.go` 第 12 条（本指南的历史版本条目一律以现行段名 `workFetch` 记该扩展点）。清单段名、SDK 接口与选项、gRPC 服务名、宿主侧类型与状态字段一并更换。清单段名更换属宿主读清单的源级破坏、gRPC 服务名更换属线级破坏——主程序 `minSupportedContractVersion` 同步升 12（v11 及以下插件包拒载并提示升级，捆绑包随之重建）。
+- 13 — **用户决策偏好域**：HostService 新增 `GetPreference`/`SetPreference`/`ListMyPreferences` 三 RPC（插件经用户问答沉淀的决策记忆，与 `plugin_storage` 配置面正交，见 8.5），SDK `PluginContext` 配套三方法。**线级新增、非破坏**——旧插件不调新 RPC，契约 12 插件在新宿主照常运行，故 `minSupportedContractVersion` 维持 12；新插件对旧宿主调用偏好面得 gRPC `Unimplemented`（降级纪律见 5.1「Unimplemented 降级」），既有面不受影响。
 
-**填法（注意：手填，不自动跟随）**：插件作者须把 SDK 的 `ContractVersion` 常量（`github.com/lvfeng-z/library-squirrel-sdk/transport.ContractVersion`）**显式写进 plugin.json 的 `contractVersion` 字段**——该字段不会随 SDK 升版自动变化，SDK bump 后漏改即被主程序按「过旧」拒载。bump（提升契约版本）只在破坏性变更时由 SDK 侧发起（proto 加字段、**加 RPC** 不 bump；删/改字段、删 RPC、改 DTO 结构/RPC 签名/前端 props 契约才 bump）。加 RPC 不 bump 意味着版本门拦不住「同代宿主缺某查询端点」的组合——运行期探测约定见 5.1「Unimplemented 降级」。
+**填法（注意：手填，不自动跟随）**：插件作者须把 SDK 的 `ContractVersion` 常量（`github.com/lvfeng-z/library-squirrel-sdk/transport.ContractVersion`）**显式写进 plugin.json 的 `contractVersion` 字段**——该字段不会随 SDK 升版自动变化，SDK bump 后漏改即被主程序按「过旧」拒载。bump（提升契约版本）只在破坏性变更或新能力族标识时由 SDK 侧发起（删/改字段、删 RPC、改 DTO 结构/RPC 签名/前端 props 契约必 bump；proto 加字段、加 RPC 通常不 bump，但当其**开启一族新能力**（宿主/插件按契约版本识别该能力是否可用，如 v7 周边写面、v13 偏好域）时作为能力标识 bump）。加 RPC 不必然 bump 意味着版本门可能拦不住「同代宿主缺某端点」的组合——运行期探测约定见 5.1「Unimplemented 降级」。
 
 ### 能力声明（能力包与可选功能）
 
@@ -360,7 +361,7 @@ func main() {
 
 ## 五、PluginContext 完整 API
 
-`ctx sdkdto.PluginContext` 是插件访问主程序能力的**唯一入口**，共 37 个方法（16 个通用方法 + 21 个库查询方法，后者见 5.1）：
+`ctx sdkdto.PluginContext` 是插件访问主程序能力的**唯一入口**，共 40 个方法（19 个通用方法 + 21 个库查询方法，后者见 5.1）：
 
 | 分类 | 方法 | 签名 |
 |---|---|---|
@@ -369,6 +370,9 @@ func main() {
 | | `SetValueEncrypted` | `(key, value string) error` |
 | | `DeleteValue` | `(key string) error` |
 | | `GetAllValues` | `() (map[string]*StorageValue, error)` |
+| 用户决策偏好 | `GetPreference` | `(key string) (*PreferenceValue, bool, error)`（无记录 `(nil,false,nil)` 不报错，见 8.5） |
+| | `SetPreference` | `(key string, value *PreferenceValue) error`（整值覆写） |
+| | `ListMyPreferences` | `() ([]string, error)`（本插件键清单） |
 | 任务 | `CreateTask` | `(url string) (*CreateTaskResult, error)` |
 | 前端通信 | `PublishToFrontend` | `(topic string, data []byte) error` |
 | | `SubscribeFrontend` | `(topic string) (<-chan []byte, error)` |
@@ -406,7 +410,7 @@ func main() {
 5. **未命中语义**：`Get*` 族未命中返回 gRPC `NotFound`；`Query*` 族的 `site_key` 是过滤条件而非寻址——site_key 未命中注册表返回**空集**（不报错）。
 6. **relPath 正斜杠纪律**：`StoreInfo.file_path` 是 workDir 相对路径（relPath 域），分隔符**恒为正斜杠**（与库内存储一致）。Windows 插件拼 OS 路径自行 `filepath.Join(workDir, filePath)` 现场转换，禁止把反斜杠版本回存或作为比较键。
 7. **文件访问边界（「给位置」档）**：查询 API 给位置不给内容——结果携带 `file_path`，配合 `GetWorkDir` 可定位库内文件。当前信任模型下插件是可信子进程：拿到位置物理上可自读、可直写库内文件——**API 永不提供写入口 ≠ 物理防住**。绕过主程序直写库内文件会破坏一致性（fsmonitor 对账、软删状态、路径/命名规约），后果自负；需要写入时走既有业务流（任务管线 `CreateTask`）。
-8. **Unimplemented 降级约定**：加 RPC 不 bump contractVersion（见「契约版本协商」），版本门拦不住「同代宿主缺某查询端点」的组合——典型如用新 SDK 编译、manifest 手动声明低契约版本的插件运行在旧宿主上。调用宿主未实现的查询端点得到 gRPC `Unimplemented`，应作为「宿主过旧、无此查询能力」的探测信号**优雅降级**（隐藏依赖该端点的功能 / 提示升级主程序），禁止当作数据错误或无限重试。跨代组合（插件声明 > 宿主 current）在加载期即被拒，不会进入运行期。
+8. **Unimplemented 降级约定**：加 RPC 不必然 bump contractVersion（通则见「契约版本协商」），版本门可能拦不住「同代宿主缺某查询端点」的组合——典型如用新 SDK 编译、manifest 手动声明低契约版本的插件运行在旧宿主上（v13 偏好域三 RPC 对契约 12 宿主即此形态）。调用宿主未实现的查询端点得到 gRPC `Unimplemented`，应作为「宿主过旧、无此查询能力」的探测信号**优雅降级**（隐藏依赖该端点的功能 / 提示升级主程序），禁止当作数据错误或无限重试。跨代组合（插件声明 > 宿主 current）在加载期即被拒，不会进入运行期。
 
 **已知边界（如实记录）**：
 
@@ -898,6 +902,42 @@ function resolve(input) {
 }
 ```
 
+### 8.5 用户决策偏好（偏好域）
+
+插件经用户问答沉淀的**决策记忆**存储（宿主 `plugin_preference` 域）：插件问（自建 dialog + 前端通信，见第九章）→ 用户答 → 落宿主偏好域 → 用户可在主程序记忆管理页查看与删除，删除后插件下次**重新问**。契约 v13 起可用。
+
+**与 plugin_storage / settings 的边界**（一句话判据）：**删掉它之后用户会被重新问吗？会 → 偏好域；不会 → settings/plugin_storage。** 偏好域存的是「用户的决策」（数据主人是用户，问答发生时才产生）；plugin_storage/settings 存的是「插件的配置」（用户主动设置、清单静态声明、表单渲染）。
+
+**三方法**：
+
+```go
+// 读：无记录返回 (nil, false, nil) 不报错——无记录是合法状态（用户已删除或从未写入），
+// 据此回落重新发起问答
+v, ok, err := ctx.GetPreference("illust.form")
+if err == nil && ok {
+    // v 是 *PreferenceValue，消费 v.Data / v.SchemaVersion ...
+}
+
+// 写：整值覆写（同键已存在则整体重写），值恒为完整信封
+err := ctx.SetPreference("illust.form", &sdkdto.PreferenceValue{
+    SchemaVersion: 1,          // 值结构版本，初值 1，规则类值演进时自管升版
+    Title:    "图文形态",       // 写入时随值携带，供宿主记忆管理页展示
+    Description: "多图模式",
+    Data:     `{"form":"multi"}`, // 插件自定义负载（JSON 文本），宿主只存不解释
+})
+
+// 列：本插件全部偏好键（跨插件键互不可见）
+keys, err := ctx.ListMyPreferences()
+```
+
+**值信封约定**：`PreferenceValue` 四字段——`SchemaVersion`（顶层整数，初值 1；规则类值会演进，无版本的结构变更会静默损坏既有记忆，读取时高于自身支持版本应 fail-fast）、`Title`/`Description`（**写入时随值携带**——决策标题在问答发生时才确定，供宿主记忆管理页与插件设置区展示，区别于清单静态声明）、`Data`（插件自定义负载，JSON 文本形态，粒度编码在键或值内由插件自决）。
+
+**写入纪律（文档约定，不强制）**：仅写**经用户问答确认的决策**——偏好域用户可见（记忆管理页），把插件内部状态当偏好写入会污染用户可见的记忆列表。
+
+**无删除方法**：「忘掉」是用户权利，删除仅经主程序记忆管理页（设置 → 记住的选择）与插件设置区的删除入口——插件只能覆写、不能销毁记忆。偏好被用户删除后 `GetPreference` 即返回无记录，插件下次重新发起问答。
+
+**旧宿主降级**：契约 <13 的宿主未实现偏好三 RPC，调用得 gRPC `Unimplemented`——按 5.1「Unimplemented 降级」优雅降级（回落为每次都问 / 提示升级主程序），禁止当作数据错误。
+
 ## 九、前端通信
 
 插件与前端通过 **Wails Events** 双向通信（经主程序 gRPC 桥接）。
@@ -1141,7 +1181,7 @@ return fmt.Errorf("API 业务错误: code=%d message=%s body=%s", code, msg, tru
 - **受限模式**：用户可开启「受限模式」（设置页开关），启用后启动时仅激活官方捆绑插件、跳过所有第三方——用于排查问题时的安全启动。第三方插件在受限模式下不运行。
 17. **HTTP Transport 分离 + 代理决策**：API 路径（风控敏感）与下载路径（重连代价高）用不同 Transport；代理走"显式设置 > 系统代理(注册表) > env"，`DisableKeepAlives` 默认开、连接复用 opt-in（见 7.1）。
 18. **`ExecuteScript` 有 UAF 风险**：注入窗口内容改用 `data:URL` Navigate，不要 `ExecuteScript(document.write)`（见第十节）。
-19. **manifest 手填 contractVersion**：`contractVersion` 是 plugin.json 的**显式手填字段、不随 SDK 自动跟随**——发布前须把它手动对齐目标主程序支持的契约版本（当前 12）；不声明或版本不匹配会被主程序拒绝加载（见「契约版本协商」）。
+19. **manifest 手填 contractVersion**：`contractVersion` 是 plugin.json 的**显式手填字段、不随 SDK 自动跟随**——发布前须把它手动对齐目标主程序支持的契约版本（当前 13）；不声明或版本不匹配会被主程序拒绝加载（见「契约版本协商」）。
 20. **能力声明与实现一致**：实现 `WorkOrderQuerier` 的 workFetch 条目须在其 `options` 含 `"workOrderQuery"`、实现 `WorkSetRelationQuerier` 须含 `"workSetRelationQuery"`、声明站点作者拉取的插件须在 `extensions.siteAuthorFetch` 声明条目（`id`/`name` 必填）并在 `sites` 列出其服务的站点键、需声明 URL 监听的 workFetch 条目须写 `urlPatterns`；声明而未实现（缺 `WithWorkFetcher`/`WithSiteAuthorFetcher` 对应条目实现）或实现而未声明，均不符契约（见「能力声明」）。
 21. **resourceViewer 用 render.Context**：插件资源渲染器 props 是 `{context: render.Context}`（非主程序 `WorkFullDTO`）；类型从 SDK `dto/render` 引用，禁用主程序展示 DTO 替代（见「资源渲染器契约」）。
 22. **共享枚举用 SDK 常量禁字面量**：store_type/resource_type/generation 一律用 `sdkdto.*` 常量，禁硬编码字面量（见「共享枚举常量」）。
