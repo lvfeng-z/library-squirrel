@@ -56,6 +56,9 @@ officialPlugins:
     buildId: c3ea033-dirty
     contentDigest: b76da5914b17c0c6b9bc8f41b1102f2a43c0a875c51f0a930f0fca3ff31b6679
   - publicId: com.lvfeng.bilibiliSuite
+    buildId: d996c4d
+    contentDigest: 64fb32b60cf6d138e4f23f1dd8128261a45430b667cb972290fe6bcd7cf23595
+  - publicId: com.lvfeng.bilibiliSuite
     buildId: ea26505
     contentDigest: 5c633fec0b0c41b9508638bc4c1f6c052816974c868c2c9b07acde35c41d492d
   - publicId: com.lvfeng.bilibiliSuite
