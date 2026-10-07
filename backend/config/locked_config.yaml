@@ -20,6 +20,9 @@ officialPlugins:
     buildId: 11b2c36
     contentDigest: 88af50fff9371cabc0806752cdaf4a38173ae28242831c059ea1978b75c4563c
   - publicId: com.lvfeng.bilibiliSuite
+    buildId: 2257d97
+    contentDigest: 307490f401252179bb41061d98e6ab7489f92af706b4d5a710d01b12cdd68efb
+  - publicId: com.lvfeng.bilibiliSuite
     buildId: "25446e9"
     contentDigest: 9864471a583d727ccc9597cfa7ffe2c2f556fca3b78892aa00f2d03d5418b1a8
   - publicId: com.lvfeng.bilibiliSuite
