@@ -71,6 +71,11 @@ func taskChunk(siteWorkId string) *gen.CreateChunk {
 	}}
 }
 
+// heartbeatChunk 构造心跳块（插件 Create handler 执行期等待保活的空消息）。
+func heartbeatChunk() *gen.CreateChunk {
+	return &gen.CreateChunk{Payload: &gen.CreateChunk_Heartbeat{Heartbeat: &gen.Heartbeat{}}}
+}
+
 // TestProxyCreate_FirstChunkError 插件 Create 错误返回时流仅含单个 error 块（无 mode 块）：
 // 代理解析为零任务批量结果并承载 reason。
 func TestProxyCreate_FirstChunkError(t *testing.T) {
@@ -175,5 +180,98 @@ func TestProxyCreate_RecvErrorReturned(t *testing.T) {
 
 	if _, err := proxy.Create("http://x"); err == nil {
 		t.Fatal("gRPC 层收流错误应原样返回，得到 nil")
+	}
+}
+
+// TestProxyCreate_HeartbeatBeforeMode 心跳块先于 mode 块到达（插件在 Create handler 内
+// 等待用户输入等长逻辑时保活）：首块等待跳过心跳块，mode 块照常生效。
+func TestProxyCreate_HeartbeatBeforeMode(t *testing.T) {
+	proxy := newCreateProxy(
+		heartbeatChunk(),
+		heartbeatChunk(),
+		&gen.CreateChunk{Payload: &gen.CreateChunk_Mode{Mode: &gen.CreateMode{IsStream: false}}},
+		taskChunk("w-1"),
+	)
+
+	result, err := proxy.Create("http://x")
+	if err != nil {
+		t.Fatalf("Create 返回错误: %v", err)
+	}
+	if result.IsStream() {
+		t.Fatal("期望批量模式，得到流式")
+	}
+	if got := len(result.Array()); got != 1 {
+		t.Fatalf("期望收集 1 个任务，得到 %d 个", got)
+	}
+	if got := result.Reason(); got != "" {
+		t.Fatalf("无 error 块时 reason 应为空，得到 %q", got)
+	}
+}
+
+// TestProxyCreate_HeartbeatThenError 心跳块之后到达 error 块：等待期内插件以业务失败收口，
+// reason 透传、零任务。
+func TestProxyCreate_HeartbeatThenError(t *testing.T) {
+	proxy := newCreateProxy(
+		heartbeatChunk(),
+		&gen.CreateChunk{Payload: &gen.CreateChunk_Error{Error: "等待期失败"}},
+	)
+
+	result, err := proxy.Create("http://x")
+	if err != nil {
+		t.Fatalf("Create 返回错误: %v", err)
+	}
+	if result.IsStream() {
+		t.Fatal("期望批量模式，得到流式")
+	}
+	if got := len(result.Array()); got != 0 {
+		t.Fatalf("期望零任务，得到 %d 个", got)
+	}
+	if got := result.Reason(); got != "等待期失败" {
+		t.Fatalf("期望 reason 透传，得到 %q", got)
+	}
+}
+
+// TestProxyCreate_BatchToleratesInterleavedHeartbeat 批量收集循环对心跳块零感知：
+// 心跳穿插任务块之间不截断收集、不影响结果内容。
+func TestProxyCreate_BatchToleratesInterleavedHeartbeat(t *testing.T) {
+	proxy := newCreateProxy(
+		&gen.CreateChunk{Payload: &gen.CreateChunk_Mode{Mode: &gen.CreateMode{IsStream: false}}},
+		taskChunk("w-1"),
+		heartbeatChunk(),
+		taskChunk("w-2"),
+	)
+
+	result, err := proxy.Create("http://x")
+	if err != nil {
+		t.Fatalf("Create 返回错误: %v", err)
+	}
+	if got := len(result.Array()); got != 2 {
+		t.Fatalf("期望收集 2 个任务，得到 %d 个", got)
+	}
+}
+
+// TestProxyCreate_StreamToleratesInterleavedHeartbeat 流式接收泵对心跳块零感知：
+// 心跳穿插任务块之间不进结果 channel、不中断泵。
+func TestProxyCreate_StreamToleratesInterleavedHeartbeat(t *testing.T) {
+	proxy := newCreateProxy(
+		&gen.CreateChunk{Payload: &gen.CreateChunk_Mode{Mode: &gen.CreateMode{IsStream: true}}},
+		taskChunk("w-1"),
+		heartbeatChunk(),
+		taskChunk("w-2"),
+	)
+
+	result, err := proxy.Create("http://x")
+	if err != nil {
+		t.Fatalf("Create 返回错误: %v", err)
+	}
+	if !result.IsStream() {
+		t.Fatal("期望流式模式，得到批量")
+	}
+	var ids []string
+	for resp := range result.Stream() {
+		ids = append(ids, resp.SiteWorkId)
+	}
+	if len(ids) != 2 || ids[0] != "w-1" || ids[1] != "w-2" {
+		t.Fatalf("期望 2 个任务按序流经 channel，得到 %v", ids)
 	}
 }

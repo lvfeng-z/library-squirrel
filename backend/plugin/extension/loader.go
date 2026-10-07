@@ -661,12 +661,15 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		return fmt.Errorf("%w: unexpected plugin type for %s", ErrPluginLoadFailed, pluginPublicId)
 	}
 
-	// 发送 Activate 请求（插件自存信息已由统一 KV 取代，不再传递插件级 plugin_data）
+	// 发送 Activate 请求（插件自存信息已由统一 KV 取代，不再传递插件级 plugin_data）；
+	// 宿主契约版本随请求下发——插件据此在运行时门控按契约版本开放的能力
+	// （版本不足的能力自行降级，如流等待期心跳上报回落 no-op）
 	_, err = services.Lifecycle.Activate(context.Background(), &gen.ActivateRequest{
-		PluginPublicId:   deps.PluginInfo.PublicID,
-		RootPath:         deps.PluginInfo.RootPath,
-		HostServiceId:    services.HostServiceId,
-		MainWindowHandle: uint64(deps.MainHWND),
+		PluginPublicId:      deps.PluginInfo.PublicID,
+		RootPath:            deps.PluginInfo.RootPath,
+		HostServiceId:       services.HostServiceId,
+		MainWindowHandle:    uint64(deps.MainHWND),
+		HostContractVersion: uint32(currentContractVersion),
 	})
 	if err != nil {
 		client.Kill()

@@ -39,12 +39,14 @@ func TestValidateContractVersion(t *testing.T) {
 	}
 }
 
-// TestContractVersionBaseline 契约版本双点基线锚定：SDK 当前版本 13（偏好域三 RPC，
-// 线级新增非破坏），主程序最低支持版本 12（扩展点正名的破坏性分界——偏好域不升 min：
-// 契约 12 插件在新宿主照常运行，只是调偏好面得 Unimplemented），任一侧升版须同步更新本基线
+// TestContractVersionBaseline 契约版本双点基线锚定：SDK 当前版本 14（流等待期心跳——
+// Create/Start/Resume 三流 handler 执行期的等待保活，CreateChunk/StreamChunk 加心跳态 +
+// Activate 加宿主契约版本协商字段；线级新增非破坏，旧插件不发心跳块零行为变化），
+// 主程序最低支持版本 12（扩展点正名的破坏性分界——心跳不升 min：契约 12 插件在新宿主
+// 照常运行），任一侧升版须同步更新本基线
 func TestContractVersionBaseline(t *testing.T) {
-	if pluginsdktransport.ContractVersion != 13 {
-		t.Errorf("SDK 当前契约版本 = %d, 期望 13", pluginsdktransport.ContractVersion)
+	if pluginsdktransport.ContractVersion != 14 {
+		t.Errorf("SDK 当前契约版本 = %d, 期望 14", pluginsdktransport.ContractVersion)
 	}
 	if minSupportedContractVersion != 12 {
 		t.Errorf("最低支持契约版本 = %d, 期望 12", minSupportedContractVersion)

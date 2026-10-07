@@ -70,11 +70,20 @@ func (p *WorkFetchProxy) CreateWithContext(ctx context.Context, url string) (*pl
 		return nil, err
 	}
 
-	// 读取首条消息：正常流首块为 mode 块；插件 Create 错误返回时首块（也是唯一块）为 error 块，无 mode 块
-	chunk, err := recvWithIdleTimeout(stream.Recv, cancel, p.readerIdleTimeout)
-	if err != nil {
-		cancel()
-		return nil, err
+	// 读取首条实质性消息：正常流首块为 mode 块；插件 Create 错误返回时首块（也是唯一块）为 error 块，
+	// 无 mode 块。心跳块（插件 Create handler 执行期等待保活，如等用户输入）可先于 mode/error 到达，
+	// 跳过后继续等待——每次接收的空闲窗口独立起算，心跳到达即重置窗口，周期心跳可维持等待越过
+	// 单个窗口；心跳停止后连接静默照常按窗超时（hang 检测保留）
+	var chunk *gen.CreateChunk
+	for {
+		chunk, err = recvWithIdleTimeout(stream.Recv, cancel, p.readerIdleTimeout)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		if chunk.GetHeartbeat() == nil {
+			break
+		}
 	}
 
 	// error 块承载插件业务失败原因（用户可读文本），必为流的最后一块
@@ -437,6 +446,10 @@ func recvSpecsAndPull(
 		switch payload := chunk.Payload.(type) {
 		case *gen.StreamChunk_WorkResponse:
 			workResp = protoToWorkResponse(payload.WorkResponse)
+			continue
+		case *gen.StreamChunk_Heartbeat:
+			// 心跳块（插件 Start/Resume handler 执行期等待保活）：忽略继续等首响应，
+			// 每次接收的空闲窗口独立起算，心跳到达即重置窗口
 			continue
 		case *gen.StreamChunk_Specs:
 			metas = payload.Specs.GetItems()

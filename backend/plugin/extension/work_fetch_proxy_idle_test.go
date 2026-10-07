@@ -234,3 +234,63 @@ func TestRecvSpecsAndPull_FirstResponseIdleTimeout(t *testing.T) {
 		t.Fatal("超时应 cancel 所属流 ctx")
 	}
 }
+
+// heartbeatThenHangingClient 先周期产出心跳块（周期小于空闲窗）、随后静默 hang 的客户端替身：
+// 心跳块由后台 goroutine 按周期送达，发满预算次数后停发，流的 Recv 从此阻塞直至流 ctx 取消
+// （模拟插件等待期上报心跳、等待点收尾后连接静默）。
+type heartbeatThenHangingClient struct {
+	gen.WorkFetchServiceClient
+}
+
+func (c *heartbeatThenHangingClient) Create(ctx context.Context, _ *gen.CreateRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[gen.CreateChunk], error) {
+	beat := make(chan *gen.CreateChunk)
+	go func() {
+		defer close(beat)
+		for i := 0; i < 5; i++ {
+			time.Sleep(20 * time.Millisecond)
+			select {
+			case beat <- heartbeatChunk():
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return &heartbeatCreateStream{streamCtx: ctx, beat: beat}, nil
+}
+
+// heartbeatCreateStream 心跳送达期内返回心跳块，心跳停发后 Recv 静默阻塞的流替身。
+type heartbeatCreateStream struct {
+	grpc.ClientStream
+	streamCtx context.Context
+	beat      chan *gen.CreateChunk
+}
+
+func (s *heartbeatCreateStream) Recv() (*gen.CreateChunk, error) {
+	c, ok := <-s.beat
+	if ok {
+		return c, nil
+	}
+	<-s.streamCtx.Done()
+	return nil, s.streamCtx.Err()
+}
+
+// TestProxyCreate_HeartbeatExtendsWindowThenTimeout 周期心跳维持首块等待越过单个空闲窗
+// （心跳到达即重置窗口），心跳停止后连接静默仍按窗超时——hang 检测保留的锚定：
+// 心跳延长的是线级窗口，不取消空闲检测本身。
+func TestProxyCreate_HeartbeatExtendsWindowThenTimeout(t *testing.T) {
+	proxy := newWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &heartbeatThenHangingClient{}}}, "", "")
+	proxy.readerIdleTimeout = 60 * time.Millisecond
+
+	start := time.Now()
+	_, err := proxy.Create("http://x")
+	if err == nil || !strings.Contains(err.Error(), "空闲超时") {
+		t.Fatalf("心跳停止后应按空闲窗超时，得到 %v", err)
+	}
+	// 5 次心跳 × ≥20ms 周期（累计 ≥100ms）越过单个 60ms 窗口，末次心跳后再满一个窗口才超时
+	if elapsed := time.Since(start); elapsed < 120*time.Millisecond {
+		t.Fatalf("心跳应将首块等待维持过单个空闲窗，实际 %v 即超时", elapsed)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("停跳后应在窗口内超时，实际耗时 %v", elapsed)
+	}
+}
