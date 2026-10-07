@@ -109,7 +109,7 @@ type MyWorkFetcher struct{}
 | `description` | string | 否 | 描述 |
 | `entryFile` | string | 条件必填 | 可执行文件名（运行时插件必填，纯 UI 插件不需要） |
 | `activation.type` | number | 是 | `0`=手动激活，`1`=启动时自动激活 |
-| `contractVersion` | number | 是 | 编译期契约版本（主程序据此协商加载，见「契约版本协商」）。**显式手填、不随 SDK 自动跟随**——SDK 升版后须自行改本字段；当前 = 13 |
+| `contractVersion` | number | 是 | 编译期契约版本（主程序据此协商加载，见「契约版本协商」）。**显式手填、不随 SDK 自动跟随**——SDK 升版后须自行改本字段；当前 = 14 |
 | `configSchemaVersion` | number | 否 | 配置 schema 版本（0/缺省=legacy 不管理；启用配置迁移时从 1 起递增，见 8.3）。与 contractVersion 正交：前者管插件配置结构，后者管 host↔plugin 协议 |
 | `settings` | `[SettingDeclaration]` | 否 | 用户可配置项声明，住清单根级（见「settings 用户设置声明」与 8.2）；`extensions` 子对象内出现 `settings` 键（值 `null` 亦然）即判不合格 |
 | `settingsResolver` | `{script, contractVersion}` | 否 | 设置驱动参与度 resolver 声明：`script` 为住插件包根目录的脚本文件名、`contractVersion` 当前唯一受支持值 1；安装时对脚本做在场/体积/语法/默认值 dry-run 校验，见 8.4 |
@@ -202,7 +202,7 @@ type MyWorkFetcher struct{}
 
 ### 契约版本协商
 
-`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 13，直接引用 SDK `transport.ContractVersion` 常量，`backend/plugin/extension/loader.go:41`）与 `minSupportedContractVersion`（当前 12，`backend/plugin/extension/loader.go:47`），插件 manifest 声明自己编译时锁定的 `contractVersion`。**该字段是 plugin.json 的显式手填字段，不随 SDK 自动跟随**——SDK 提升 `ContractVersion` 常量后，你必须自行把它改到 plugin.json 里；漏改即被主程序按「过旧」拒载。
+`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 14，直接引用 SDK `transport.ContractVersion` 常量，`backend/plugin/extension/loader.go:41`）与 `minSupportedContractVersion`（当前 12，`backend/plugin/extension/loader.go:47`），插件 manifest 声明自己编译时锁定的 `contractVersion`。**该字段是 plugin.json 的显式手填字段，不随 SDK 自动跟随**——SDK 提升 `ContractVersion` 常量后，你必须自行把它改到 plugin.json 里；漏改即被主程序按「过旧」拒载。
 
 **校验**（安装期预检 + 加载期终检，硬拒绝 + 清晰提示）：
 - 插件 `contractVersion` > 主程序 `current` → 插件太新，拒（提示升级主程序）。
@@ -223,6 +223,7 @@ type MyWorkFetcher struct{}
 - 11 — **注册面声明化 + siteAuthorFetch 实例化**：`extensions.siteAuthorFetch` 由单对象 `{sites}` 改**数组** `[{id,name,sites}]`（条目 id 插件内唯一、name 必填）；拉取请求 `FetchSiteAuthorInfoRequest` 加 `extensionId`（插件侧服务端按条目 id 分派、未命中报 `InvalidArgument`，SDK `WithSiteAuthorFetcher(id, fetcher)` 改为可按条目多次注册）；`workFetch/siteBrowsers` 的 `name` 变必填并由宿主**激活期按清单条目派生注册**（元数据 name/description 取清单）；`workFetch[]` 加可选 `urlPatterns`（URL 监听迁清单，宿主激活期建派生索引）；HostService 五个运行时注册/监听 RPC（五个旧 RPC 名与线级破坏细节见 SDK 契约版本历史 `library-squirrel-sdk/transport/contract.go` 第 11 条）与 `PluginContext` 对应方法整体退役。**删 RPC 属线级破坏**——主程序 `minSupportedContractVersion` 同步升 11（v10 及以下插件包拒载并提示升级，捆绑包随之重建）。
 - 12 — **扩展点正名**：作品拉取扩展点（`workFetch` / `WorkFetcher` / `WorkFetchService`）由上一代旧名正名而来——其旧名标识符与线级破坏细节见 SDK 契约版本历史 `library-squirrel-sdk/transport/contract.go` 第 12 条（本指南的历史版本条目一律以现行段名 `workFetch` 记该扩展点）。清单段名、SDK 接口与选项、gRPC 服务名、宿主侧类型与状态字段一并更换。清单段名更换属宿主读清单的源级破坏、gRPC 服务名更换属线级破坏——主程序 `minSupportedContractVersion` 同步升 12（v11 及以下插件包拒载并提示升级，捆绑包随之重建）。
 - 13 — **用户决策偏好域**：HostService 新增 `GetPreference`/`SetPreference`/`ListMyPreferences` 三 RPC（插件经用户问答沉淀的决策记忆，与 `plugin_storage` 配置面正交，见 8.5），SDK `PluginContext` 配套三方法。**线级新增、非破坏**——旧插件不调新 RPC，契约 12 插件在新宿主照常运行，故 `minSupportedContractVersion` 维持 12；新插件对旧宿主调用偏好面得 gRPC `Unimplemented`（降级纪律见 5.1「Unimplemented 降级」），既有面不受影响。
+- 14 — **流等待期心跳**（插件在流式 RPC 的 handler 执行期周期向该流发送的保活块，语义=「本等待点有界且仍在推进」）：Create/Start/Resume 三流一次定形——插件在 handler 内的长等待点（等用户输入、串行外部请求、重试退避等自身带界的等待）上报心跳，维持宿主的流空闲检测窗（越过 Create 首块 / Start·Resume 首响应的 60 秒空闲超时，见 6.1「流等待期心跳」）。**线级新增、非破坏**——不接入心跳的插件（含全部旧插件）线形态零变化，故 `minSupportedContractVersion` 维持 12；作为能力标识升版的依据=proto 新增共享消息与两流新 payload 态，宿主据此认定对心跳块的容忍度。旧宿主（≤13）不识别心跳块，插件侧上报按协商到的宿主契约版本自动降为 no-op（协商字段 `ActivateRequest.host_contract_version` 随本次升版下发）；契约 14 的插件包对旧宿主仍在加载期被拒。
 
 **填法（注意：手填，不自动跟随）**：插件作者须把 SDK 的 `ContractVersion` 常量（`github.com/lvfeng-z/library-squirrel-sdk/transport.ContractVersion`）**显式写进 plugin.json 的 `contractVersion` 字段**——该字段不会随 SDK 升版自动变化，SDK bump 后漏改即被主程序按「过旧」拒载。bump（提升契约版本）只在破坏性变更或新能力族标识时由 SDK 侧发起（删/改字段、删 RPC、改 DTO 结构/RPC 签名/前端 props 契约必 bump；proto 加字段、加 RPC 通常不 bump，但当其**开启一族新能力**（宿主/插件按契约版本识别该能力是否可用，如 v7 周边写面、v13 偏好域）时作为能力标识 bump）。加 RPC 不必然 bump 意味着版本门可能拦不住「同代宿主缺某端点」的组合——运行期探测约定见 5.1「Unimplemented 降级」。
 
@@ -517,6 +518,25 @@ type StoreSpec struct {
 - **`Format` 前导点约定**:扩展名(如 `.mp4`、`.jpg`、`.md`)。主程序 `resolveStorePath` 经 `normalizeExt` 统一补前导点(不带点会自动补),**带不带点都正确**,建议带点(与 ResourceType 文件标准一致)。命名规约(库内落盘 `store/work/{桶段}/{site_key}_{siteWorkId 派生段}/{role}_{seq 三位零填充}.<ext>`,桶段=复合键 SHA256 前 2 位 hex,恒带 role_seq、thumbnail 普通 role 无特例,派生函数为本 SDK `storepath` 包)详见 `doc/store-naming-convention.md`。
 - **`ExpectedSha256` 声明期望哈希(可选)**:插件在 Start/Resume 产出 spec 时声明来源侧的期望 SHA256(十六进制字符串,比对大小写不敏感)。主程序**照单消费、不以本地计算替代声明源**——下载流边写边算实测哈希,暂存写满(EOF 完整性校验通过)后与声明值比对:空(`nil`)=不校验(未声明插件零负担天然兼容);不符=任务失败,报「资源完整性校验失败（<role>）：来源声明的哈希与下载内容不符」,暂存保留供诊断(重试重下覆盖)。声明值应取自来源站点的权威元数据(如 API 返回的文件哈希),不要由插件对下载流自行预计算——预计算与主程序实测同源,校验无增量价值。
 - **specs 顺序确定性(重要)**:同 role 内的 `store_seq` 由主程序按 Start/Resume 返回的 specs 顺序分配(spec 在同 role 内的出现序即 store_seq 序)。插件必须保证**同 role 的 specs 相对顺序跨 Start/Resume/重试稳定**(站点内容更新导致轨道增/删除外)——该顺序即落盘文件名(`role_seq`)与续传配对(`StreamOffsets` 按 role+store_seq 匹配)的身份依据:顺序漂移=文件名漂移=引用断裂,已落盘文件与续传偏移会对不上新序的 spec。保证手法:specs 列表由稳定的源顺序(如站点 API 返回序)构建,不要用 map 遍历等无序来源拼装。
+
+#### 流等待期心跳（契约 14）
+
+插件的流式 RPC（`Create`/`Start`/`Resume`）在 handler 执行期不发任何块——宿主在首块（`Create`）或首响应（`Start`/`Resume`）到达之前只能按空闲判活（`liveness.ReaderIdleTimeout`，60 秒；按次接收起算，数据到达即重置）。handler 内的长等待（等用户在弹窗作答、串行的外部请求、重试/退避循环）若静默超过该窗，流会被宿主判为无响应而终止。**流等待期心跳**＝插件在这类等待里周期向当前流发送的保活块（proto `Heartbeat` 消息，不带载荷）；每块到达即重置宿主的空闲窗，等待时长因此不再受 60 秒线级窗约束。
+
+**心跳语义＝「本等待点有界且仍在推进」**。机制不校验插件在等什么，故**每个上报心跳的等待点必须保有自身超时**（问询弹窗有 dismiss 上限、扫码窗有二维码有效期、网络调用有 HTTP 超时）——这是约定级约束：在永不收口的等待里上报心跳，会让宿主对全部插件失效 hang 检测（表现为「创建中」通知长期滞留）。等待点自身超时仍是唯一的收口兜底，不因上报心跳而放宽。
+
+两条接入通道：
+
+- **`Create`（可选接口）**：`Create` 签名无 ctx，故经可选接口接入——在 `WorkFetcher` 之外实现 `dto.HeartbeatCreateFetcher`（`dto/work_fetch.go`：在 `WorkFetcher` 之上加 `CreateWithHeartbeat(url string, reporter dto.HeartbeatReporter)`），SDK 服务端调用它时把上报器传入。未实现该接口的插件照旧走 `Create`，行为零变化。
+- **`Start`/`Resume`（ctx 取用）**：两者 handler 签名已带 ctx，上报器经 ctx 注入，插件在 handler 内调 `dto.HeartbeatFromContext(ctx)` 取用（`dto/heartbeat.go`；未注入路径返回空实现 `dto.NoopHeartbeat`，无需判空）。接入粒度＝每次 RPC 调用，上报器随调用到达、按流程独立，同插件并发多条流互不干扰。
+
+上报器（`dto.HeartbeatReporter`，方法 `Heartbeat()`）的要点：
+
+- **生命周期由 SDK 管理**：handler 返回后 SDK 关闭上报器，随后的结果块 / 首响应发送独占该流——插件只调用、不关闭。
+- **限频 20 秒**（`liveness.HeartbeatInterval`，取 60 秒窗的 1/3）：间隔内的重复调用被静默吞掉，故消费方**可以任意 tick 频率调用**而不产生线上噪音。
+- **方法并发安全**：可为单个长阻塞调用挂后台 ticker 调用它；**等待终结时须停止该 ticker**——否则 handler 余下的执行期仍在续窗（无正确性危害，但线上有虚耗）。handler 返回后的调用本就是 no-op。
+- **旧宿主上自动降级**：协商到的宿主契约版本低于心跳能力版本时调用为 no-op，线形态与今日一致。插件如需据此分档（如长等待上限按宿主是否容忍心跳取值），读 `transport.HostContractVersion()`。
+- **pull 数据传输期不支持**：心跳域止于 handler 执行期——`Start`/`Resume` 返回后进入的数据拉取阶段，传输停滞超过 60 秒空闲窗被宿主判为无响应是**应有的** hang 检测（数据流卡死该杀），该阶段无心跳可用、也不该用。
 
 #### ctx 与 reader 契约(重要)
 
@@ -1181,7 +1201,7 @@ return fmt.Errorf("API 业务错误: code=%d message=%s body=%s", code, msg, tru
 - **受限模式**：用户可开启「受限模式」（设置页开关），启用后启动时仅激活官方捆绑插件、跳过所有第三方——用于排查问题时的安全启动。第三方插件在受限模式下不运行。
 17. **HTTP Transport 分离 + 代理决策**：API 路径（风控敏感）与下载路径（重连代价高）用不同 Transport；代理走"显式设置 > 系统代理(注册表) > env"，`DisableKeepAlives` 默认开、连接复用 opt-in（见 7.1）。
 18. **`ExecuteScript` 有 UAF 风险**：注入窗口内容改用 `data:URL` Navigate，不要 `ExecuteScript(document.write)`（见第十节）。
-19. **manifest 手填 contractVersion**：`contractVersion` 是 plugin.json 的**显式手填字段、不随 SDK 自动跟随**——发布前须把它手动对齐目标主程序支持的契约版本（当前 13）；不声明或版本不匹配会被主程序拒绝加载（见「契约版本协商」）。
+19. **manifest 手填 contractVersion**：`contractVersion` 是 plugin.json 的**显式手填字段、不随 SDK 自动跟随**——发布前须把它手动对齐目标主程序支持的契约版本（当前 14）；不声明或版本不匹配会被主程序拒绝加载（见「契约版本协商」）。
 20. **能力声明与实现一致**：实现 `WorkOrderQuerier` 的 workFetch 条目须在其 `options` 含 `"workOrderQuery"`、实现 `WorkSetRelationQuerier` 须含 `"workSetRelationQuery"`、声明站点作者拉取的插件须在 `extensions.siteAuthorFetch` 声明条目（`id`/`name` 必填）并在 `sites` 列出其服务的站点键、需声明 URL 监听的 workFetch 条目须写 `urlPatterns`；声明而未实现（缺 `WithWorkFetcher`/`WithSiteAuthorFetcher` 对应条目实现）或实现而未声明，均不符契约（见「能力声明」）。
 21. **resourceViewer 用 render.Context**：插件资源渲染器 props 是 `{context: render.Context}`（非主程序 `WorkFullDTO`）；类型从 SDK `dto/render` 引用，禁用主程序展示 DTO 替代（见「资源渲染器契约」）。
 22. **共享枚举用 SDK 常量禁字面量**：store_type/resource_type/generation 一律用 `sdkdto.*` 常量，禁硬编码字面量（见「共享枚举常量」）。
