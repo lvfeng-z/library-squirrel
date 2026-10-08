@@ -109,7 +109,7 @@ type MyWorkFetcher struct{}
 | `description` | string | 否 | 描述 |
 | `entryFile` | string | 条件必填 | 可执行文件名（运行时插件必填，纯 UI 插件不需要） |
 | `activation.type` | number | 是 | `0`=手动激活，`1`=启动时自动激活 |
-| `contractVersion` | number | 是 | 编译期契约版本（主程序据此协商加载，见「契约版本协商」）。**显式手填、不随 SDK 自动跟随**——SDK 升版后须自行改本字段；当前 = 14 |
+| `contractVersion` | number | 是 | 编译期契约版本（主程序据此协商加载，见「契约版本协商」）。**显式手填、不随 SDK 自动跟随**——SDK 升版后须自行改本字段；当前 = 15 |
 | `configSchemaVersion` | number | 否 | 配置 schema 版本（0/缺省=legacy 不管理；启用配置迁移时从 1 起递增，见 8.3）。与 contractVersion 正交：前者管插件配置结构，后者管 host↔plugin 协议 |
 | `settings` | `[SettingDeclaration]` | 否 | 用户可配置项声明，住清单根级（见「settings 用户设置声明」与 8.2）；`extensions` 子对象内出现 `settings` 键（值 `null` 亦然）即判不合格 |
 | `settingsResolver` | `{script, contractVersion}` | 否 | 设置驱动参与度 resolver 声明：`script` 为住插件包根目录的脚本文件名、`contractVersion` 当前唯一受支持值 1；安装时对脚本做在场/体积/语法/默认值 dry-run 校验，见 8.4 |
@@ -202,7 +202,7 @@ type MyWorkFetcher struct{}
 
 ### 契约版本协商
 
-`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 14，直接引用 SDK `transport.ContractVersion` 常量，`backend/plugin/extension/loader.go:41`）与 `minSupportedContractVersion`（当前 12，`backend/plugin/extension/loader.go:47`），插件 manifest 声明自己编译时锁定的 `contractVersion`。**该字段是 plugin.json 的显式手填字段，不随 SDK 自动跟随**——SDK 提升 `ContractVersion` 常量后，你必须自行把它改到 plugin.json 里；漏改即被主程序按「过旧」拒载。
+`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 15，直接引用 SDK `transport.ContractVersion` 常量，`backend/plugin/extension/loader.go:41`）与 `minSupportedContractVersion`（当前 12，`backend/plugin/extension/loader.go:47`），插件 manifest 声明自己编译时锁定的 `contractVersion`。**该字段是 plugin.json 的显式手填字段，不随 SDK 自动跟随**——SDK 提升 `ContractVersion` 常量后，你必须自行把它改到 plugin.json 里；漏改即被主程序按「过旧」拒载。
 
 **校验**（安装期预检 + 加载期终检，硬拒绝 + 清晰提示）：
 - 插件 `contractVersion` > 主程序 `current` → 插件太新，拒（提示升级主程序）。
@@ -224,6 +224,7 @@ type MyWorkFetcher struct{}
 - 12 — **扩展点正名**：作品拉取扩展点（`workFetch` / `WorkFetcher` / `WorkFetchService`）由上一代旧名正名而来——其旧名标识符与线级破坏细节见 SDK 契约版本历史 `library-squirrel-sdk/transport/contract.go` 第 12 条（本指南的历史版本条目一律以现行段名 `workFetch` 记该扩展点）。清单段名、SDK 接口与选项、gRPC 服务名、宿主侧类型与状态字段一并更换。清单段名更换属宿主读清单的源级破坏、gRPC 服务名更换属线级破坏——主程序 `minSupportedContractVersion` 同步升 12（v11 及以下插件包拒载并提示升级，捆绑包随之重建）。
 - 13 — **用户决策偏好域**：HostService 新增 `GetPreference`/`SetPreference`/`ListMyPreferences` 三 RPC（插件经用户问答沉淀的决策记忆，与 `plugin_storage` 配置面正交，见 8.5），SDK `PluginContext` 配套三方法。**线级新增、非破坏**——旧插件不调新 RPC，契约 12 插件在新宿主照常运行，故 `minSupportedContractVersion` 维持 12；新插件对旧宿主调用偏好面得 gRPC `Unimplemented`（降级纪律见 5.1「Unimplemented 降级」），既有面不受影响。
 - 14 — **流等待期心跳**（插件在流式 RPC 的 handler 执行期周期向该流发送的保活块，语义=「本等待点有界且仍在推进」）：Create/Start/Resume 三流一次定形——插件在 handler 内的长等待点（等用户输入、串行外部请求、重试退避等自身带界的等待）上报心跳，维持宿主的流空闲检测窗（越过 Create 首块 / Start·Resume 首响应的 60 秒空闲超时，见 6.1「流等待期心跳」）。**线级新增、非破坏**——不接入心跳的插件（含全部旧插件）线形态零变化，故 `minSupportedContractVersion` 维持 12；作为能力标识升版的依据=proto 新增共享消息与两流新 payload 态，宿主据此认定对心跳块的容忍度。旧宿主（≤13）不识别心跳块，插件侧上报按协商到的宿主契约版本自动降为 no-op（协商字段 `ActivateRequest.host_contract_version` 随本次升版下发）；契约 14 的插件包对旧宿主仍在加载期被拒。
+- 15 — **宿主代理解析**：HostService 新增 `ResolveProxy` RPC（插件出网代理三级检测收归宿主：显式 > Windows 系统代理〔注册表〕> 环境变量，按请求目标地址匹配 scheme/NO_PROXY；SDK `proxy` 包以默认 Transport 消费，见 7.1），SDK `PluginContext` 配套 `ResolveProxy` 方法。**线级新增、非破坏**——旧插件不调新 RPC，契约 12 插件在新宿主照常运行，故 `minSupportedContractVersion` 维持 12；新插件对旧宿主调用得 gRPC `Unimplemented`（SDK `proxy` 包自动降级为「显式 > 环境变量」，降级纪律见 5.1「Unimplemented 降级」），既有面不受影响。
 
 **填法（注意：手填，不自动跟随）**：插件作者须把 SDK 的 `ContractVersion` 常量（`github.com/lvfeng-z/library-squirrel-sdk/transport.ContractVersion`）**显式写进 plugin.json 的 `contractVersion` 字段**——该字段不会随 SDK 升版自动变化，SDK bump 后漏改即被主程序按「过旧」拒载。bump（提升契约版本）只在破坏性变更或新能力族标识时由 SDK 侧发起（删/改字段、删 RPC、改 DTO 结构/RPC 签名/前端 props 契约必 bump；proto 加字段、加 RPC 通常不 bump，但当其**开启一族新能力**（宿主/插件按契约版本识别该能力是否可用，如 v7 周边写面、v13 偏好域）时作为能力标识 bump）。加 RPC 不必然 bump 意味着版本门可能拦不住「同代宿主缺某端点」的组合——运行期探测约定见 5.1「Unimplemented 降级」。
 
@@ -362,7 +363,7 @@ func main() {
 
 ## 五、PluginContext 完整 API
 
-`ctx sdkdto.PluginContext` 是插件访问主程序能力的**唯一入口**，共 40 个方法（19 个通用方法 + 21 个库查询方法，后者见 5.1）：
+`ctx sdkdto.PluginContext` 是插件访问主程序能力的**唯一入口**，共 41 个方法（20 个通用方法 + 21 个库查询方法，后者见 5.1）：
 
 | 分类 | 方法 | 签名 |
 |---|---|---|
@@ -374,6 +375,7 @@ func main() {
 | 用户决策偏好 | `GetPreference` | `(key string) (*PreferenceValue, bool, error)`（无记录 `(nil,false,nil)` 不报错，见 8.5） |
 | | `SetPreference` | `(key string, value *PreferenceValue) error`（整值覆写） |
 | | `ListMyPreferences` | `() ([]string, error)`（本插件键清单） |
+| 代理解析 | `ResolveProxy` | `(explicitURL, requestURL string) (proxyURL, source string, error)`（宿主三级检测：显式 > 系统代理 > 环境变量；通常经 SDK `proxy` 包默认 Transport 间接消费，见 7.1） |
 | 任务 | `CreateTask` | `(url string) (*CreateTaskResult, error)` |
 | 前端通信 | `PublishToFrontend` | `(topic string, data []byte) error` |
 | | `SubscribeFrontend` | `(topic string) (<-chan []byte, error)` |
@@ -707,12 +709,25 @@ type SiteBrowser interface {
 
 ### 7.1 HTTP 客户端与代理
 
-用户常处于 VPN/代理环境，插件 HTTP 客户端必须正确决策代理：
+用户常处于 VPN/代理环境，插件 HTTP 客户端必须正确决策代理。**契约 v15 起代理三级检测已收归宿主**——插件用 SDK `proxy` 包构造出网 Transport，不自建检测：
 
-- **代理决策顺序**：插件显式设置（用户在 `settings` 填 `proxyUrl`）> 系统代理 > 环境变量（`HTTP_PROXY`/`HTTPS_PROXY`）。
-- **Windows 系统代理要走注册表**：`http.ProxyFromEnvironment` 只读环境变量、不读 Windows 系统代理（注册表 `ProxyServer`），导致"规则模式 VPN"（设系统代理、不设 env）下插件直连被限速/拦截。需自行读注册表补全。
-- **连接复用（keep-alive）opt-in 而非默认**：某些代理（尤其 HTTP 隧道）对 keep-alive 连接发送 `Unsolicited response`，导致复用连接读到脏数据。建议 API/下载路径的 `http.Transport` 默认 `DisableKeepAlives=true`，仅在确认代理健康时显式开启连接池（配 `IdleConnTimeout`/`ResponseHeaderTimeout` 降低取到陈旧连接的概率）。
-- **下载路径与 API 路径用不同 Transport**：API 路径（短请求、风控敏感）禁用 keep-alive；下载路径（大文件、重连代价高）可开启连接复用（opt-in）。
+```go
+// Activate 内注入（早于任何网络请求）：proxyUrl 为插件设置透传，空 = 自动检测
+proxyURL := ""
+if v, _ := ctx.GetValue("proxyUrl"); v != nil {
+    proxyURL = v.Value
+}
+sdkproxy.Configure(ctx, proxyURL, ctx.GetLogger().Named("MyAPI"))
+
+// 出网 Transport：true 禁用连接复用（API 路径），false 启用连接池（下载路径）
+client := &http.Client{Transport: sdkproxy.NewTransport(true)}
+```
+
+- **三级检测宿主承载**：显式设置（`Configure` 透传的插件设置 `proxyUrl`）> Windows 系统代理（注册表）> 环境变量（`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`，按请求目标地址匹配）。逐请求决议、无启动期缓存——代理中途开关对下一请求即时生效。
+- **为什么标准库不够**：`http.ProxyFromEnvironment` 只读环境变量、不读 Windows 系统代理（注册表 `ProxyServer`），「规则模式 VPN」（设系统代理、不设 env）下会直连被限速/拦截——宿主经注册表读取补全这一层，插件开箱即得。
+- **降级链**：宿主解析不可用（RPC 失败 / 超出 1 秒超时预算 / 旧宿主 `Unimplemented`）时 SDK 自动降级为「显式 > 环境变量」，请求不因解析失败或超时而失败（首次降级打一条告警日志）。
+- **宿主诊断日志只记来源标签**（`explicit`/`system`/`env`/`none`）：代理地址可含 userinfo（口令）、目标地址属插件出网行为，均不落日志——插件侧排查代理问题时以来源标签对照三级链各层配置。
+- **连接复用（keep-alive）opt-in 而非默认**：某些代理（尤其 HTTP 隧道）对 keep-alive 连接发送 `Unsolicited response`，导致复用连接读到脏数据。`NewTransport(disableKeepAlives)` 两态已内置调参：API 路径（短请求、风控敏感）传 `true` 禁用 keep-alive；下载路径（大文件、重连代价高）确认代理健康后传 `false` 启用连接池（`IdleConnTimeout` 30s、`MaxIdleConnsPerHost` 4、`ResponseHeaderTimeout` 30s，降低取到被代理/CDN 单方面关闭的陈旧连接的概率）。
 
 ### 7.2 站点风控识别与应对
 
@@ -1199,9 +1214,9 @@ return fmt.Errorf("API 业务错误: code=%d message=%s body=%s", code, msg, tru
 - **运行后能力仍全开**：一旦 trusted 运行，插件经 `PluginContext` 拥有的全部宿主能力（数据读写、任务、网络、窗口）**不受信任状态裁剪**。当前模型不做沙箱隔离与能力裁剪（完整沙箱属后续规划）；即用户「信任」即等于授予完整权限，**请你在插件文档中如实说明插件的权限行为**。
 - **构建身份（buildId）**：构建管线（build.ps1）自动把 `git describe` 输出写入 plugin.json `buildId`，主程序以它判同构建（捆绑插件升级检测）并作前端资产缓存键。插件作者无需手写、不应手改（见第十八节）。
 - **受限模式**：用户可开启「受限模式」（设置页开关），启用后启动时仅激活官方捆绑插件、跳过所有第三方——用于排查问题时的安全启动。第三方插件在受限模式下不运行。
-17. **HTTP Transport 分离 + 代理决策**：API 路径（风控敏感）与下载路径（重连代价高）用不同 Transport；代理走"显式设置 > 系统代理(注册表) > env"，`DisableKeepAlives` 默认开、连接复用 opt-in（见 7.1）。
+17. **HTTP Transport 分离 + 代理决策**：API 路径（风控敏感）与下载路径（重连代价高）用不同 Transport（`sdkproxy.NewTransport` 两态）；代理决策走宿主三级解析（显式设置 > 系统代理 > 环境变量，见 7.1），`DisableKeepAlives` 默认开、连接复用 opt-in。
 18. **`ExecuteScript` 有 UAF 风险**：注入窗口内容改用 `data:URL` Navigate，不要 `ExecuteScript(document.write)`（见第十节）。
-19. **manifest 手填 contractVersion**：`contractVersion` 是 plugin.json 的**显式手填字段、不随 SDK 自动跟随**——发布前须把它手动对齐目标主程序支持的契约版本（当前 14）；不声明或版本不匹配会被主程序拒绝加载（见「契约版本协商」）。
+19. **manifest 手填 contractVersion**：`contractVersion` 是 plugin.json 的**显式手填字段、不随 SDK 自动跟随**——发布前须把它手动对齐目标主程序支持的契约版本（当前 15）；不声明或版本不匹配会被主程序拒绝加载（见「契约版本协商」）。
 20. **能力声明与实现一致**：实现 `WorkOrderQuerier` 的 workFetch 条目须在其 `options` 含 `"workOrderQuery"`、实现 `WorkSetRelationQuerier` 须含 `"workSetRelationQuery"`、声明站点作者拉取的插件须在 `extensions.siteAuthorFetch` 声明条目（`id`/`name` 必填）并在 `sites` 列出其服务的站点键、需声明 URL 监听的 workFetch 条目须写 `urlPatterns`；声明而未实现（缺 `WithWorkFetcher`/`WithSiteAuthorFetcher` 对应条目实现）或实现而未声明，均不符契约（见「能力声明」）。
 21. **resourceViewer 用 render.Context**：插件资源渲染器 props 是 `{context: render.Context}`（非主程序 `WorkFullDTO`）；类型从 SDK `dto/render` 引用，禁用主程序展示 DTO 替代（见「资源渲染器契约」）。
 22. **共享枚举用 SDK 常量禁字面量**：store_type/resource_type/generation 一律用 `sdkdto.*` 常量，禁硬编码字面量（见「共享枚举常量」）。

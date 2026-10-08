@@ -8,6 +8,7 @@ import (
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/pluginpreference"
+	"github.com/library-squirrel/backend/sysproxy"
 	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
@@ -184,6 +185,18 @@ func (pc *pluginContext) ListMyPreferences() ([]string, error) {
 		return nil, err
 	}
 	return svc.ListKeys(context.Background(), pc.pluginInfo.ID)
+}
+
+// --- 代理解析 ---
+
+// ResolveProxy 宿主三级代理解析（显式 > 系统代理 > 环境变量），逐请求现查无缓存，
+// 代理开关对下一请求即时生效；返回代理地址（空 = 直连）与来源标签。诊断日志只记
+// 来源标签、Debug 级（每请求一条）：代理地址可含 userinfo（口令）、目标地址属插件
+// 出网行为，均不落日志
+func (pc *pluginContext) ResolveProxy(explicitURL, requestURL string) (string, string, error) {
+	proxyURL, source := sysproxy.Resolve(explicitURL, requestURL)
+	pc.scopedLogger.Debugf("代理解析 ResolveProxy(source=%s)", source)
+	return proxyURL, source, nil
 }
 
 // --- 任务 ---

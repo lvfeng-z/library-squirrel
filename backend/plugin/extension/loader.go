@@ -588,6 +588,7 @@ func (l *Loader) LoadPluginProcess(exePath string, pluginPublicId string, deps P
 		FrontendEventProvider: &hostFrontendEventProvider{ctx: deps.PluginCtx},
 		LibraryQueryProvider:  &hostLibraryQueryProvider{ctx: deps.PluginCtx},
 		PreferenceProvider:    &hostPreferenceProvider{ctx: deps.PluginCtx},
+		ProxyResolveProvider:  &hostProxyResolveProvider{ctx: deps.PluginCtx},
 		LogFunc: func(level int32, template string, args []string, loggerName string) {
 			sugar := deps.PluginCtx.(*pluginContext).ResolveLogger(loggerName)
 			anyArgs := make([]any, len(args))
@@ -901,6 +902,17 @@ func (p *hostPreferenceProvider) SetPreference(_ context.Context, key string, va
 
 func (p *hostPreferenceProvider) ListMyPreferences(_ context.Context) ([]string, error) {
 	return p.ctx.ListMyPreferences()
+}
+
+// hostProxyResolveProvider 将 PluginContext 的代理解析方法适配为 HostDeps 的
+// dto.ProxyResolveProvider（context.Context 形态），供 HostService ResolveProxy RPC
+// 委托；三级检测（显式 > 系统代理 > 环境变量）由 sysproxy 能力包承载
+type hostProxyResolveProvider struct {
+	ctx sdkdto.PluginContext
+}
+
+func (p *hostProxyResolveProvider) ResolveProxy(_ context.Context, explicitURL, requestURL string) (string, string, error) {
+	return p.ctx.ResolveProxy(explicitURL, requestURL)
 }
 
 type hostPluginRootProvider struct {
