@@ -97,7 +97,7 @@ func TestPureUIPluginActivationEvaluatesParticipation(t *testing.T) {
 	cleanupInstallDir(t, publicId)
 
 	// 参与度真相层 + 真实存储服务（SettingsReader 面）+ 设置服务（落库触发接线）
-	storageSvc := NewPluginStorageService(newMockStorageRepo())
+	storageSvc := NewPluginStorageService(newMockStorageRepo(), newTestStorageCipher(t))
 	mgr := participation.NewManager(storageSvc, util.RootPath())
 	svc.RegisterLifecycleParticipant(&pureUIParticipant{mgr: mgr})
 	settingSvc := NewPluginSettingService(repo, storageSvc, util.RootPath(), mgr)

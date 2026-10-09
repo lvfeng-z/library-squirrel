@@ -159,7 +159,7 @@ func TestGetPluginStatusParticipationFromTruthLayer(t *testing.T) {
 		_ = os.RemoveAll(filepath.Join(util.RootPath(), PluginPackageRoot, publicId))
 	})
 
-	mgr := participation.NewManager(NewPluginStorageService(newMockStorageRepo()), util.RootPath())
+	mgr := participation.NewManager(NewPluginStorageService(newMockStorageRepo(), newTestStorageCipher(t)), util.RootPath())
 	svc.SetParticipationStatusProvider(mgr)
 
 	parsed, err := readPluginManifest(row)

@@ -47,6 +47,18 @@ func (r *PluginStorageRepository) ListByPlugin(ctx context.Context, pluginID int
 	return entities, nil
 }
 
+// ListAllEncrypted 列出全部加密行（跨插件，Encrypted=true），供存量密文迁移扫描
+func (r *PluginStorageRepository) ListAllEncrypted(ctx context.Context) ([]*domain.PluginStorage, error) {
+	var entities []*domain.PluginStorage
+	err := r.GORM().WithContext(ctx).
+		Where("encrypted = ?", true).
+		Find(&entities).Error
+	if err != nil {
+		return nil, err
+	}
+	return entities, nil
+}
+
 // DeleteByKey 根据 plugin_id 和 key 删除
 func (r *PluginStorageRepository) DeleteByKey(ctx context.Context, pluginID int64, key string) error {
 	return r.GORM().WithContext(ctx).

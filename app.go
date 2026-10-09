@@ -55,6 +55,7 @@ import (
 	"github.com/library-squirrel/backend/recycleBin"
 	"github.com/library-squirrel/backend/resource"
 	"github.com/library-squirrel/backend/search"
+	"github.com/library-squirrel/backend/secretkey"
 	"github.com/library-squirrel/backend/settings"
 	"github.com/library-squirrel/backend/share"
 	"github.com/library-squirrel/backend/shareLock"
@@ -84,48 +85,48 @@ type App struct {
 	db *gorm.DB
 
 	// 业务服务
-	LocalTagService         *localTag.Service
-	LocalAuthorService      *localAuthor.Service
-	SiteTagService          *siteTag.Service
-	SiteAuthorService       *siteAuthor.Service
-	SiteService             *site.Service
-	ResourceService         *resource.Service
-	MergeService            *resource.MergeService
-	ReplaceService          *resource.ReplacementService // 替换链能力（taskManager 替换链改接；分享收件接入见阶段5）
-	DuplicateService        *duplicate.Service           // 查重判定能力（taskManager 查重改接；分享收件接入见阶段5）
-	ReWorkAuthorService     *reWorkAuthor.Service
-	ReWorkTagService        *reWorkTag.Service
-	TagNamespaceService     *tagNamespace.Service
-	AuthorRoleService       *authorRole.Service
-	WorkService             *work.Service
-	WorkSetService          *workSet.Service
-	SearchService           *search.Service
-	SettingsService         *settings.Service
-	BackupService           *backup.Service
-	AppLauncherService      *appLauncher.Service
-	FileSysUtilService      *fileSysUtil.Service
-	FrontendLogService      *frontendLog.Service
-	PluginService           *plugin.Service
-	PluginStorageService    *plugin.PluginStorageService
-	PluginSettingService    *plugin.PluginSettingService
-	ParticipationManager    *participation.Manager
-	TaskService             *task.Service
-	TaskManagerService      *taskManager.Manager
-	SiteBrowserService      *siteBrowser.Service
-	PersistentStoreService  *persistentStore.Service
-	AuthorInfoService       *authorInfo.Service
-	StickyMemoryService     *stickymemory.Service
+	LocalTagService        *localTag.Service
+	LocalAuthorService     *localAuthor.Service
+	SiteTagService         *siteTag.Service
+	SiteAuthorService      *siteAuthor.Service
+	SiteService            *site.Service
+	ResourceService        *resource.Service
+	MergeService           *resource.MergeService
+	ReplaceService         *resource.ReplacementService // 替换链能力（taskManager 替换链改接；分享收件接入见阶段5）
+	DuplicateService       *duplicate.Service           // 查重判定能力（taskManager 查重改接；分享收件接入见阶段5）
+	ReWorkAuthorService    *reWorkAuthor.Service
+	ReWorkTagService       *reWorkTag.Service
+	TagNamespaceService    *tagNamespace.Service
+	AuthorRoleService      *authorRole.Service
+	WorkService            *work.Service
+	WorkSetService         *workSet.Service
+	SearchService          *search.Service
+	SettingsService        *settings.Service
+	BackupService          *backup.Service
+	AppLauncherService     *appLauncher.Service
+	FileSysUtilService     *fileSysUtil.Service
+	FrontendLogService     *frontendLog.Service
+	PluginService          *plugin.Service
+	PluginStorageService   *plugin.PluginStorageService
+	PluginSettingService   *plugin.PluginSettingService
+	ParticipationManager   *participation.Manager
+	TaskService            *task.Service
+	TaskManagerService     *taskManager.Manager
+	SiteBrowserService     *siteBrowser.Service
+	PersistentStoreService *persistentStore.Service
+	AuthorInfoService      *authorInfo.Service
+	StickyMemoryService    *stickymemory.Service
 	// 插件偏好记忆（运行时面：插件侧读/写/列，无删除；供插件 HostService 桥接消费）
 	PluginPreferenceService *pluginpreference.Service
 	// 插件偏好记忆管理面（列表 + 删除——删除仅此面，「忘掉」是用户权利）
 	PluginPreferenceManagementService *pluginpreference.ManagementService
-	ExportService           *export.Service
-	ShareService            *share.Service
-	ShareLockRegistry       shareLock.ShareLockRegistry
-	RecycleBinService       *recycleBin.Service
-	FsmonitorService        *fsmonitor.Service
-	BackupGovernanceService *backupGovernance.Service
-	WorkDirGuard            workdirGuard.Guard
+	ExportService                     *export.Service
+	ShareService                      *share.Service
+	ShareLockRegistry                 shareLock.ShareLockRegistry
+	RecycleBinService                 *recycleBin.Service
+	FsmonitorService                  *fsmonitor.Service
+	BackupGovernanceService           *backupGovernance.Service
+	WorkDirGuard                      workdirGuard.Guard
 
 	// 任务仓储（用于TaskManager）
 	taskRepo *task.TaskRepository
@@ -1055,7 +1056,25 @@ func (app *App) initAdvancedServices() error {
 	})
 	pluginRepo := plugin.NewRepository(app.db)
 	app.PluginService = plugin.NewService(pluginRepo, app.BackupService)
-	app.PluginStorageService = plugin.NewPluginStorageService(plugin.NewStorageRepository(app.db))
+	// 存储加密钥：密钥文件与 database.db 同目录（{RootPath}/database/secret.key）；
+	// 密钥装载层无建目录语义，目录不存在则先建（database.Init 已建时为幂等空操作）
+	secretKeyPath := filepath.Join(util.RootPath(), "database", "secret.key")
+	if err := os.MkdirAll(filepath.Dir(secretKeyPath), 0o755); err != nil {
+		return fmt.Errorf("创建密钥目录失败: %w", err)
+	}
+	storageCipher, err := secretkey.NewProvider(secretKeyPath)
+	if err != nil {
+		return fmt.Errorf("构造存储加密钥失败: %w", err)
+	}
+	app.PluginStorageService = plugin.NewPluginStorageService(plugin.NewStorageRepository(app.db), storageCipher)
+	// 存量密文迁移（启动期一次性数据修复，晚于 AutoMigrate、先于插件进程拉起——
+	// 插件加载在 LoadPlugins 显式调用，晚于本装配序列）：legacy 固定钥密文重写为 v2、
+	// 双败行隔离改名；单行失败已在迁移内部 Warn 跳过，整体失败仅记日志不阻断启动
+	if migrated, quarantined, mErr := app.PluginStorageService.MigrateLegacyCiphertexts(context.Background()); mErr != nil {
+		logger.Log.Warnw("存量密文迁移失败（不影响启动）", "error", mErr)
+	} else if migrated > 0 || quarantined > 0 {
+		logger.Log.Infow("存量密文迁移完成", "migrated", migrated, "quarantined", quarantined)
+	}
 	// 参与度真相层（设置→条目参与度覆盖表）：全量设置读取面由插件 KV 存储服务承担
 	// （加密项解密随读取完成）；参与者注册见装配尾部（激活相位末位）
 	app.ParticipationManager = participation.NewManager(app.PluginStorageService, util.RootPath())
