@@ -39,14 +39,15 @@ func TestValidateContractVersion(t *testing.T) {
 	}
 }
 
-// TestContractVersionBaseline 契约版本双点基线锚定：SDK 当前版本 15（宿主代理解析——
-// HostService 线级新增 ResolveProxy RPC，插件出网代理三级检测〔显式 > 系统代理 > 环境变量〕
-// 收归宿主，RPC 失败/超时/旧宿主 Unimplemented 时 SDK 降级为显式 > 环境变量；线级新增非破坏，
-// 旧插件不调新 RPC 零行为变化），主程序最低支持版本 12（扩展点正名的破坏性分界——
-// 代理解析不升 min：契约 12 插件在新宿主照常运行），任一侧升版须同步更新本基线
+// TestContractVersionBaseline 契约版本双点基线锚定：SDK 当前版本 16（插件设置变更通知——
+// PluginLifecycle 线级新增 SettingChanged 一元 RPC，宿主在 SaveSetting/ResetSetting 落库
+// 成功后向已激活插件异步推送 {source,keys} 纯通知，插件经 SDK WithSettingChangeHandler
+// 处置函数感知；线级新增非破坏，旧插件内嵌 Unimplemented 兜底、宿主静默降级零行为变化），
+// 主程序最低支持版本 12（扩展点正名的破坏性分界——设置通知不升 min：契约 12 插件在新宿主
+// 照常运行），任一侧升版须同步更新本基线
 func TestContractVersionBaseline(t *testing.T) {
-	if pluginsdktransport.ContractVersion != 15 {
-		t.Errorf("SDK 当前契约版本 = %d, 期望 15", pluginsdktransport.ContractVersion)
+	if pluginsdktransport.ContractVersion != 16 {
+		t.Errorf("SDK 当前契约版本 = %d, 期望 16", pluginsdktransport.ContractVersion)
 	}
 	if minSupportedContractVersion != 12 {
 		t.Errorf("最低支持契约版本 = %d, 期望 12", minSupportedContractVersion)

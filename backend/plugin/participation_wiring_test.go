@@ -53,7 +53,7 @@ func newSettingTestServiceWithTrigger(t *testing.T, trigger ParticipationEvalTri
 	}
 	repo := NewRepository(db)
 	svc := NewService(repo, nil)
-	return NewPluginSettingService(repo, NewPluginStorageService(newMockStorageRepo(), newTestStorageCipher(t)), util.RootPath(), trigger), svc
+	return NewPluginSettingService(repo, NewPluginStorageService(newMockStorageRepo(), newTestStorageCipher(t)), util.RootPath(), trigger, nil), svc
 }
 
 // resolverManifestWith 带根级 settingsResolver 声明的可安装清单（纯 UI 形态：仅前端扩展，

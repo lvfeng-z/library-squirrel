@@ -1078,7 +1078,9 @@ func (app *App) initAdvancedServices() error {
 	// 参与度真相层（设置→条目参与度覆盖表）：全量设置读取面由插件 KV 存储服务承担
 	// （加密项解密随读取完成）；参与者注册见装配尾部（激活相位末位）
 	app.ParticipationManager = participation.NewManager(app.PluginStorageService, util.RootPath())
-	app.PluginSettingService = plugin.NewPluginSettingService(pluginRepo, app.PluginStorageService, util.RootPath(), app.ParticipationManager)
+	// 设置变更通知器：设置落库后向已激活插件进程推送 SettingChanged（尽力而为——
+	// 未激活跳过、发送失败/超时静默降级，不影响保存结果）
+	app.PluginSettingService = plugin.NewPluginSettingService(pluginRepo, app.PluginStorageService, util.RootPath(), app.ParticipationManager, plugin.NewSettingChangeNotifier(app.pluginLoader))
 
 	// 插件库查询依赖（Tier 1 只读）：各域 repository 直连组装（extension 定义注入接口，
 	// 过滤语义落在各域 repository 的 GORM 管线，provider 不自拼 SQL）

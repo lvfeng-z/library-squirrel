@@ -100,7 +100,7 @@ func TestPureUIPluginActivationEvaluatesParticipation(t *testing.T) {
 	storageSvc := NewPluginStorageService(newMockStorageRepo(), newTestStorageCipher(t))
 	mgr := participation.NewManager(storageSvc, util.RootPath())
 	svc.RegisterLifecycleParticipant(&pureUIParticipant{mgr: mgr})
-	settingSvc := NewPluginSettingService(repo, storageSvc, util.RootPath(), mgr)
+	settingSvc := NewPluginSettingService(repo, storageSvc, util.RootPath(), mgr, nil)
 
 	// 纯 UI 插件落盘（无 entryFile → EntryPath 无效）+ resolver 脚本
 	row := plantPluginWithManifestOnDisk(t, svc, publicId, pureUIResolverManifest(publicId))

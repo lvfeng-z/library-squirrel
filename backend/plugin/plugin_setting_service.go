@@ -9,6 +9,7 @@ import (
 
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/base/model/entity"
+	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 )
 
 // SettingItem 设置项（声明 + 当前值），返回给前端渲染表单
@@ -39,12 +40,13 @@ type PluginSettingService struct {
 	storage     *PluginStorageService
 	rootPath    string
 	evalTrigger ParticipationEvalTrigger
+	notifier    SettingChangeNotifier
 }
 
 // NewPluginSettingService 创建插件设置服务。evalTrigger 为设置落库后的参与度求值触发器，
-// 可为 nil（未装配时落库不触发求值——纯测试装配）
-func NewPluginSettingService(pluginRepo *PluginRepository, storage *PluginStorageService, rootPath string, evalTrigger ParticipationEvalTrigger) *PluginSettingService {
-	return &PluginSettingService{pluginRepo: pluginRepo, storage: storage, rootPath: rootPath, evalTrigger: evalTrigger}
+// notifier 为设置落库后的变更通知器，两者均可为 nil（未装配时落库不触发——纯测试装配）
+func NewPluginSettingService(pluginRepo *PluginRepository, storage *PluginStorageService, rootPath string, evalTrigger ParticipationEvalTrigger, notifier SettingChangeNotifier) *PluginSettingService {
+	return &PluginSettingService{pluginRepo: pluginRepo, storage: storage, rootPath: rootPath, evalTrigger: evalTrigger, notifier: notifier}
 }
 
 // GetSettings 获取插件设置项（声明 + 当前值，加密项已解密）
@@ -108,12 +110,14 @@ func (s *PluginSettingService) SaveSetting(ctx context.Context, publicId, key, v
 			return err
 		}
 		s.triggerParticipationEval(publicId)
+		s.notifySettingChanged(publicId, pluginsdkdto.SettingChangeSourceSave, key)
 		return nil
 	}
 	if err := s.storage.SetValue(ctx, plugin.GetID(), key, value, schemaVer); err != nil {
 		return err
 	}
 	s.triggerParticipationEval(publicId)
+	s.notifySettingChanged(publicId, pluginsdkdto.SettingChangeSourceSave, key)
 	return nil
 }
 
@@ -130,7 +134,16 @@ func (s *PluginSettingService) ResetSetting(ctx context.Context, publicId, key s
 		return err
 	}
 	s.triggerParticipationEval(publicId)
+	s.notifySettingChanged(publicId, pluginsdkdto.SettingChangeSourceReset, key)
 	return nil
+}
+
+// notifySettingChanged 设置落库成功后向该插件异步推送变更通知（保存/重置两落库点
+// 各自挂接，与参与度求值触发并行互不等待；未装配通知器时为空操作）
+func (s *PluginSettingService) notifySettingChanged(publicId, source, key string) {
+	if s.notifier != nil {
+		s.notifier.NotifyAsync(publicId, source, []string{key})
+	}
 }
 
 // triggerParticipationEval 设置落库成功后触发该插件的参与度求值（ResetSetting 不经
