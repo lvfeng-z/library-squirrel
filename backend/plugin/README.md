@@ -35,8 +35,8 @@
 | 方法 | 作用 |
 | --- | --- |
 | `GetSettings(pluginPublicId)` | 获取插件用户设置项（声明 + 当前值，加密项已解密） |
-| `SaveSetting(pluginPublicId, key, value)` | 保存单个设置项（按声明 `encrypted` 路由加密/明文）；落库后异步触发该插件参与度求值（见「参与度真相层」） |
-| `ResetSetting(pluginPublicId, key)` | 重置设置项为默认值；落库后同样触发参与度求值（不经 SaveSetting，独立挂接） |
+| `SaveSetting(pluginPublicId, key, value)` | 保存单个设置项（按声明 `encrypted` 路由加密/明文）；落库后异步触发该插件参与度求值（见「参与度真相层」）与设置变更通知（见「设置变更通知」） |
+| `ResetSetting(pluginPublicId, key)` | 重置设置项为默认值；落库后同样触发参与度求值与设置变更通知（均不经 SaveSetting，独立挂接） |
 
 ## 核心概念
 
@@ -48,6 +48,7 @@
 - **检查更新待办（pendingUpgrade，内存态）**：启动期检测出的更新事项（available/forced/error 三类），进程生命周期、重启重检；前端「插件」菜单红点与管理页待更新区块消费。落库的只有拒绝标记 `UpgradeDeclinedBuildID`（「跳过此构建」持久化，重装全字段覆盖自然清零）。设计见 `../library-squirrel-docs/plan/插件检查更新方案.md`。
 - **PluginStatus**：插件运行状态——生命周期状态（inactive/activating/active/stopping）与最近一次激活失败原因（`GetPluginStatus` 取自状态机只读快照）、进程存活/PID、扩展点列表。
 - **参与度真相层（participation/ 子包）**：插件在各派生面（point 词汇 = `workFetch`/`siteAuthorFetch`/`siteBrowsers`/`resourceTypes`/`frontendExtensions`）上**声明条目 × 参与度**的运行期唯一真相源：per 插件会话 = 清单声明集 ⊕ resolver 覆盖表（快照整体替换、零持久化——每次激活末尾由持久 KV 重算重建）。resolver = 清单根级 `settingsResolver` 声明的『全量设置 → 条目参与度』纯函数脚本（求值运行器与契约见 `settingresolver/` 子包）。触发点三处：激活相位末尾（生命周期参与者末位，app.go 装配）、SaveSetting / ResetSetting 落库后（异步，同插件串行且在途合并）。求值失败保留旧表、降级态入状态面（`GetPluginStatus` 的参与度概要经 `SetParticipationStatusProvider` 序列化透出）。变更订阅联动下游面：前端扩展条目级注册/注销（app.go frontendExtensionParticipant）、候选/能力查询过滤与 resourceTypes/siteBrowsers 条目级注册（extension.Loader `AttachParticipation`）、URL 监听条目级登记/摘除（pluginTaskUrlListener——URL 监听无独立 point，按 `workFetch` 条目级变化最小映射联动）。安装闸门 `ValidateResolverForInstall`（脚本在场/体积/语法/默认值 dry-run）挂本模块安装路径。设计见 `../library-squirrel-docs/plan/插件设置驱动的派生面热生效方案.md`。
+- **设置变更通知（SettingChangeNotifier）**：设置项保存/重置落库成功后向该插件推送的宿主→插件告知（gRPC `SettingChanged`，来源 save/reset + 变更键）。尽力而为：插件未激活跳过、发送失败/超时降级为 debug 日志，不构成保存流程的失败面；通知器未装配时保存照常（nil 空操作，与参与度触发器同纪律）。实现 `setting_change_notifier.go`，契约设计见 `../library-squirrel-docs/plan/插件设置变更感知能力方案.md`。
 - **PluginStorage（插件自存信息）**：统一 KV 存储（`plugin_storage` 单表），取代旧的 `plugin.plugin_data` 与 `secure_storage`。明文项直接读写，加密项 `SetValueEncrypted` 存密文（`util/crypto` 加解密）、读取自动解密。域边界：插件问答沉淀的用户决策记忆不落此表——归独立 `backend/pluginpreference/` 模块（数据主人=用户的决策，管理面可见可删）。
 
 ## 依赖关系
