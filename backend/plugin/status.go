@@ -22,6 +22,11 @@ type PluginStatusDTO struct {
 	// URL 监听规则
 	UrlPatterns []string `json:"urlPatterns"`
 
+	// 自定义设置页条目 id（清单声明的静态面：每次查询现读安装目录清单，未激活插件同样返回，
+	// 前端据此分流「直达自定义页 / 先激活再进 / 标准弹窗」；空 = 无自定义页。跳转目标路由名
+	// = publicId/extensionId，由前端自拼）
+	SettingsPageExtensionId string `json:"settingsPageExtensionId"`
+
 	// 参与度概要（真相层序列化快照，每次查询现读内存表；nil = 插件未激活无会话）
 	Participation *ParticipationOverview `json:"participation"`
 }

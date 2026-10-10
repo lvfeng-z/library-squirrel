@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/library-squirrel/backend/base"
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model"
 	domain "github.com/library-squirrel/backend/base/model/dto"
@@ -355,6 +356,11 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 		return nil, err
 	}
 
+	// settingsPage 指向性校验（安装期闸门，清单校验簇同层）：指向性不合格即拒收
+	if err := validateSettingsPagePointer(&manifest); err != nil {
+		return nil, err
+	}
+
 	// settingsResolver 安装期闸门（清单校验簇同层）：声明在场时随包校验脚本工件并
 	// 以声明默认值 dry-run；不带该字段的插件零行为变化
 	scriptName := ""
@@ -368,6 +374,30 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 	// 构建安装 DTO
 	installDTO := manifest.ToPluginInstallDTO(packagePath)
 	return installDTO, nil
+}
+
+// validateSettingsPagePointer 校验清单根级 settingsPage 的指向性（安装期闸门）：非空时所指条目
+// 必须存在于 frontendExtensions 且 kind=view。设置页是 view 条目的角色指针而非新的渲染形态——
+// 复用 view 的路由注册与参与度联动全套机制，非 view 条目无法承载路由页面。清单安装后不可变，
+// 安装/重装/换版共用本闸门（均经 loadPluginPackage）即覆盖全部进入路径；缺省（旧清单）零值通过
+func validateSettingsPagePointer(manifest *domain.PluginManifest) error {
+	if manifest.SettingsPage == "" {
+		return nil
+	}
+	if manifest.Extensions != nil {
+		for _, fe := range manifest.Extensions.FrontendExtensions {
+			if fe.ID != manifest.SettingsPage {
+				continue
+			}
+			if fe.Kind != string(base.FrontendExtensionKindView) {
+				return fmt.Errorf("%w: settingsPage 指向的条目 %q kind 为 %q，须指向 kind=view 的前端扩展条目（设置页以 view 条目承载，激活后注册为路由页面）",
+					ErrInvalidManifest, manifest.SettingsPage, fe.Kind)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: settingsPage 指向的条目 %q 不在 frontendExtensions 声明内",
+		ErrInvalidManifest, manifest.SettingsPage)
 }
 
 // readPackageFile 按条目名读取安装包内文件内容（精确名匹配，名为空、条目不在场或不可读
@@ -885,8 +915,12 @@ func (s *Service) GetPluginStatus(ctx context.Context, pluginPublicId string) (*
 		}
 	}
 
-	// URL 监听规则（清单声明的作品拉取条目 urlPatterns 聚合；插件未运行也可展示）
-	status.UrlPatterns = s.declaredUrlPatterns(plugin)
+	// 清单静态声明面（现读安装目录清单，插件未运行也可展示；读取失败保持零值，不阻断状态面板其余字段）
+	declared := readPluginManifestBestEffort(plugin)
+	// URL 监听规则（作品拉取条目 urlPatterns 跨条目聚合）
+	status.UrlPatterns = declaredUrlPatterns(declared)
+	// 自定义设置页条目 id（静态面：未激活插件同样返回，前端据此分流设置入口——直达自定义页/先激活/标准弹窗）
+	status.SettingsPageExtensionId = declaredSettingsPage(declared)
 
 	// 参与度概要（真相层序列化快照；插件未激活无会话时保持 nil，前端不渲染该节）
 	status.Participation = s.participationOverviewOf(pluginPublicId)
@@ -924,11 +958,19 @@ func (s *Service) participationOverviewOf(pluginPublicId string) *ParticipationO
 	return overview
 }
 
-// declaredUrlPatterns 读插件清单声明的 URL 监听模式（作品拉取条目 urlPatterns 跨条目聚合）。
-// 展示面 best-effort：清单读取/解析失败返回 nil，不阻断状态面板其余字段
-func (s *Service) declaredUrlPatterns(plugin *entity2.Plugin) []string {
+// readPluginManifestBestEffort 状态面板静态声明面的数据源：读插件安装目录清单。展示面
+// best-effort——读取/解析失败返回 nil（等同无声明），不阻断状态面板其余字段
+func readPluginManifestBestEffort(plugin *entity2.Plugin) *domain.PluginManifest {
 	manifest, err := readPluginManifest(plugin)
-	if err != nil || manifest.Extensions == nil {
+	if err != nil {
+		return nil
+	}
+	return manifest
+}
+
+// declaredUrlPatterns 清单声明的 URL 监听模式（作品拉取条目 urlPatterns 跨条目聚合）
+func declaredUrlPatterns(manifest *domain.PluginManifest) []string {
+	if manifest == nil || manifest.Extensions == nil {
 		return nil
 	}
 	var patterns []string
@@ -936,4 +978,12 @@ func (s *Service) declaredUrlPatterns(plugin *entity2.Plugin) []string {
 		patterns = append(patterns, handler.UrlPatterns...)
 	}
 	return patterns
+}
+
+// declaredSettingsPage 清单声明的自定义设置页条目 id（清单缺席返回空串——等同无自定义页）
+func declaredSettingsPage(manifest *domain.PluginManifest) string {
+	if manifest == nil {
+		return ""
+	}
+	return manifest.SettingsPage
 }

@@ -105,6 +105,20 @@ func (h *Handler) SetTrusted(ctx context.Context, pluginPublicId string, trusted
 	return successOrDegraded(domain.NewPluginDTO(result), degraded)
 }
 
+// ActivatePlugin 激活插件（插件管理页「设置」确认流的后端通路）：按 publicId 查实体后走唯一
+// 激活入口。状态机内建幂等（已运行直接成功）；未信任插件被信任门控拒绝，原因经 Msg 返回供前端
+// 透传展示
+func (h *Handler) ActivatePlugin(ctx context.Context, pluginPublicId string) *model.ApiResponse[any] {
+	plugin, err := h.svc.GetByPublicId(ctx, pluginPublicId)
+	if err != nil {
+		return model.HandleError[any](err)
+	}
+	if plugin == nil {
+		return model.HandleError[any](ErrPluginNotFound)
+	}
+	return model.HandleVoid(h.svc.ActivatePlugin(ctx, plugin))
+}
+
 // ========== 查询操作 ==========
 
 // GetById 根据ID获取

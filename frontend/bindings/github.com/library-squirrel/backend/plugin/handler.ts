@@ -22,11 +22,22 @@ import * as dto$0 from "../base/model/dto/models.js";
 import * as $models from "./models.js";
 
 /**
+ * ActivatePlugin 激活插件（插件管理页「设置」确认流的后端通路）：按 publicId 查实体后走唯一
+ * 激活入口。状态机内建幂等（已运行直接成功）；未信任插件被信任门控拒绝，原因经 Msg 返回供前端
+ * 透传展示
+ */
+export function ActivatePlugin(pluginPublicId: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
+    return $Call.ByID(1340051344, pluginPublicId).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
  * ApplyPendingUpgrade 答复「升级」：对 available 待办执行运行期换版（当次会话生效，运行中任务被参与者否决）
  */
 export function ApplyPendingUpgrade(pluginPublicId: string): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
     return $Call.ByID(449758151, pluginPublicId).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -35,7 +46,7 @@ export function ApplyPendingUpgrade(pluginPublicId: string): $CancellablePromise
  */
 export function CheckInstalled(publicId: string): $CancellablePromise<model$0.ApiResponse<boolean> | null> {
     return $Call.ByID(179431488, publicId).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType7($result);
     });
 }
 
@@ -44,7 +55,7 @@ export function CheckInstalled(publicId: string): $CancellablePromise<model$0.Ap
  */
 export function DeclinePendingUpgrade(pluginPublicId: string): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
     return $Call.ByID(36473225, pluginPublicId).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -53,7 +64,7 @@ export function DeclinePendingUpgrade(pluginPublicId: string): $CancellablePromi
  */
 export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
     return $Call.ByID(1032436370, id).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -62,7 +73,7 @@ export function GetById(id: number): $CancellablePromise<model$0.ApiResponse<dto
  */
 export function GetByPublicId(publicId: string): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
     return $Call.ByID(2503086103, publicId).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -71,7 +82,7 @@ export function GetByPublicId(publicId: string): $CancellablePromise<model$0.Api
  */
 export function GetPendingUpgrades(): $CancellablePromise<model$0.ApiResponse<(dto$0.PendingUpgradeDTO | null)[]> | null> {
     return $Call.ByID(2748744944).then(($result: any) => {
-        return $$createType10($result);
+        return $$createType12($result);
     });
 }
 
@@ -80,7 +91,7 @@ export function GetPendingUpgrades(): $CancellablePromise<model$0.ApiResponse<(d
  */
 export function GetPluginRoot(): $CancellablePromise<model$0.ApiResponse<string> | null> {
     return $Call.ByID(456559513).then(($result: any) => {
-        return $$createType12($result);
+        return $$createType14($result);
     });
 }
 
@@ -89,7 +100,7 @@ export function GetPluginRoot(): $CancellablePromise<model$0.ApiResponse<string>
  */
 export function GetPluginStatus(pluginPublicId: string): $CancellablePromise<model$0.ApiResponse<$models.PluginStatusDTO | null> | null> {
     return $Call.ByID(3389140595, pluginPublicId).then(($result: any) => {
-        return $$createType16($result);
+        return $$createType18($result);
     });
 }
 
@@ -98,7 +109,7 @@ export function GetPluginStatus(pluginPublicId: string): $CancellablePromise<mod
  */
 export function InstallFromPath(packagePath: string, trusted: boolean): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
     return $Call.ByID(2158721802, packagePath, trusted).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -107,7 +118,7 @@ export function InstallFromPath(packagePath: string, trusted: boolean): $Cancell
  */
 export function Page(page: model$0.Page<dto$0.PluginDTO> | null, query: $models.PluginQueryDTO): $CancellablePromise<model$0.ApiResponse<model$0.Page<dto$0.PluginDTO> | null> | null> {
     return $Call.ByID(3419509953, page, query).then(($result: any) => {
-        return $$createType20($result);
+        return $$createType22($result);
     });
 }
 
@@ -116,7 +127,7 @@ export function Page(page: model$0.Page<dto$0.PluginDTO> | null, query: $models.
  */
 export function Reinstall(pluginPublicId: string, trusted: boolean): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
     return $Call.ByID(2982558974, pluginPublicId, trusted).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -125,7 +136,7 @@ export function Reinstall(pluginPublicId: string, trusted: boolean): $Cancellabl
  */
 export function ReinstallFromPath(pluginPublicId: string, packagePath: string, trusted: boolean): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
     return $Call.ByID(1285597481, pluginPublicId, packagePath, trusted).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -134,7 +145,7 @@ export function ReinstallFromPath(pluginPublicId: string, packagePath: string, t
  */
 export function RestorePendingUpgrade(pluginPublicId: string): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
     return $Call.ByID(1661640689, pluginPublicId).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -144,7 +155,7 @@ export function RestorePendingUpgrade(pluginPublicId: string): $CancellablePromi
  */
 export function SetTrusted(pluginPublicId: string, trusted: boolean, force: boolean): $CancellablePromise<model$0.ApiResponse<dto$0.PluginDTO | null> | null> {
     return $Call.ByID(1776306361, pluginPublicId, trusted, force).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType5($result);
     });
 }
 
@@ -153,31 +164,31 @@ export function SetTrusted(pluginPublicId: string, trusted: boolean, force: bool
  */
 export function Uninstall(pluginPublicId: string): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(1092276364, pluginPublicId).then(($result: any) => {
-        return $$createType22($result);
+        return $$createType1($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = dto$0.PluginDTO.createFrom;
+const $$createType0 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType1 = $Create.Nullable($$createType0);
-const $$createType2 = model$0.ApiResponse.createFrom($$createType1);
+const $$createType2 = dto$0.PluginDTO.createFrom;
 const $$createType3 = $Create.Nullable($$createType2);
-const $$createType4 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType4 = model$0.ApiResponse.createFrom($$createType3);
 const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = dto$0.PendingUpgradeDTO.createFrom;
+const $$createType6 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType7 = $Create.Nullable($$createType6);
-const $$createType8 = $Create.Array($$createType7);
-const $$createType9 = model$0.ApiResponse.createFrom($$createType8);
-const $$createType10 = $Create.Nullable($$createType9);
-const $$createType11 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType8 = dto$0.PendingUpgradeDTO.createFrom;
+const $$createType9 = $Create.Nullable($$createType8);
+const $$createType10 = $Create.Array($$createType9);
+const $$createType11 = model$0.ApiResponse.createFrom($$createType10);
 const $$createType12 = $Create.Nullable($$createType11);
-const $$createType13 = $models.PluginStatusDTO.createFrom;
+const $$createType13 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType14 = $Create.Nullable($$createType13);
-const $$createType15 = model$0.ApiResponse.createFrom($$createType14);
+const $$createType15 = $models.PluginStatusDTO.createFrom;
 const $$createType16 = $Create.Nullable($$createType15);
-const $$createType17 = model$0.Page.createFrom($$createType0);
+const $$createType17 = model$0.ApiResponse.createFrom($$createType16);
 const $$createType18 = $Create.Nullable($$createType17);
-const $$createType19 = model$0.ApiResponse.createFrom($$createType18);
+const $$createType19 = model$0.Page.createFrom($$createType2);
 const $$createType20 = $Create.Nullable($$createType19);
-const $$createType21 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType21 = model$0.ApiResponse.createFrom($$createType20);
 const $$createType22 = $Create.Nullable($$createType21);

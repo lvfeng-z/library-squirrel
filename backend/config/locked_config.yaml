@@ -224,6 +224,9 @@ officialPlugins:
     buildId: b1fe045-dirty
     contentDigest: 90c975518aadf5c7bff385c406ca9956d66dd5776aaa932bec2c0d2979ff5721
   - publicId: com.lvfeng.test-plugin
+    buildId: c0a134d
+    contentDigest: 75ff1c08e64268f9757d2328992ac3fea6f91e70dfadff151c8fb8110da0baf7
+  - publicId: com.lvfeng.test-plugin
     buildId: ceb537d
     contentDigest: b13063036559feaa75152d7d59edac742a9fd18fb078325b4fade4c55f7757ad
   - publicId: com.lvfeng.test-plugin

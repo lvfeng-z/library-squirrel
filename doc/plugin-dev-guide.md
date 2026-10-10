@@ -113,6 +113,7 @@ type MyWorkFetcher struct{}
 | `configSchemaVersion` | number | 否 | 配置 schema 版本（0/缺省=legacy 不管理；启用配置迁移时从 1 起递增，见 8.3）。与 contractVersion 正交：前者管插件配置结构，后者管 host↔plugin 协议 |
 | `settings` | `[SettingDeclaration]` | 否 | 用户可配置项声明，住清单根级（见「settings 用户设置声明」与 8.2）；`extensions` 子对象内出现 `settings` 键（值 `null` 亦然）即判不合格 |
 | `settingsResolver` | `{script, contractVersion}` | 否 | 设置驱动参与度 resolver 声明：`script` 为住插件包根目录的脚本文件名、`contractVersion` 当前唯一受支持值 1；安装时对脚本做在场/体积/语法/默认值 dry-run 校验，见 8.4 |
+| `settingsPage` | string | 否 | 自定义设置页：指向本插件一个 `kind=view` 前端扩展条目的 id（安装期校验所指条目存在且 kind=view，否则拒载；缺省走标准设置弹窗）。声明后插件管理页「设置」直达该页面（替代式，标准弹窗不再出现），见 6.3.1 |
 | `extensions` | object | 是 | 能力包声明集合（见下与「能力声明」） |
 
 > 身份键与五条版本轴（version/contractVersion/configSchemaVersion/plugin_data schemaVersion/buildId）的全貌与变更时机速查，见第十八节。
@@ -135,6 +136,7 @@ type MyWorkFetcher struct{}
 - `extensions.siteAuthorFetch` 与 `extensions.workFetch[]` **安装时强校验**：`siteAuthorFetch` 须为非空数组、条目 `id` 非空且插件内唯一、`sites` 非空且每项为 SDK 站点注册表内的已注册键；`urlPatterns` 可选，但在场须为非空数组且逐项可编译；`options` 每项须为内置可选方法组枚举值。不合格即拒收并点名不合格项（`backend/plugin/extension/loader.go:262-325`，安装闸门 `backend/plugin/service.go:344-346`）。旧单对象形态 `{"sites": [...]}` 已不受支持（v11 起）。
 - 顶层残留 `capabilities` 键（值恰为 `null` 亦然）即判**未迁移**：安装时拒收、加载时跳过（`backend/plugin/extension/loader.go:240-241`）。
 - `extensions` 子对象内 `settings` 键在场（值恰为 `null` 亦然）即判不合格——用户设置项声明须住清单根级 `settings` 段。
+- 顶层 `settingsPage` 非空时，所指 `frontendExtensions` 条目必须存在且 `kind=view`，否则拒载（见 6.3.1）。
 - 其余枚举值（kind/contentType/position/settings.type）**安装时不校验**，错误值在激活/运行期暴露，请自行核对拼写。
 
 ### 前端扩展声明
@@ -704,6 +706,45 @@ type SiteBrowser interface {
 - `html`：`fetch` HTML 后作为 Vue `template`。
 
 **预编译组件构建**：插件前端用 Vite + `componentFactoryPlugin` 构建为工厂函数（替换 `vue`/`@wailsio/runtime` import 为注入变量，`export default` 转 `return`）。**禁止 `import { X as Y }` 的 `as` 语法**（工厂插件不兼容，需别名时直接修改变量名）。
+
+#### 6.3.1 自定义设置页（settingsPage）
+
+插件可整页接管自己的设置面：清单根级 `settingsPage` 字段指向本插件一个 `kind=view` 的前端扩展条目 id，插件管理页的「设置」操作据此分流：
+
+- **插件运行中**：直达该页面（路由名 = 复合名 `publicId/extensionId`，与侧栏菜单跳转同一注册面）。该条目被 settingsResolver 停用（路由未注册）时提示「设置页条目已被参与度停用」，不跳转。
+- **插件未运行**：确认框「该插件的设置页面需要运行插件，是否现在运行？」，确认后宿主激活插件（幂等、信任门控内建）并进入页面。未信任插件的激活被信任门控拒绝，错误文案附「请先在插件管理中信任」指引——信任是安全授权动作，保持管理页「信任」专职入口，设置入口不做引导信任流。
+- **未声明 settingsPage**：维持现状——settings 段声明的标准设置弹窗。
+
+**声明方式**（test 插件为可运行参考，`views/settings-page.vue` 为最简 vueSource 载体）：
+
+```json
+{
+  "settingsPage": "my-settings-view",
+  "extensions": {
+    "frontendExtensions": [
+      { "id": "my-settings-view", "name": "设置", "kind": "view",
+        "content": { "contentType": "precompiled", "source": { "js": "views/settings.js", "css": "views/settings.css" } } }
+    ]
+  }
+}
+```
+
+安装期校验：`settingsPage` 非空时所指条目必须存在且 `kind=view`，否则整包拒载（升级换包同样过校验链）；字段缺省（旧清单）零值兼容，走标准设置弹窗。同一 view 条目同时被 menu 引用无冲突（菜单可进 + 设置可进，一页两入口）。
+
+**二选一纪律（文档约定，无机制强制）**：插件要么**全声明式**（settings 段 + 标准设置弹窗，值经宿主设置服务存储、变更热生效通知），要么**全自定义页**（settingsPage + 整页全责：页面内容、交互、保存逻辑全部插件自负，自写自读闭环——值经 `SetValue` 写宿主 KV 存储，不经宿主设置服务保存路径，不会触发热生效通知）。不得双轨并存：声明 settingsPage 后标准弹窗对该插件不再出现（替代式），settings 段声明形同虚设；依赖标准弹窗的插件勿声明 settingsPage。
+
+**与插件进程的通信通路**：页面组件与插件 Go 进程经既有发布/订阅消息机制（第九节）互通——插件 `ctx.PublishToFrontend(topic, data)` 向页面发布，`ctx.SubscribeFrontend(topic)` 订阅页面回传。先例为 bilibili 插件的 form-ask 问答流（`library-squirrel-plugin-bilibili/activate.go:58-66`：激活期订阅前端回传主题，goroutine 消费 channel 分发）。设置页的典型形态：页面加载时发「查询当前值」主题 → 插件订阅并回发 → 页面渲染表单 → 保存时发「保存」主题 → 插件订阅并 `SetValue` 落库。
+
+**组件环境（四层实况）**：
+
+1. **工厂两参**：precompiled 组件工厂签名固定 `(Vue, WailsRuntime)`——宿主只注入这两个依赖，需要什么从这两处解构，不期待第三个参数。
+2. **模板 el-\* 与指令可用**：宿主全量注册 Element Plus 组件与指令（含 `v-loading`），插件模板内 `el-button`/`el-form` 等标签与指令经运行时解析命中宿主全局注册表，样式随宿主主题令牌。**勿 import Element Plus 打包自带副本**——体积翻倍且双份样式互相污染。宿主侧义务：保持全量注册（改按需引入前评估插件面）。
+3. **反馈方法的契约边界**：已契约通道 = `window.__PLUGIN_CTX__.globals` 的 `$message`/`$notify`/`$confirm`/`$alert` 四个；实例代理通道（options API 的 `this`、模板表达式、`getCurrentInstance().proxy`）经宿主应用 globalProperties 可达全集（`$prompt`/`$loading`/`$msgbox` 等）——属**事实可用未契约**，宿主不承诺稳定性，插件自担风险。
+4. **主题令牌**：样式统一用 `var(--app-*)` 主题令牌（见 `doc/plugin-theme-tokens.md`），禁止硬编码颜色与 `var(--el-*)`，使页面自动跟随用户主题；需感知当前主题 id 时用 `window.__PLUGIN_CTX__.theme.getCurrent()`。
+
+**el-\* 版本漂移与主题耦合风险**：宿主升级 Element Plus 可能改变组件行为/样式/移除废弃组件，依赖 el-\* 的插件需随宿主升级回归；EP 样式随宿主主题体系走，宿主改主题时插件页视觉跟随变化——这是契约化的代价，换来自带副本的体积与样式冲突豁免。
+
+**建议 precompiled**：正式设置页走 precompiled（Vite + `componentFactoryPlugin` 产物）。vueSource 为运行时 SFC 编译——无构建期类型检查与模板优化、script 经运行时求值，质量与体积有限，仅适合最简演示载体（test 插件即此形态）。
 
 ## 七、站点交互：HTTP 客户端、代理、风控与登录态
 

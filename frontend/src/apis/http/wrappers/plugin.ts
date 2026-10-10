@@ -68,6 +68,11 @@ export async function pluginGetStatus(publicId: string): Promise<ApiResult<Plugi
   return requireResponse(await PluginHandler.GetPluginStatus(publicId), '获取插件状态')
 }
 
+/** 激活插件（声明自定义设置页的插件在未运行时进入设置页的通路）：幂等（已运行直接成功）；未信任插件被信任门控拒绝，原因经错误文案透传给调用方展示 */
+export async function pluginActivate(publicId: string): Promise<ApiResult<any>> {
+  return requireResponse(await PluginHandler.ActivatePlugin(publicId), '激活插件', false)
+}
+
 // ========== 检查更新流 ==========
 
 /** 获取插件更新待办（available 可答复计入红点；forced/error 只读告知） */

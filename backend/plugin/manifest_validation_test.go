@@ -214,6 +214,86 @@ func TestInstallFromPathAcceptsPureSiteAuthorFetchPlugin(t *testing.T) {
 	}
 }
 
+// settingsPageManifest 根级 settingsPage 声明（settingsPage 空串 = 缺省该字段的旧清单形态）+
+// 前端扩展段（view 条目 v1 与 embed 条目 e1，供指向性矩阵取用）
+func settingsPageManifest(publicId, settingsPage string) string {
+	settingsPageField := ""
+	if settingsPage != "" {
+		settingsPageField = `"settingsPage":"` + settingsPage + `",`
+	}
+	return `{"id":"` + publicId + `","name":"设置页插件","version":"1.0.0","author":"tester",` +
+		fmt.Sprintf(`"contractVersion":%d,`, pluginsdktransport.ContractVersion) +
+		settingsPageField +
+		`"activation":{"type":1},"entryFile":"plugin.exe","extensions":{"frontendExtensions":[` +
+		`{"id":"v1","name":"设置页","kind":"view","content":{"contentType":"code","source":"1"}},` +
+		`{"id":"e1","name":"嵌入","kind":"embed","content":{"contentType":"code","source":"1"}}]}}`
+}
+
+// TestInstallFromPathValidatesSettingsPagePointer settingsPage 指向性安装期闸门：指向不存在
+// 条目或非 view 条目拒收（点名不合格项且不落库）；指向合法 view 条目与缺省字段（旧清单零值
+// 兼容）照常安装
+func TestInstallFromPathValidatesSettingsPagePointer(t *testing.T) {
+	svc, _ := newCleanupTestService(t)
+	ctx := context.Background()
+
+	cases := []struct {
+		name     string
+		publicId string
+		manifest string
+		wantErr  bool
+		wantText string
+	}{
+		{
+			name:     "指向不存在条目",
+			publicId: "com.settingspage.missing",
+			manifest: settingsPageManifest("com.settingspage.missing", "nosuch"),
+			wantErr:  true,
+			wantText: `settingsPage 指向的条目 "nosuch" 不在 frontendExtensions 声明内`,
+		},
+		{
+			name:     "指向非 view 条目",
+			publicId: "com.settingspage.nonview",
+			manifest: settingsPageManifest("com.settingspage.nonview", "e1"),
+			wantErr:  true,
+			wantText: `须指向 kind=view 的前端扩展条目`,
+		},
+		{
+			name:     "指向合法 view 条目",
+			publicId: "com.settingspage.valid",
+			manifest: settingsPageManifest("com.settingspage.valid", "v1"),
+		},
+		{
+			name:     "缺省字段（旧清单零值兼容）",
+			publicId: "com.settingspage.legacy",
+			manifest: settingsPageManifest("com.settingspage.legacy", ""),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := svc.InstallFromPath(ctx, writePluginZip(t, tc.manifest), true)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("settingsPage 指向性不合格的插件包应拒收安装")
+				}
+				if !errors.Is(err, ErrInvalidManifest) {
+					t.Errorf("拒收原因应为 ErrInvalidManifest, 实际: %v", err)
+				}
+				if !strings.Contains(err.Error(), tc.wantText) {
+					t.Errorf("拒收原因应点名不合格项 %q, 实际: %v", tc.wantText, err)
+				}
+				row, rerr := svc.repo.GetByPublicId(ctx, tc.publicId)
+				if rerr != nil || row != nil {
+					t.Errorf("拒收后不应留下安装行: row=%v err=%v", row, rerr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("合格声明应安装成功: %v", err)
+			}
+		})
+	}
+}
+
 // plantPluginWithManifestOnDisk 预置插件行与其安装目录下的 plugin.json（RootPath 指向
 // <根目录>/plugin/package/<publicId>/1.0.0）。磁盘清单可直接指定，用以构造「旧版本装的、
 // 新版本跑」——DB 行已存在，待读的清单不合规

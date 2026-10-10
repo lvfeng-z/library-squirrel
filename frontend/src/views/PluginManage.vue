@@ -16,7 +16,7 @@ import PluginDialog from '@renderer/components/dialogs/PluginDialog.vue'
 import PluginSettingDialog from '@renderer/components/dialogs/PluginSettingDialog.vue'
 import {PluginQueryDTO} from '@bindings/github.com/library-squirrel/backend/plugin/models'
 import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
-import {isNotBlank} from '@renderer/utils/StringUtil.ts'
+import {isBlank, isNotBlank} from '@renderer/utils/StringUtil.ts'
 import {fileSysUtilApi, pluginApi, taskApi} from '@renderer/apis/http'
 import type {ApiResult} from '@renderer/apis/http/types'
 import {PluginDTO, PendingUpgradeDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
@@ -375,8 +375,7 @@ function handleRowButtonClicked(op: DataTableOperationResponse<PluginDTO>) {
       dialogState.value = true
       break
     case 'settings':
-      settingPublicId.value = String(op.data.publicId)
-      settingDialogState.value = true
+      handleSettingsClicked(op.data)
       break
     case 'trust':
       handleTrust(op.data)
@@ -463,6 +462,79 @@ async function unInstall(pluginPublicId: string) {
     })
     .catch(() => {})
 }
+// 「设置」入口分流：状态 DTO 的 settingsPageExtensionId 是清单静态声明面（未激活插件同样返回），
+// 与生命周期态共同决定三路——运行中直达自定义页、未运行确认后激活再进、无声明开标准设置弹窗。
+// 替代式语义：声明自定义设置页后标准弹窗对该插件不再出现
+async function handleSettingsClicked(plugin: PluginDTO) {
+  const publicId = String(plugin.publicId)
+  let lifecycleState = ''
+  let settingsPageExtensionId = ''
+  try {
+    const status = (await pluginApi.pluginGetStatus(publicId)).data
+    lifecycleState = status?.lifecycleState ?? ''
+    settingsPageExtensionId = status?.settingsPageExtensionId ?? ''
+  } catch (e) {
+    ElMessage.error((e as Error).message)
+    return
+  }
+  if (isBlank(settingsPageExtensionId)) {
+    settingPublicId.value = publicId
+    settingDialogState.value = true
+    return
+  }
+  if (lifecycleState === 'activating' || lifecycleState === 'stopping') {
+    ElMessage.info('插件正在启动/停止，请稍后再试')
+    return
+  }
+  if (lifecycleState === 'active') {
+    goToPluginSettingsPage(publicId, settingsPageExtensionId)
+    return
+  }
+  ElMessageBox.confirm('该插件的设置页面需要运行插件，是否现在运行？', '运行插件', {
+    confirmButtonText: '运行', cancelButtonText: '取消'
+  })
+    .then(() => activateThenGoToSettingsPage(publicId, settingsPageExtensionId))
+    .catch(() => {})
+}
+
+// 跳转插件自定义设置页。路由名 = publicId/extensionId 复合名（与侧栏菜单跳转同一注册面）；
+// 路由未注册说明设置页条目被参与度停用——提示且不跳转
+function goToPluginSettingsPage(publicId: string, extensionId: string) {
+  const routeName = `${publicId}/${extensionId}`
+  if (router.hasRoute(routeName)) {
+    router.push({ name: routeName })
+  } else {
+    ElMessage.warning('设置页条目已被参与度停用')
+  }
+}
+
+// 确认运行后激活插件并进入其自定义设置页。激活返回早于前端扩展路由注册（参与者编排 + 前端
+// 事件推送有时延），短重试（10×200ms）等待路由就绪再跳转；激活失败透传原因，未信任门控的
+// 拒绝文案叠加信任指引（信任保持管理页专职入口，此处不做引导信任流）
+async function activateThenGoToSettingsPage(publicId: string, extensionId: string) {
+  try {
+    await pluginApi.pluginActivate(publicId)
+  } catch (e) {
+    const reason = (e as Error).message
+    const trustHint = reason.includes('未信任') ? '，请先在插件管理中信任该插件' : ''
+    ElMessage.error(`${reason}${trustHint}`)
+    return
+  }
+  const routeName = `${publicId}/${extensionId}`
+  for (let i = 0; i < 10; i++) {
+    if (router.hasRoute(routeName)) {
+      router.push({ name: routeName })
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
+  if (router.hasRoute(routeName)) {
+    router.push({ name: routeName })
+  } else {
+    ElMessage.info('插件已运行，请稍后从菜单或再次点击设置进入')
+  }
+}
+
 // 设置插件信任状态（手动信任/取消信任）：取消信任即时停用运行时——确认框按运行中任务数明示代价（决策6）
 async function handleTrust(plugin: PluginDTO) {
   const publicId = String(plugin.publicId)

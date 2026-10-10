@@ -34,6 +34,7 @@ type PluginManifest struct {
 	Description         string                       `json:"description,omitempty"`
 	Settings            []SettingDeclaration         `json:"settings,omitempty"`         // 用户设置项声明（住清单根级，不属 extensions 能力包）
 	SettingsResolver    *SettingsResolverDeclaration `json:"settingsResolver,omitempty"` // 设置驱动参与度 resolver 声明（住清单根级；不带该字段的插件零行为变化）
+	SettingsPage        string                       `json:"settingsPage,omitempty"`     // 自定义设置页条目 id（角色指针：指向本插件 frontendExtensions 中 kind=view 条目的 id，插件管理页「设置」据此直达该页面并停用标准弹窗；安装期校验指向性，缺省走标准弹窗）
 	Extensions          *PluginExtensions            `json:"extensions"`
 	Activation          PluginActivation             `json:"activation"`
 	EntryFile           string                       `json:"entryFile"`
