@@ -42,7 +42,7 @@ const currentContractVersion = pluginsdktransport.ContractVersion
 
 // minSupportedContractVersion 主程序仍兼容的最低插件契约版本；低于此版本的插件拒绝加载。
 // 版本 12 分界：扩展点正名——作品拉取扩展点（workFetch / WorkFetcher / WorkFetchService）的旧名
-// 退役（旧名标识符与线级破坏细节见 SDK 契约版本历史 transport/contract.go 第 12 条）：清单段名、
+// 退役（旧名标识符与线级破坏细节见 SDK 契约版本史 transport.ContractHistory 第 12 条）：清单段名、
 // SDK 接口与选项、gRPC 服务名、宿主侧类型与状态字段一并更换；
 // 清单段名更换属宿主读清单的源级破坏、gRPC 服务名更换属线级破坏
 const minSupportedContractVersion = 12
