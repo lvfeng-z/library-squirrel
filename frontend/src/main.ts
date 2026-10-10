@@ -5,6 +5,7 @@ import { createPinia } from 'pinia'
 import Element from 'element-plus'
 import { elementIconRegister } from './plugins/elementIcon'
 import router from './router'
+import BaseView from './views/BaseView.vue'
 import 'element-plus/dist/index.css'
 import './styles/el-tag-mimic.css'
 import './styles/rounded-borders.css'
@@ -46,6 +47,12 @@ app.directive('clickOutSide', clickOutSide)
 app.directive('elSelectBottomed', elSelectBottomed)
 // 注册el-scrollbar触底的自定义指令
 app.directive('elScrollbarBottomed', elScrollbarBottomed)
+// 全局注册宿主视图外壳 BaseView：用途是让插件前端扩展（precompiled 产物的 SFC 模板）内写
+// <BaseView> 时零 import 直接可用——模板编译产物里的 resolveComponent("BaseView") 在宿主
+// 应用上下文命中本全局注册表，与 el-* 的解析同机制、同契约层（见 doc/plugin-dev-guide.md 6.3.1）。
+// 组件工厂签名 (Vue, WailsRuntime) 两参不变；BaseView 提供 100% 尺寸外壳、默认插槽内容区
+// 与 #dialog 具名插槽（绝对定位弹层），不采用时插件自负布局纪律。
+app.component('BaseView', BaseView)
 
 // 暴露 router 实例到全局（在 initBuiltinMenus 之前）
 app.config.globalProperties.$router = router

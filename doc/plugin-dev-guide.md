@@ -738,13 +738,32 @@ type SiteBrowser interface {
 
 **与插件进程的通信通路**：页面组件与插件 Go 进程经既有发布/订阅消息机制（第九节）互通——插件 `ctx.PublishToFrontend(topic, data)` 向页面发布，`ctx.SubscribeFrontend(topic)` 订阅页面回传。先例为 bilibili 插件的 form-ask 问答流（`library-squirrel-plugin-bilibili/activate.go:58-66`：激活期订阅前端回传主题，goroutine 消费 channel 分发）。设置页的典型形态：页面加载时发「查询当前值」主题 → 插件订阅并回发 → 页面渲染表单 → 保存时发「保存」主题 → 插件订阅并 `SetValue` 落库。
 
-**组件环境（四层实况）**：
+**组件环境（五层实况）**：
 
 1. **工厂两参**：precompiled 组件工厂签名固定 `(Vue, WailsRuntime)`——宿主只注入这两个依赖，需要什么从这两处解构，不期待第三个参数。
 2. **模板 el-\* 与指令可用**：宿主全量注册 Element Plus 组件与指令（含 `v-loading`），插件模板内 `el-button`/`el-form` 等标签与指令经运行时解析命中宿主全局注册表，样式随宿主主题令牌。**勿 import Element Plus 打包自带副本**——体积翻倍且双份样式互相污染。宿主侧义务：保持全量注册（改按需引入前评估插件面）。
-3. **反馈方法的契约边界**：已契约通道 = `window.__PLUGIN_CTX__.globals` 的 `$message`/`$notify`/`$confirm`/`$alert` 四个；实例代理通道（options API 的 `this`、模板表达式、`getCurrentInstance().proxy`）经宿主应用 globalProperties 可达全集（`$prompt`/`$loading`/`$msgbox` 等）——属**事实可用未契约**，宿主不承诺稳定性，插件自担风险。
-4. **主题令牌**：样式统一用 `var(--app-*)` 主题令牌（见 `doc/plugin-theme-tokens.md`），禁止硬编码颜色与 `var(--el-*)`，使页面自动跟随用户主题；需感知当前主题 id 时用 `window.__PLUGIN_CTX__.theme.getCurrent()`。
+3. **宿主视图外壳 `<BaseView>` 可用**：宿主 `main.ts` 全局注册 `BaseView`（`app.component('BaseView', BaseView)`，注册点在 Element Plus 注册之后），插件模板写 `<BaseView>`（或 `<base-view>`）**零 import**——与 el-\* 完全同机制、同契约层（SFC 编译产物的 `resolveComponent("BaseView")` 命中宿主全局注册表）。**推荐页骨架** = `BaseView` 外壳 + 内容容器 `calc(100% - 20px)` 边距（宿主 10px 边距惯例，宽高各留 10px）+ 内部 `el-scrollbar` 承滚动（超高出宿主样式滚动条，不出原生滚动条）；`#dialog` 具名插槽用于绝对定位弹层（插槽容器 `.base-view-dialog` 已 `position: absolute`，供不参与文档流的浮层挂载）。**不采用则插件自负布局纪律**：内容高度溢出时露出原生滚动条，宿主不做兜底。**宿主版本要求**：需宿主不低于引入本注册的版本（旧宿主无此全局名，Vue 按未知标签处理——该标签解析不到、按原生标签渲染，页面骨架失效并伴随控制台告警，但不报错）。
+4. **反馈方法的契约边界**：已契约通道 = `window.__PLUGIN_CTX__.globals` 的 `$message`/`$notify`/`$confirm`/`$alert` 四个；实例代理通道（options API 的 `this`、模板表达式、`getCurrentInstance().proxy`）经宿主应用 globalProperties 可达全集（`$prompt`/`$loading`/`$msgbox` 等）——属**事实可用未契约**，宿主不承诺稳定性，插件自担风险。
+5. **主题令牌**：样式统一用 `var(--app-*)` 主题令牌（见 `doc/plugin-theme-tokens.md`），禁止硬编码颜色与 `var(--el-*)`，使页面自动跟随用户主题；需感知当前主题 id 时用 `window.__PLUGIN_CTX__.theme.getCurrent()`。
 
+`BaseView` 推荐页骨架示例（precompiled SFC 模板片段，零新 import）：
+
+```vue
+<template>
+  <BaseView>
+    <div class="my-settings-container">  <!-- height/width: calc(100% - 20px); margin: 10px -->
+      <el-scrollbar>                     <!-- 内部承滚动：超高出宿主样式滚动条 -->
+        <div class="my-settings">        <!-- 卡片纵列，width 100% -->
+          <!-- …页面内容… -->
+        </div>
+      </el-scrollbar>
+    </div>
+    <template #dialog>
+      <!-- 绝对定位弹层挂点（可选） -->
+    </template>
+  </BaseView>
+</template>
+```
 **el-\* 版本漂移与主题耦合风险**：宿主升级 Element Plus 可能改变组件行为/样式/移除废弃组件，依赖 el-\* 的插件需随宿主升级回归；EP 样式随宿主主题体系走，宿主改主题时插件页视觉跟随变化——这是契约化的代价，换来自带副本的体积与样式冲突豁免。
 
 **建议 precompiled**：正式设置页走 precompiled（Vite + `componentFactoryPlugin` 产物）。vueSource 为运行时 SFC 编译——无构建期类型检查与模板优化、script 经运行时求值，质量与体积有限，仅适合最简演示载体（test 插件即此形态）。
