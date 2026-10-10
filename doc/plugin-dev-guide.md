@@ -114,6 +114,7 @@ type MyWorkFetcher struct{}
 | `settings` | `[SettingDeclaration]` | 否 | 用户可配置项声明，住清单根级（见「settings 用户设置声明」与 8.2）；`extensions` 子对象内出现 `settings` 键（值 `null` 亦然）即判不合格 |
 | `settingsResolver` | `{script, contractVersion}` | 否 | 设置驱动参与度 resolver 声明：`script` 为住插件包根目录的脚本文件名、`contractVersion` 当前唯一受支持值 1；安装时对脚本做在场/体积/语法/默认值 dry-run 校验，见 8.4 |
 | `settingsPage` | string | 否 | 自定义设置页：指向本插件一个 `kind=view` 前端扩展条目的 id（安装期校验所指条目存在且 kind=view，否则拒载；缺省走标准设置弹窗）。声明后插件管理页「设置」直达该页面（替代式，标准弹窗不再出现），见 6.3.1 |
+| `settingsPresent` | string | 否 | 设置页呈现形式：`route` 整页路由（缺省）/ `dialog` 宿主弹窗壳（条目只入注册表不挂路由）。仅当 `settingsPage` 非空时有意义——在场而 settingsPage 缺席、取值非法、或 dialog 呈现条目被 menu 条目引用时安装期拒载，见 6.3.1 |
 | `extensions` | object | 是 | 能力包声明集合（见下与「能力声明」） |
 
 > 身份键与五条版本轴（version/contractVersion/configSchemaVersion/plugin_data schemaVersion/buildId）的全貌与变更时机速查，见第十八节。
@@ -137,6 +138,7 @@ type MyWorkFetcher struct{}
 - 顶层残留 `capabilities` 键（值恰为 `null` 亦然）即判**未迁移**：安装时拒收、加载时跳过（`backend/plugin/extension/loader.go:240-241`）。
 - `extensions` 子对象内 `settings` 键在场（值恰为 `null` 亦然）即判不合格——用户设置项声明须住清单根级 `settings` 段。
 - 顶层 `settingsPage` 非空时，所指 `frontendExtensions` 条目必须存在且 `kind=view`，否则拒载（见 6.3.1）。
+- 顶层 `settingsPresent` 取值限 `route`/`dialog`（缺省 `route`）；在场而 `settingsPage` 为空、或 dialog 呈现条目被 menu 条目引用（防菜单点开无路由可跳）时拒载（见 6.3.1）。
 - 其余枚举值（kind/contentType/position/settings.type）**安装时不校验**，错误值在激活/运行期暴露，请自行核对拼写。
 
 ### 前端扩展声明
@@ -714,8 +716,11 @@ type SiteBrowser interface {
 
 插件可整页接管自己的设置面：清单根级 `settingsPage` 字段指向本插件一个 `kind=view` 的前端扩展条目 id，插件管理页的「设置」操作据此分流：
 
-- **插件运行中**：直达该页面（路由名 = 复合名 `publicId/extensionId`，与侧栏菜单跳转同一注册面）。该条目被 settingsResolver 停用（路由未注册）时提示「设置页条目已被参与度停用」，不跳转。
-- **插件未运行**：确认框「该插件的设置页面需要运行插件，是否现在运行？」，确认后宿主激活插件（幂等、信任门控内建）并进入页面。未信任插件的激活被信任门控拒绝，错误文案附「请先在插件管理中信任」指引——信任是安全授权动作，保持管理页「信任」专职入口，设置入口不做引导信任流。
+呈现形式由 `settingsPresent` 决定（内容机制 × 呈现形式两轴解耦，见下纪律矩阵）：`route`（缺省）整页路由，`dialog` 宿主弹窗壳。两种形式共用一套入口语义：
+
+- **插件运行中 + route**：直达该页面（路由名 = 复合名 `publicId/extensionId`，与侧栏菜单跳转同一注册面）。该条目被 settingsResolver 停用（路由未注册）时提示「设置页条目已被参与度停用」，不跳转。
+- **插件运行中 + dialog**：条目只入前端扩展注册表、**不注册路由**（侧栏不可见），宿主就地弹出弹窗壳（`AutoHeightDialog`，宽 `min(560px, 90vw)`、内容区高度随窗口封顶内滚），插件组件作为被动内容动态挂载（打开才挂载、关闭即卸载）；注册表无该条目（参与度停用）时提示同款停用文案，不开弹窗。
+- **插件未运行**（两种形式同）：确认框「该插件的设置页面需要运行插件，是否现在运行？」，确认后宿主激活插件（幂等、信任门控内建）并分别等待路由/注册表条目就绪再进页/开弹窗。未信任插件的激活被信任门控拒绝，错误文案附「请先在插件管理中信任」指引——信任是安全授权动作，保持管理页「信任」专职入口，设置入口不做引导信任流。
 - **未声明 settingsPage**：维持现状——settings 段声明的标准设置弹窗。
 
 **声明方式**（test 插件为可运行参考，`views/settings-page.vue` 为最简 vueSource 载体）：
@@ -723,6 +728,7 @@ type SiteBrowser interface {
 ```json
 {
   "settingsPage": "my-settings-view",
+  "settingsPresent": "dialog",
   "extensions": {
     "frontendExtensions": [
       { "id": "my-settings-view", "name": "设置", "kind": "view",
@@ -732,9 +738,16 @@ type SiteBrowser interface {
 }
 ```
 
-安装期校验：`settingsPage` 非空时所指条目必须存在且 `kind=view`，否则整包拒载（升级换包同样过校验链）；字段缺省（旧清单）零值兼容，走标准设置弹窗。同一 view 条目同时被 menu 引用无冲突（菜单可进 + 设置可进，一页两入口）。
+安装期校验：`settingsPage` 非空时所指条目必须存在且 `kind=view`，否则整包拒载（升级换包同样过校验链）；`settingsPresent` 取值限 `route`/`dialog`，在场而 `settingsPage` 为空、或 **dialog 呈现条目被 menu 条目引用**（菜单点开将无路由可跳）时拒载；两字段缺省（旧清单）零值兼容，走标准设置弹窗/整页路由。menu 引用无冲突仅限 route 呈现（菜单可进 + 设置可进，一页两入口）。
 
-**二选一纪律（文档约定，无机制强制）**：插件要么**全声明式**（settings 段 + 标准设置弹窗，值经宿主设置服务存储、变更热生效通知），要么**全自定义页**（settingsPage + 整页全责：页面内容、交互、保存逻辑全部插件自负，自写自读闭环——值经 `SetValue` 写宿主 KV 存储，不经宿主设置服务保存路径，不会触发热生效通知）。不得双轨并存：声明 settingsPage 后标准弹窗对该插件不再出现（替代式），settings 段声明形同虚设；依赖标准弹窗的插件勿声明 settingsPage。
+**机制二选一 × 形式二选一纪律（文档约定，无机制强制）**：内容机制上，插件要么**全声明式**（settings 段 + 标准设置弹窗，值经宿主设置服务存储、变更热生效通知），要么**全自定义**（settingsPage + 页面全责：内容、交互、保存逻辑全部插件自负，自写自读闭环——值经 `SetValue` 写宿主 KV 存储，不经宿主设置服务保存路径，不会触发热生效通知）。不得双轨并存：声明 settingsPage 后标准弹窗对该插件不再出现（替代式），settings 段声明形同虚设；依赖标准弹窗的插件勿声明 settingsPage。呈现形式上，自定义机制再二选一：**route 整页**（量重/多区块面板）或 **dialog 弹窗**（量小、操作简单但非纯 KV 存取——声明式装不下、整页又过重的中间态）。自定义设置页的形式只有这两种，**不得用 `kind=dialog` 前端扩展条目承载设置页**——dialog 条目是功能弹窗容器（form-ask 类问答流），不经设置入口编排，无宿主设置入口集成。
+
+| 机制 \ 形式 | 标准弹窗（宿主代工） | 整页路由（route，缺省） | 宿主弹窗壳（dialog） |
+| --- | --- | --- | --- |
+| 声明式（settings 段） | ✅ 唯一组合 | — | — |
+| 自定义（settingsPage） | —（替代式，不再出现） | ✅ | ✅ `settingsPresent: "dialog"` |
+
+**两种形态的页骨架**：route 整页用 `<BaseView>` 骨架（见「组件环境」第 3 条推荐骨架，自承滚动）；dialog 弹窗内容**勿带任何页骨架**——根元素即内容容器、自然流式布局，不写 `BaseView`、不写自有 `el-scrollbar`/滚动容器（高度封顶与内滚责任在宿主弹窗壳，插件自带反而双重滚动）。bilibili 1.5.3 为 dialog 形态先例，test 插件（`views/settings-page.vue`）为最简 dialog 载体参考。
 
 **与插件进程的通信通路**：页面组件与插件 Go 进程经既有发布/订阅消息机制（第九节）互通——插件 `ctx.PublishToFrontend(topic, data)` 向页面发布，`ctx.SubscribeFrontend(topic)` 订阅页面回传。先例为 bilibili 插件的 form-ask 问答流（`library-squirrel-plugin-bilibili/activate.go:58-66`：激活期订阅前端回传主题，goroutine 消费 channel 分发）。设置页的典型形态：页面加载时发「查询当前值」主题 → 插件订阅并回发 → 页面渲染表单 → 保存时发「保存」主题 → 插件订阅并 `SetValue` 落库。
 
