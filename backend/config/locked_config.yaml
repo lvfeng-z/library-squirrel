@@ -83,6 +83,9 @@ officialPlugins:
     buildId: c821605
     contentDigest: 8925568b59618adaf724f6e0571552476c8bd5604de3dfd0340603d5740e9cfb
   - publicId: com.lvfeng.bilibiliSuite
+    buildId: c821605-dirty
+    contentDigest: 4e2b736415277663dc7106533b335a2924decacff73ddd1a0c522cc67de5362d
+  - publicId: com.lvfeng.bilibiliSuite
     buildId: d996c4d
     contentDigest: 64fb32b60cf6d138e4f23f1dd8128261a45430b667cb972290fe6bcd7cf23595
   - publicId: com.lvfeng.bilibiliSuite
@@ -148,6 +151,9 @@ officialPlugins:
   - publicId: com.lvfeng.localImport
     buildId: ae80e8f
     contentDigest: 8787c7a317b98d72308e964a2ccda860303415475ec9252f06462c4d36234cee
+  - publicId: com.lvfeng.localImport
+    buildId: ae80e8f-dirty
+    contentDigest: 8b847cfd73da5e4b33a5b816b27deab03e5ccf7e48450a3e05c4572a14f1ba66
   - publicId: com.lvfeng.localImport
     buildId: b32a646
     contentDigest: 6d8898bf559b9b19ae9b573b61d9829af3b158f3d03d0b0b00d6b98c1b6e14a3

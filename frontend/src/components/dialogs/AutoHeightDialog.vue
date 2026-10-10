@@ -2,16 +2,24 @@
 import { nextTick, Ref, ref } from 'vue'
 
 // props
+// 关闭语义透传三项：显式 default: undefined 阻止 Vue 对缺省 Boolean prop 的 false 强转，
+// 缺省保持 undefined 绑定到 el-dialog（等价于不传），Element Plus 走自身默认值
 const props = withDefaults(
   defineProps<{
     destroyOnClose?: boolean
     beforeClose?: (done: (shouldCancel?: boolean) => void) => void
     height?: string
     width?: string
+    closeOnClickModal?: boolean
+    closeOnPressEscape?: boolean
+    showClose?: boolean
   }>(),
   {
     height: '90vh',
-    destroyOnClose: true
+    destroyOnClose: true,
+    closeOnClickModal: undefined,
+    closeOnPressEscape: undefined,
+    showClose: undefined
   }
 )
 // model
@@ -50,6 +58,9 @@ function handleChangeState() {
       style="margin: auto"
       :destroy-on-close="destroyOnClose"
       :before-close="props.beforeClose"
+      :close-on-click-modal="props.closeOnClickModal"
+      :close-on-press-escape="props.closeOnPressEscape"
+      :show-close="props.showClose"
       @open="handleChangeState"
     >
       <template #header>

@@ -738,13 +738,14 @@ type SiteBrowser interface {
 
 **与插件进程的通信通路**：页面组件与插件 Go 进程经既有发布/订阅消息机制（第九节）互通——插件 `ctx.PublishToFrontend(topic, data)` 向页面发布，`ctx.SubscribeFrontend(topic)` 订阅页面回传。先例为 bilibili 插件的 form-ask 问答流（`library-squirrel-plugin-bilibili/activate.go:58-66`：激活期订阅前端回传主题，goroutine 消费 channel 分发）。设置页的典型形态：页面加载时发「查询当前值」主题 → 插件订阅并回发 → 页面渲染表单 → 保存时发「保存」主题 → 插件订阅并 `SetValue` 落库。
 
-**组件环境（五层实况）**：
+**组件环境（六层实况）**：
 
 1. **工厂两参**：precompiled 组件工厂签名固定 `(Vue, WailsRuntime)`——宿主只注入这两个依赖，需要什么从这两处解构，不期待第三个参数。
 2. **模板 el-\* 与指令可用**：宿主全量注册 Element Plus 组件与指令（含 `v-loading`），插件模板内 `el-button`/`el-form` 等标签与指令经运行时解析命中宿主全局注册表，样式随宿主主题令牌。**勿 import Element Plus 打包自带副本**——体积翻倍且双份样式互相污染。宿主侧义务：保持全量注册（改按需引入前评估插件面）。
 3. **宿主视图外壳 `<BaseView>` 可用**：宿主 `main.ts` 全局注册 `BaseView`（`app.component('BaseView', BaseView)`，注册点在 Element Plus 注册之后），插件模板写 `<BaseView>`（或 `<base-view>`）**零 import**——与 el-\* 完全同机制、同契约层（SFC 编译产物的 `resolveComponent("BaseView")` 命中宿主全局注册表）。**推荐页骨架** = `BaseView` 外壳 + 内容容器 `calc(100% - 20px)` 边距（宿主 10px 边距惯例，宽高各留 10px）+ 内部 `el-scrollbar` 承滚动（超高出宿主样式滚动条，不出原生滚动条）；`#dialog` 具名插槽用于绝对定位弹层（插槽容器 `.base-view-dialog` 已 `position: absolute`，供不参与文档流的浮层挂载）。**不采用则插件自负布局纪律**：内容高度溢出时露出原生滚动条，宿主不做兜底。**宿主版本要求**：需宿主不低于引入本注册的版本（旧宿主无此全局名，Vue 按未知标签处理——该标签解析不到、按原生标签渲染，页面骨架失效并伴随控制台告警，但不报错）。
-4. **反馈方法的契约边界**：已契约通道 = `window.__PLUGIN_CTX__.globals` 的 `$message`/`$notify`/`$confirm`/`$alert` 四个；实例代理通道（options API 的 `this`、模板表达式、`getCurrentInstance().proxy`）经宿主应用 globalProperties 可达全集（`$prompt`/`$loading`/`$msgbox` 等）——属**事实可用未契约**，宿主不承诺稳定性，插件自担风险。
-5. **主题令牌**：样式统一用 `var(--app-*)` 主题令牌（见 `doc/plugin-theme-tokens.md`），禁止硬编码颜色与 `var(--el-*)`，使页面自动跟随用户主题；需感知当前主题 id 时用 `window.__PLUGIN_CTX__.theme.getCurrent()`。
+4. **对话框壳三件可用**（`<AutoHeightDialog>`/`<StaticHeightDialog>`/`<FormDialog>`）：宿主 `main.ts` 全局注册三件（与 `BaseView` 同一注册面、同机制——插件模板零 import，`resolveComponent` 命中宿主全局注册表）。**适用面**：滚动长内容 → `AutoHeightDialog`（内容区为 el-scrollbar，高度按 `height` prop 随窗口封顶、默认 `90vh`，超高在弹窗内滚、不溢出视口）；固定高度内容容器 → `StaticHeightDialog`（内容区高度 = `height` 减 header/footer 实测高度）；表单 + 保存/取消脚手架 → `FormDialog`（`mode` 传 `'view'`/`'edit'`/`'new'` 字面量区分只读/编辑/新建，枚举定义见 `frontend/src/model/util/DialogMode.ts`；`v-model:formData` 绑表单数据对象，`#form` 插槽放表单项，footer 默认渲染保存/取消按钮并上抛 `saveButtonClicked`/`cancelButtonClicked`）。三壳均以 `state` 双向绑定控制开关：`v-model:state="某布尔 ref"`——true 开窗、false 关窗，取消按钮/遮罩/ESC 触发的关闭经双向绑定回写该 ref（宿主业务弹窗即此用法）；均带 `#header`/默认/`#footer` 三插槽。**teleport 目标 `#dialog-mount-point` 由壳内置**（宿主 `index.html` 常驻挂点、在 `#app` 之外），插件无需也不应自写 teleport。**透传 props（仅 AutoHeightDialog/StaticHeightDialog，FormDialog 未透传）**：`closeOnClickModal`/`closeOnPressEscape`/`showClose`（点遮罩关闭/ESC 关闭/右上角关闭 X），缺省不传 = 宿主默认行为（el-dialog 自身默认值）；强制应答类弹窗显式传三件 `false` 防误关。**宽度防横溢**：`width="min(固定宽, 90vw)"`（如 `min(520px, 90vw)`）——窗口压窄时宽度随视口收缩，不出原生横向滚动条。**宿主版本要求**：同 `BaseView` 条目——需宿主不低于引入本注册的版本（旧宿主无此全局名，Vue 按未知标签处理——按原生标签渲染、壳失效并伴随控制台告警，但不报错）。**Element Plus 版本耦合**：`AutoHeightDialog`/`StaticHeightDialog` 的高度计算读取 el-dialog 内部 DOM 结构（`.el-dialog__header`/`.el-dialog__footer` 类名），宿主升级 Element Plus 可能破坏该计算——与依赖 el-\* 的插件同责，随宿主升级回归。
+5. **反馈方法的契约边界**：已契约通道 = `window.__PLUGIN_CTX__.globals` 的 `$message`/`$notify`/`$confirm`/`$alert` 四个；实例代理通道（options API 的 `this`、模板表达式、`getCurrentInstance().proxy`）经宿主应用 globalProperties 可达全集（`$prompt`/`$loading`/`$msgbox` 等）——属**事实可用未契约**，宿主不承诺稳定性，插件自担风险。
+6. **主题令牌**：样式统一用 `var(--app-*)` 主题令牌（见 `doc/plugin-theme-tokens.md`），禁止硬编码颜色与 `var(--el-*)`，使页面自动跟随用户主题；需感知当前主题 id 时用 `window.__PLUGIN_CTX__.theme.getCurrent()`。
 
 `BaseView` 推荐页骨架示例（precompiled SFC 模板片段，零新 import）：
 
@@ -764,6 +765,20 @@ type SiteBrowser interface {
   </BaseView>
 </template>
 ```
+
+对话框壳最小示例（precompiled SFC 模板片段，零新 import；强制应答语义场景）：
+
+```vue
+<template>
+  <AutoHeightDialog v-model:state="visible" width="min(520px, 90vw)"
+                    :close-on-click-modal="false" :close-on-press-escape="false" :show-close="false">
+    <template #header><!-- 自绘标题栏（可选） --></template>
+    <!-- 内容：超高时在弹窗内滚动，高度随窗口封顶 -->
+    <template #footer><!-- 底部按钮区（可选） --></template>
+  </AutoHeightDialog>
+</template>
+```
+
 **el-\* 版本漂移与主题耦合风险**：宿主升级 Element Plus 可能改变组件行为/样式/移除废弃组件，依赖 el-\* 的插件需随宿主升级回归；EP 样式随宿主主题体系走，宿主改主题时插件页视觉跟随变化——这是契约化的代价，换来自带副本的体积与样式冲突豁免。
 
 **建议 precompiled**：正式设置页走 precompiled（Vite + `componentFactoryPlugin` 产物）。vueSource 为运行时 SFC 编译——无构建期类型检查与模板优化、script 经运行时求值，质量与体积有限，仅适合最简演示载体（test 插件即此形态）。
@@ -1203,7 +1218,7 @@ dist/
 ## 十四、完整示例
 
 参考真实插件：
-- **pixiv 插件**（`library-squirrel-plugin-pixiv`）：运行时插件，含 WorkFetcher + SiteBrowser + OAuth 登录（OpenWindow）+ 统一自存信息（token 加密存储）+ siteBrowserList Slot + 测试用 view/replaceView/embed/dialog/menu slot + 前端调用主程序后端（`window.__PLUGIN_CTX__`）。
+- **pixiv 插件**（`library-squirrel-plugin-pixiv`）：运行时插件，含 WorkFetcher + SiteBrowser + OAuth 登录（OpenWindow）+ 统一自存信息（token 加密存储）+ siteBrowserList Slot（前端扩展现仅站点浏览器入口这一类，其余 kind 均无，清单见其 `plugin.json`）+ 前端调用主程序后端（`window.__PLUGIN_CTX__`）。
 - **local-import 插件**（`library-squirrel-plugin-local`）：含前端通信（`PublishToFrontend`/`SubscribeFrontend`）+ 预编译 Vue 组件 dialog Slot。
 
 ## 十五、调试与诊断
