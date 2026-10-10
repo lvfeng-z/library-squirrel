@@ -121,12 +121,14 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
   },
 
   actions: {
-    // 注册视图插槽
-    registerViewSlot(slot: ViewSlot) {
+    // 注册视图插槽。isSettingsDialog：弹窗呈现的设置页条目只入注册表不挂路由——
+    // 宿主设置入口按复合键从注册表取组件加载器挂弹窗；侧栏菜单只从 menuSlots
+    // 生成，无路由可跳不影响菜单
+    registerViewSlot(slot: ViewSlot, isSettingsDialog = false) {
       this.viewSlots.set(slot.slotId, slot)
 
       // 如果是插件视图且 router 可用，自动添加路由
-      if (slot.isPlugin && routerInstance) {
+      if (slot.isPlugin && routerInstance && !isSettingsDialog) {
         routerInstance.addRoute('MainLayout', {
           path: slot.slotId,
           name: slot.slotId,
@@ -160,7 +162,10 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
         if (routerInstance.currentRoute.value.name === id) {
           routerInstance.push('/')
         }
-        routerInstance.removeRoute(id)
+        // 按在场判定移除：弹窗呈现条目注册时未挂路由，对不存在的路由 removeRoute 会在 dev 告警
+        if (routerInstance.hasRoute(id)) {
+          routerInstance.removeRoute(id)
+        }
       }
 
       if (this.activeViewId === id) {

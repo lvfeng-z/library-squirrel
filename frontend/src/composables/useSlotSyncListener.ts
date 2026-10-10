@@ -477,7 +477,9 @@ function registerSlotByType(store: ReturnType<typeof useSlotRegistryStore>, slot
     return
   }
   if (slot.type === 'view') {
-    store.registerViewSlot(convertToViewSlot(slot))
+    // 载荷带 settingsDialog 标记的 view 条目为弹窗呈现的设置页：只入注册表不挂路由，
+    // 打开编排由宿主设置入口按复合键取件承担
+    store.registerViewSlot(convertToViewSlot(slot), slot.settingsDialog === true)
   } else if (slot.type === 'replaceView') {
     store.registerReplaceViewSlot(convertToReplaceViewSlot(slot))
   } else if (slot.type === 'menu') {

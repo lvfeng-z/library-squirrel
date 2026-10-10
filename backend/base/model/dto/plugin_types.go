@@ -21,6 +21,14 @@ type PluginActivation struct {
 	Type ActivationType `json:"type"`
 }
 
+// 设置页呈现形式枚举（清单根级 settingsPresent 的合法取值；空串/字段缺席 = 缺省 route）
+const (
+	// SettingsPresentRoute 整页路由（缺省形式：设置页条目激活后注册为路由页面）
+	SettingsPresentRoute = "route"
+	// SettingsPresentDialog 弹窗（设置页条目只入前端扩展注册表、不注册路由，由宿主壳弹窗呈现）
+	SettingsPresentDialog = "dialog"
+)
+
 // PluginManifest 插件清单（从 plugin.json 解析）；能力声明住 extensions 段，
 // settings（用户设置项声明）住根级
 type PluginManifest struct {
@@ -35,6 +43,7 @@ type PluginManifest struct {
 	Settings            []SettingDeclaration         `json:"settings,omitempty"`         // 用户设置项声明（住清单根级，不属 extensions 能力包）
 	SettingsResolver    *SettingsResolverDeclaration `json:"settingsResolver,omitempty"` // 设置驱动参与度 resolver 声明（住清单根级；不带该字段的插件零行为变化）
 	SettingsPage        string                       `json:"settingsPage,omitempty"`     // 自定义设置页条目 id（角色指针：指向本插件 frontendExtensions 中 kind=view 条目的 id，插件管理页「设置」据此直达该页面并停用标准弹窗；安装期校验指向性，缺省走标准弹窗）
+	SettingsPresent     string                       `json:"settingsPresent,omitempty"` // 设置页呈现形式（route=整页路由 / dialog=弹窗，缺省 route；仅当 settingsPage 非空时有意义——在场而 settingsPage 缺席时安装期拒载）
 	Extensions          *PluginExtensions            `json:"extensions"`
 	Activation          PluginActivation             `json:"activation"`
 	EntryFile           string                       `json:"entryFile"`

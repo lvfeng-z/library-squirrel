@@ -361,6 +361,11 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 		return nil, err
 	}
 
+	// settingsPresent 声明校验（安装期闸门，清单校验簇同层）：枚举与联动不合格即拒收
+	if err := validateSettingsPresent(&manifest); err != nil {
+		return nil, err
+	}
+
 	// settingsResolver 安装期闸门（清单校验簇同层）：声明在场时随包校验脚本工件并
 	// 以声明默认值 dry-run；不带该字段的插件零行为变化
 	scriptName := ""
@@ -398,6 +403,72 @@ func validateSettingsPagePointer(manifest *domain.PluginManifest) error {
 	}
 	return fmt.Errorf("%w: settingsPage 指向的条目 %q 不在 frontendExtensions 声明内",
 		ErrInvalidManifest, manifest.SettingsPage)
+}
+
+// validateSettingsPresent 校验清单根级 settingsPresent（安装期闸门）：取值限 route/dialog
+// （空 = 缺省 route，旧清单零值兼容）；在场时 settingsPage 须同场（呈现形式只对自定义设置页
+// 有意义）；取 dialog 时所指 view 条目不得被 menu 条目引用——弹窗呈现条目不注册路由，菜单
+// 引用将点开无路由可跳。安装/重装/换版共用本闸门（均经 loadPluginPackage）即覆盖全部进入路径
+func validateSettingsPresent(manifest *domain.PluginManifest) error {
+	switch manifest.SettingsPresent {
+	case "", domain.SettingsPresentRoute, domain.SettingsPresentDialog:
+	default:
+		return fmt.Errorf("%w: settingsPresent 取值 %q 非法，合法取值：route（整页路由）、dialog（弹窗）",
+			ErrInvalidManifest, manifest.SettingsPresent)
+	}
+	if manifest.SettingsPresent == "" {
+		return nil
+	}
+	if manifest.SettingsPage == "" {
+		return fmt.Errorf("%w: settingsPresent 在场但 settingsPage 为空，呈现形式仅对自定义设置页（settingsPage 指向的 view 条目）有意义",
+			ErrInvalidManifest)
+	}
+	if manifest.SettingsPresent != domain.SettingsPresentDialog {
+		return nil
+	}
+	if menuReferencesViewEntry(manifest.Extensions, manifest.SettingsPage) {
+		return fmt.Errorf("%w: settingsPage 指向的条目 %q 为 dialog 呈现，被 menu 条目引用（弹窗呈现条目不注册路由，菜单点击无路由可跳）",
+			ErrInvalidManifest, manifest.SettingsPage)
+	}
+	return nil
+}
+
+// menuReferencesViewEntry 判断 frontendExtensions 中的 menu 条目（含递归子项）是否引用给定
+// view 条目。menu 叶子项经 content.viewId 指向 view 条目；viewId 为空时不构成引用（空目标
+// 无法命中任何条目）
+func menuReferencesViewEntry(ext *domain.PluginExtensions, viewId string) bool {
+	if ext == nil || viewId == "" {
+		return false
+	}
+	for _, fe := range ext.FrontendExtensions {
+		if fe.Kind != string(base.FrontendExtensionKindMenu) {
+			continue
+		}
+		if menuDeclarationReferencesView(fe, viewId) {
+			return true
+		}
+	}
+	return false
+}
+
+// menuDeclarationReferencesView 递归判定单个 menu 声明（含 children 子项）是否引用目标 view
+// 条目。content 解析失败的条目不参与判定（激活期注册同样因解析失败跳过，不构成可点击引用）
+func menuDeclarationReferencesView(fe domain.FrontendExtensionDeclaration, viewId string) bool {
+	var c domain.MenuContent
+	if len(fe.Content) > 0 {
+		if err := json.Unmarshal(fe.Content, &c); err != nil {
+			return false
+		}
+	}
+	if c.ViewId == viewId {
+		return true
+	}
+	for _, child := range c.Children {
+		if menuDeclarationReferencesView(child, viewId) {
+			return true
+		}
+	}
+	return false
 }
 
 // readPackageFile 按条目名读取安装包内文件内容（精确名匹配，名为空、条目不在场或不可读
@@ -921,6 +992,8 @@ func (s *Service) GetPluginStatus(ctx context.Context, pluginPublicId string) (*
 	status.UrlPatterns = declaredUrlPatterns(declared)
 	// 自定义设置页条目 id（静态面：未激活插件同样返回，前端据此分流设置入口——直达自定义页/先激活/标准弹窗）
 	status.SettingsPageExtensionId = declaredSettingsPage(declared)
+	// 设置页呈现形式（静态面：与条目 id 同源现读清单，未声明归一为缺省 route）
+	status.SettingsPresent = declaredSettingsPresent(declared)
 
 	// 参与度概要（真相层序列化快照；插件未激活无会话时保持 nil，前端不渲染该节）
 	status.Participation = s.participationOverviewOf(pluginPublicId)
@@ -986,4 +1059,13 @@ func declaredSettingsPage(manifest *domain.PluginManifest) string {
 		return ""
 	}
 	return manifest.SettingsPage
+}
+
+// declaredSettingsPresent 清单声明的设置页呈现形式（清单缺席或未声明归一为缺省 route，
+// 状态面只携带非空呈现值）
+func declaredSettingsPresent(manifest *domain.PluginManifest) string {
+	if manifest == nil || manifest.SettingsPresent == "" {
+		return domain.SettingsPresentRoute
+	}
+	return manifest.SettingsPresent
 }

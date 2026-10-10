@@ -14,6 +14,7 @@ import {arrayIsEmpty, arrayNotEmpty, isNullish, notNullish} from '@renderer/util
 import {ElMessage, ElMessageBox} from 'element-plus'
 import PluginDialog from '@renderer/components/dialogs/PluginDialog.vue'
 import PluginSettingDialog from '@renderer/components/dialogs/PluginSettingDialog.vue'
+import PluginCustomSettingDialog from '@renderer/components/dialogs/PluginCustomSettingDialog.vue'
 import {PluginQueryDTO} from '@bindings/github.com/library-squirrel/backend/plugin/models'
 import {Operator, SortOrder} from '@bindings/github.com/library-squirrel/backend/base/query/models'
 import {isBlank, isNotBlank} from '@renderer/utils/StringUtil.ts'
@@ -22,8 +23,12 @@ import type {ApiResult} from '@renderer/apis/http/types'
 import {PluginDTO, PendingUpgradeDTO} from "@bindings/github.com/library-squirrel/backend/base/model/dto"
 import {Page} from "@bindings/github.com/library-squirrel/backend/base/model"
 import {usePluginUpdateStore} from '@renderer/store/UsePluginUpdateStore.ts'
+import {useSlotRegistryStore} from '@renderer/store/SlotRegistryStore.ts'
 
 const router = useRouter()
+
+// 前端扩展注册表：dialog 呈现的自定义设置页组件按复合键存于此（不挂路由）
+const slotRegistryStore = useSlotRegistryStore()
 
 // onMounted
 onMounted(() => {
@@ -140,6 +145,11 @@ const statusPublicId: Ref<string> = ref('')
 const settingDialogState: Ref<boolean> = ref(false)
 // 设置对话框对应的插件 publicId
 const settingPublicId: Ref<string> = ref('')
+// 自定义设置弹窗（dialog 呈现）开关与目标条目（宿主本地状态，打开控制全在宿主）
+const customSettingDialogState: Ref<boolean> = ref(false)
+// 自定义设置弹窗目标：插件 publicId 与设置页扩展条目 Id（复合键两段）
+const customSettingPublicId: Ref<string> = ref('')
+const customSettingExtensionId: Ref<string> = ref('')
 
 // 检查更新待办（红点数据源同 store；本页承担答复：升级/跳过/重新提示）
 const pluginUpdateStore = usePluginUpdateStore()
@@ -463,16 +473,19 @@ async function unInstall(pluginPublicId: string) {
     .catch(() => {})
 }
 // 「设置」入口分流：状态 DTO 的 settingsPageExtensionId 是清单静态声明面（未激活插件同样返回），
-// 与生命周期态共同决定三路——运行中直达自定义页、未运行确认后激活再进、无声明开标准设置弹窗。
+// 与生命周期态、settingsPresent 呈现形式共同分流——无声明开标准设置弹窗；有声明时运行中直达
+// 自定义页（route 整页 / dialog 弹窗两形态）、未运行确认后激活再进。
 // 替代式语义：声明自定义设置页后标准弹窗对该插件不再出现
 async function handleSettingsClicked(plugin: PluginDTO) {
   const publicId = String(plugin.publicId)
   let lifecycleState = ''
   let settingsPageExtensionId = ''
+  let settingsPresent = ''
   try {
     const status = (await pluginApi.pluginGetStatus(publicId)).data
     lifecycleState = status?.lifecycleState ?? ''
     settingsPageExtensionId = status?.settingsPageExtensionId ?? ''
+    settingsPresent = status?.settingsPresent ?? ''
   } catch (e) {
     ElMessage.error((e as Error).message)
     return
@@ -486,14 +499,26 @@ async function handleSettingsClicked(plugin: PluginDTO) {
     ElMessage.info('插件正在启动/停止，请稍后再试')
     return
   }
+  // 自定义页呈现形式分流：dialog 开弹窗壳（不走路由），route 跳整页路由
+  const isDialogPresent = settingsPresent === 'dialog'
   if (lifecycleState === 'active') {
-    goToPluginSettingsPage(publicId, settingsPageExtensionId)
+    if (isDialogPresent) {
+      openPluginSettingsDialog(publicId, settingsPageExtensionId)
+    } else {
+      goToPluginSettingsPage(publicId, settingsPageExtensionId)
+    }
     return
   }
   ElMessageBox.confirm('该插件的设置页面需要运行插件，是否现在运行？', '运行插件', {
     confirmButtonText: '运行', cancelButtonText: '取消'
   })
-    .then(() => activateThenGoToSettingsPage(publicId, settingsPageExtensionId))
+    .then(() => {
+      if (isDialogPresent) {
+        activateThenOpenSettingsDialog(publicId, settingsPageExtensionId)
+      } else {
+        activateThenGoToSettingsPage(publicId, settingsPageExtensionId)
+      }
+    })
     .catch(() => {})
 }
 
@@ -532,6 +557,45 @@ async function activateThenGoToSettingsPage(publicId: string, extensionId: strin
     router.push({ name: routeName })
   } else {
     ElMessage.info('插件已运行，请稍后从菜单或再次点击设置进入')
+  }
+}
+
+// 打开插件自定义设置弹窗（dialog 呈现）。内容组件按复合键存于前端扩展注册表——注册表无该
+// 条目说明设置页条目被参与度停用，提示且不开弹窗（与 route 路同款停用文案）
+function openPluginSettingsDialog(publicId: string, extensionId: string) {
+  if (slotRegistryStore.viewSlots.has(`${publicId}/${extensionId}`)) {
+    customSettingPublicId.value = publicId
+    customSettingExtensionId.value = extensionId
+    customSettingDialogState.value = true
+  } else {
+    ElMessage.warning('设置页条目已被参与度停用')
+  }
+}
+
+// 确认运行后激活插件并打开其设置弹窗。激活返回早于前端扩展注册表条目注册（参与者编排 +
+// 前端事件推送有时延），短重试（10×200ms）等待注册表条目就绪再开弹窗；激活失败透传原因，
+// 未信任门控的拒绝文案叠加信任指引（信任保持管理页专职入口，此处不做引导信任流）
+async function activateThenOpenSettingsDialog(publicId: string, extensionId: string) {
+  try {
+    await pluginApi.pluginActivate(publicId)
+  } catch (e) {
+    const reason = (e as Error).message
+    const trustHint = reason.includes('未信任') ? '，请先在插件管理中信任该插件' : ''
+    ElMessage.error(`${reason}${trustHint}`)
+    return
+  }
+  const slotId = `${publicId}/${extensionId}`
+  for (let i = 0; i < 10; i++) {
+    if (slotRegistryStore.viewSlots.has(slotId)) {
+      openPluginSettingsDialog(publicId, extensionId)
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200))
+  }
+  if (slotRegistryStore.viewSlots.has(slotId)) {
+    openPluginSettingsDialog(publicId, extensionId)
+  } else {
+    ElMessage.info('插件已运行，请稍后再次点击设置进入')
   }
 }
 
@@ -789,6 +853,11 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
         v-if="isNotBlank(settingPublicId)"
         v-model:state="settingDialogState"
         :public-id="settingPublicId"
+      />
+      <plugin-custom-setting-dialog
+        v-model:state="customSettingDialogState"
+        :public-id="customSettingPublicId"
+        :extension-id="customSettingExtensionId"
       />
     </template>
   </base-view>

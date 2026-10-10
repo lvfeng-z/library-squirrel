@@ -1788,6 +1788,14 @@ func (p *frontendExtensionParticipant) applyDeclaredEntry(src frontendExtensionS
 		return false
 	}
 
+	// 设置页弹窗呈现标记：清单声明 dialog 呈现且 settingsPage 指向本条目时，view 条目携带
+	// 标记注册（注册事件载荷透出，前端见标记只入扩展注册表、不挂路由）
+	if fe.Kind == string(base.FrontendExtensionKindView) &&
+		src.manifest.SettingsPage == fe.ID &&
+		src.manifest.SettingsPresent == dto.SettingsPresentDialog {
+		feConfig.SettingsDialog = true
+	}
+
 	extension := model.NewExtension(*feConfig.Metadata, feConfig)
 	if err := p.registry.Register(extension); err != nil {
 		logger.Log.Errorf("注册前端扩展失败 %s/%s: %v", publicId, fe.ID, err)

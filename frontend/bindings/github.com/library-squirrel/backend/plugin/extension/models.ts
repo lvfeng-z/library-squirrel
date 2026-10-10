@@ -25,6 +25,11 @@ export class FrontendExtensionResponse {
     "target"?: string;
     "order"?: number;
     "title"?: string;
+
+    /**
+     * view: 设置页弹窗呈现标记（在场 = 该条目为 dialog 呈现的设置页，前端只入注册表不注册路由）
+     */
+    "settingsDialog"?: boolean;
     "icon"?: string;
     "viewId"?: string;
     "extensionId"?: string;
@@ -60,10 +65,10 @@ export class FrontendExtensionResponse {
      * Creates a new FrontendExtensionResponse instance from a string or object.
      */
     static createFrom($$source: any = {}): FrontendExtensionResponse {
-        const $$createField17_0 = $$createType1;
+        const $$createField18_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("children" in $$parsedSource) {
-            $$parsedSource["children"] = $$createField17_0($$parsedSource["children"]);
+            $$parsedSource["children"] = $$createField18_0($$parsedSource["children"]);
         }
         return new FrontendExtensionResponse($$parsedSource as Partial<FrontendExtensionResponse>);
     }

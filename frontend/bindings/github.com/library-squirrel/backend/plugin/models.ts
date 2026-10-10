@@ -402,6 +402,13 @@ export class PluginStatusDTO {
     "settingsPageExtensionId": string;
 
     /**
+     * 设置页呈现形式（清单静态声明面，同样未激活即返回）：route=整页路由 / dialog=弹窗；
+     * 清单未声明按缺省 route 归一返回（状态面不出现空串）。前端设置入口据此在自定义页
+     * 两形态间分流
+     */
+    "settingsPresent": string;
+
+    /**
      * 参与度概要（真相层序列化快照，每次查询现读内存表；nil = 插件未激活无会话）
      */
     "participation": ParticipationOverview | null;
@@ -438,6 +445,9 @@ export class PluginStatusDTO {
         if (!("settingsPageExtensionId" in $$source)) {
             this["settingsPageExtensionId"] = "";
         }
+        if (!("settingsPresent" in $$source)) {
+            this["settingsPresent"] = "";
+        }
         if (!("participation" in $$source)) {
             this["participation"] = null;
         }
@@ -453,7 +463,7 @@ export class PluginStatusDTO {
         const $$createField6_0 = $$createType7;
         const $$createField7_0 = $$createType9;
         const $$createField8_0 = $$createType10;
-        const $$createField10_0 = $$createType12;
+        const $$createField11_0 = $$createType12;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("workFetch" in $$parsedSource) {
             $$parsedSource["workFetch"] = $$createField5_0($$parsedSource["workFetch"]);
@@ -468,7 +478,7 @@ export class PluginStatusDTO {
             $$parsedSource["urlPatterns"] = $$createField8_0($$parsedSource["urlPatterns"]);
         }
         if ("participation" in $$parsedSource) {
-            $$parsedSource["participation"] = $$createField10_0($$parsedSource["participation"]);
+            $$parsedSource["participation"] = $$createField11_0($$parsedSource["participation"]);
         }
         return new PluginStatusDTO($$parsedSource as Partial<PluginStatusDTO>);
     }

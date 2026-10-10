@@ -27,6 +27,11 @@ type PluginStatusDTO struct {
 	// = publicId/extensionId，由前端自拼）
 	SettingsPageExtensionId string `json:"settingsPageExtensionId"`
 
+	// 设置页呈现形式（清单静态声明面，同样未激活即返回）：route=整页路由 / dialog=弹窗；
+	// 清单未声明按缺省 route 归一返回（状态面不出现空串）。前端设置入口据此在自定义页
+	// 两形态间分流
+	SettingsPresent string `json:"settingsPresent"`
+
 	// 参与度概要（真相层序列化快照，每次查询现读内存表；nil = 插件未激活无会话）
 	Participation *ParticipationOverview `json:"participation"`
 }

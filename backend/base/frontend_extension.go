@@ -47,6 +47,9 @@ type FrontendExtensionConfig struct {
 	Content      json.RawMessage             // 内容（JSON 结构，前端根据 ContentType 解析）
 	ContentType  ContentType                 // 内容类型
 	Title        string                      // view: 标题
+	// view: 设置页弹窗呈现标记——清单 settingsPresent=dialog 且 settingsPage 指向本条目时置位。
+	// 置位的 view 条目经注册事件携带标记下行，前端只入扩展注册表、不注册路由（宿主壳弹窗呈现）
+	SettingsDialog bool
 	Icon         string                      // 图标（解析后的完整 URL）
 	Order        int                         // 排序
 	Position     string                      // embed: 主程序具名插槽位标识（如 work.toolbar）
