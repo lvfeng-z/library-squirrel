@@ -72,15 +72,15 @@ type pluginContext struct {
 // 能力族满足性编译期断言（与 SDK 侧 transport.PluginContextClient 的断言块互为表里）：
 // 宿主侧 pluginContext 实现全部能力族与复合接口——任一族增改方法而实现未跟进，编译期即失败
 var (
-	_ pluginsdkdto.ContextKVStore        = (*pluginContext)(nil)
-	_ pluginsdkdto.ContextPreference     = (*pluginContext)(nil)
-	_ pluginsdkdto.ContextProxy          = (*pluginContext)(nil)
-	_ pluginsdkdto.ContextTaskTrigger    = (*pluginContext)(nil)
-	_ pluginsdkdto.ContextFrontendEvents = (*pluginContext)(nil)
-	_ pluginsdkdto.ContextEnvironment    = (*pluginContext)(nil)
-	_ pluginsdkdto.ContextLibraryQuery   = (*pluginContext)(nil)
-	_ pluginsdkdto.ContextLogging        = (*pluginContext)(nil)
-	_ pluginsdkdto.PluginContext         = (*pluginContext)(nil)
+	_ pluginsdkdto.KVStore        = (*pluginContext)(nil)
+	_ pluginsdkdto.Preference     = (*pluginContext)(nil)
+	_ pluginsdkdto.Proxy          = (*pluginContext)(nil)
+	_ pluginsdkdto.TaskTrigger    = (*pluginContext)(nil)
+	_ pluginsdkdto.FrontendEvents = (*pluginContext)(nil)
+	_ pluginsdkdto.Environment    = (*pluginContext)(nil)
+	_ pluginsdkdto.LibraryQuery   = (*pluginContext)(nil)
+	_ pluginsdkdto.LogSink        = (*pluginContext)(nil)
+	_ pluginsdkdto.PluginContext  = (*pluginContext)(nil)
 )
 
 // NewPluginContext 创建插件上下文
