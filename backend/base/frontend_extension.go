@@ -47,6 +47,7 @@ type FrontendExtensionConfig struct {
 	Content      json.RawMessage             // 内容（JSON 结构，前端根据 ContentType 解析）
 	ContentType  ContentType                 // 内容类型
 	Title        string                      // view: 标题
+	Parent       string                      // view: 父页面路由名（本插件另一 view 条目的 id，或宿主路由名；空 = 一级页面）
 	// view: 设置页弹窗呈现标记——清单 settingsPresent=dialog 且 settingsPage 指向本条目时置位。
 	// 置位的 view 条目经注册事件携带标记下行，前端只入扩展注册表、不注册路由（宿主壳弹窗呈现）
 	SettingsDialog bool

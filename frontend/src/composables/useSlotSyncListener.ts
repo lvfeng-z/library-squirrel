@@ -56,7 +56,8 @@ function convertToViewSlot(config: FrontendExtensionResponse): ViewSlot {
     component: wrapWithBoundary(componentLoader, config.name),
     order: config.order ?? 100,
     isPlugin: true,
-    props: config.props as Record<string, unknown> | undefined
+    props: config.props as Record<string, unknown> | undefined,
+    parent: config.parent
   }
 }
 
@@ -580,19 +581,32 @@ export function initSlotSyncListener() {
     const data = (event as { data: { items: Array<{ pluginPublicId: string; frontendExtensionId: string; kind: string }> } }).data
     if (data?.items) {
       const involvedPlugins = new Set<string>()
+      // view 条目整批走批量注销：条目到达顺序不定（后端注册中心按 map 遍历推事件），
+      // 逐条注销时先到的子页面会把同批稍后消亡的祖先误判为幸存落点，
+      // 级联落点须以完整消亡集一次判定（SlotRegistryStore.unregisterViewSlots）
+      const viewSlotIds = data.items
+        .filter((item) => item.kind === 'view')
+        .map((item) => compositeSlotId(item.pluginPublicId, item.frontendExtensionId))
+      const cascadeNav = store.unregisterViewSlots(viewSlotIds)
       data.items.forEach((item) => {
-        unregisterSlotByType(store, compositeSlotId(item.pluginPublicId, item.frontendExtensionId), item.kind)
+        if (item.kind !== 'view') {
+          unregisterSlotByType(store, compositeSlotId(item.pluginPublicId, item.frontendExtensionId), item.kind)
+        }
         involvedPlugins.add(item.pluginPublicId)
       })
       involvedPlugins.forEach(removePluginStyles)
 
       // 含 view/replaceView 时刷新清除已渲染页面与模块缓存（保持当前 URL）
-      // useBuiltinMenus 注册路由后会 replace 重新匹配，避免 reload 后路由未注册灰屏
+      // useBuiltinMenus 注册路由后会 replace 重新匹配，避免 reload 后路由未注册灰屏。
+      // reload 须等级联落点导航落定：hash 未换即重载会落在已消亡路由上失配白屏
       const affectsRoutes = data.items.some(
         (item) => item.kind === 'view' || item.kind === 'replaceView'
       )
       if (affectsRoutes) {
-        window.location.reload()
+        void Promise.resolve(cascadeNav).then(
+          () => window.location.reload(),
+          () => window.location.reload()
+        )
       }
     }
   })

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Close } from '@element-plus/icons-vue'
 import DynamicSideMenu from '@renderer/components/slot/DynamicSideMenu.vue'
 import NotificationList from '@renderer/components/oneOff/NotificationList.vue'
 import ReminderStack from '@renderer/components/common/ReminderStack.vue'
+import BreadcrumbBar from '@renderer/components/common/BreadcrumbBar.vue'
 import ReplaceConfirmDialog from '@renderer/components/dialogs/ReplaceConfirmDialog.vue'
 import ChangeConfirmDialog from '@renderer/components/dialogs/ChangeConfirmDialog.vue'
 import DialogSlotRenderer from '@renderer/components/slot/DialogSlotRenderer.vue'
@@ -15,6 +16,7 @@ import { usePluginUpdateStore } from '@renderer/store/UsePluginUpdateStore.ts'
 import { useWorkdirStatusStore } from '@renderer/store/UseWorkdirStatusStore.ts'
 import { useTourCenterStore } from '@renderer/store/UseTourCenterStore.ts'
 import { useViewCloseButtonStore } from '@renderer/store/UseViewCloseButtonStore.ts'
+import { isBlank } from '@renderer/utils/StringUtil.ts'
 
 const router = useRouter()
 const route = useRoute()
@@ -68,6 +70,33 @@ async function handleCloseCurrentView() {
     await router.push('/')
   }
 }
+
+// 上退一级的目标：当前路由可解析的父页面路由名；一级页面、主页（无父级可回）
+// 与父页面路由已注销的情况均无目标（空操作，严格树语义）
+function navigateUpTarget(): string | undefined {
+  const parentName = route.meta.parent
+  if (typeof parentName !== 'string' || isBlank(parentName)) return undefined
+  return router.hasRoute(parentName) ? parentName : undefined
+}
+
+// Alt+← 页面级快捷键上退。WebView2 浏览器加速键已由 wails3 无条件禁用，
+// Alt+← 完整到达页面（无历史遍历），keydown 捕获阶段直接监听即可；
+// 一级页面与主页上退为空操作（不消费按键）
+function handleAltArrowLeftKeydown(event: KeyboardEvent) {
+  if (!event.altKey || event.key !== 'ArrowLeft') return
+  const target = navigateUpTarget()
+  if (target === undefined) return
+  event.preventDefault()
+  void router.push({ name: target })
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handleAltArrowLeftKeydown, true)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleAltArrowLeftKeydown, true)
+})
 </script>
 
 <template>
@@ -106,6 +135,8 @@ async function handleCloseCurrentView() {
           <span>工作目录未配置，资源下载、备份与文件服务均不可用</span>
           <span class="workdir-banner-action">前往设置</span>
         </div>
+        <!-- 页面层级面包屑条：文档流内占位（同横幅机制），仅当前页面存在 meta.parent 链时可见（组件内部判定） -->
+        <BreadcrumbBar />
         <div class="main-view-host">
           <router-view />
         </div>

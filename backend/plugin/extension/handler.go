@@ -21,6 +21,7 @@ type FrontendExtensionResponse struct {
 	Target         string                      `json:"target,omitempty"`
 	Order          int                         `json:"order,omitempty"`
 	Title          string                      `json:"title,omitempty"`
+	Parent         string                      `json:"parent,omitempty"`         // view: 父页面路由名（本插件另一 view 条目的 id，或宿主路由名；空 = 一级页面）
 	SettingsDialog bool                        `json:"settingsDialog,omitempty"` // view: 设置页弹窗呈现标记（在场 = 该条目为 dialog 呈现的设置页，前端只入注册表不注册路由）
 	Icon           string                      `json:"icon,omitempty"`
 	ViewId         string                      `json:"viewId,omitempty"`
@@ -78,6 +79,7 @@ func FrontendExtensionConfigToResponse(cfg *domain.FrontendExtensionConfig) *Fro
 		Target:         cfg.Target,
 		Order:          cfg.Order,
 		Title:          cfg.Title,
+		Parent:         cfg.Parent,
 		SettingsDialog: cfg.SettingsDialog,
 		Icon:           cfg.Icon,
 		ViewId:         cfg.ViewId,

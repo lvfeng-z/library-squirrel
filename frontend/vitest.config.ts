@@ -1,4 +1,4 @@
-import { configDefaults, defineConfig } from 'vitest/config'
+import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
@@ -13,12 +13,6 @@ export default defineConfig({
     }
   },
   test: {
-    environment: 'jsdom',
-    exclude: [
-      ...configDefaults.exclude,
-      // SlotRegistryStore.test.ts 是无测试运行器的可执行断言集（导出 runSlotRegistryStoreTests()，
-      // 由 live-test 经 dev 动态 import 执行）——vitest glob 误拾取会报「No test suite found」，排除
-      'src/store/SlotRegistryStore.test.ts'
-    ]
+    environment: 'jsdom'
   }
 })

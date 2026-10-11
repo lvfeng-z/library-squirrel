@@ -200,6 +200,7 @@ type ViewContent struct {
 	ContentType string          `json:"contentType"`
 	Source      json.RawMessage `json:"source"`
 	Title       string          `json:"title,omitempty"`
+	Parent      string          `json:"parent,omitempty"` // 父页面路由名（本插件另一 view 条目的 id，或宿主路由名；缺省 = 一级页面）
 	Props       json.RawMessage `json:"props,omitempty"`
 }
 

@@ -366,6 +366,12 @@ func (s *Service) loadPluginPackage(packagePath string) (*domain.PluginInstallDT
 		return nil, err
 	}
 
+	// view 条目 parent 层级声明校验（安装期闸门，清单校验簇同层）：非 view 声明、指向非 view、
+	// 同插件闭环、menu 引用冲突任一即拒收
+	if err := validateViewParentDeclarations(&manifest); err != nil {
+		return nil, err
+	}
+
 	// settingsResolver 安装期闸门（清单校验簇同层）：声明在场时随包校验脚本工件并
 	// 以声明默认值 dry-run；不带该字段的插件零行为变化
 	scriptName := ""
@@ -431,6 +437,103 @@ func validateSettingsPresent(manifest *domain.PluginManifest) error {
 			ErrInvalidManifest, manifest.SettingsPage)
 	}
 	return nil
+}
+
+// validateViewParentDeclarations 校验 view 条目 content.parent 层级声明（安装期闸门）：parent
+// 值为父页面路由名——或指向本插件另一 view 条目（宿主激活期拼复合路由名），或为宿主路由名
+// （不指向本插件任何条目即按此理解，后端不校验存在性，注册期前端兜底）。parent 仅对 view
+// 条目有意义；层级子页与 menu 引用互斥（进菜单即一级页面）。安装/重装/换版共用本闸门
+// （均经 loadPluginPackage）即覆盖全部进入路径
+func validateViewParentDeclarations(manifest *domain.PluginManifest) error {
+	if manifest.Extensions == nil {
+		return nil
+	}
+	// id → kind 索引：parent 命中本插件条目时的指向性判据（先建全量索引再逐条判定，
+	// 声明顺序不影响指向语义）
+	kinds := make(map[string]string, len(manifest.Extensions.FrontendExtensions))
+	for _, fe := range manifest.Extensions.FrontendExtensions {
+		kinds[fe.ID] = fe.Kind
+	}
+	// viewId → parent 边表（仅收录指向本插件 view 条目的边；宿主路由名边不构成本插件内链）
+	viewParents := make(map[string]string)
+	for _, fe := range manifest.Extensions.FrontendExtensions {
+		if fe.Kind != string(base.FrontendExtensionKindView) {
+			if contentDeclaresKey(fe.Content, "parent") {
+				return fmt.Errorf("%w: 前端扩展条目 %q kind 为 %q，content 内 parent 仅对 kind=view 条目有意义（非 view 条目不注册路由页面，无层级可挂）",
+					ErrInvalidManifest, fe.ID, fe.Kind)
+			}
+			continue
+		}
+		var c domain.ViewContent
+		if len(fe.Content) > 0 {
+			if err := json.Unmarshal(fe.Content, &c); err != nil {
+				// content 非法形态不构成本闸门的判定对象（激活期解析失败跳过该条目，与 menu 引用判定同宽）
+				continue
+			}
+		}
+		if c.Parent == "" {
+			continue
+		}
+		if kind, hit := kinds[c.Parent]; hit {
+			if kind != string(base.FrontendExtensionKindView) {
+				return fmt.Errorf("%w: view 条目 %q 的 parent 指向条目 %q kind 为 %q，同插件指向须指向 kind=view 的条目（层级父页须为可注册路由的页面）",
+					ErrInvalidManifest, fe.ID, c.Parent, kind)
+			}
+			viewParents[fe.ID] = c.Parent
+		}
+		if menuReferencesViewEntry(manifest.Extensions, fe.ID) {
+			return fmt.Errorf("%w: view 条目 %q 声明了 parent 且被 menu 条目引用（含子项）——进菜单即一级页面，层级子页与菜单入口不可兼得",
+				ErrInvalidManifest, fe.ID)
+		}
+	}
+	return validateViewParentChainAcyclic(viewParents)
+}
+
+// validateViewParentChainAcyclic 校验同插件 parent 链无环：每个 view 条目至多一条 parent 边，
+// 自任一条目沿边上溯，重回已访节点即闭环（自指为长度 1 的环）。闭环链上任何条目都无法抵达
+// 无层级的一级页面，面包屑上溯无从终止
+func validateViewParentChainAcyclic(viewParents map[string]string) error {
+	for start := range viewParents {
+		visited := map[string]bool{}
+		path := ""
+		cur := start
+		cyclic := false
+		for {
+			if visited[cur] {
+				cyclic = true
+				break
+			}
+			visited[cur] = true
+			if path != "" {
+				path += " → "
+			}
+			path += fmt.Sprintf("%q", cur)
+			parent, ok := viewParents[cur]
+			if !ok {
+				break
+			}
+			cur = parent
+		}
+		if cyclic {
+			return fmt.Errorf("%w: view 条目 %q 的 parent 链在本插件内闭环（%s），层级链须终于无 parent 的 view 条目或宿主路由名",
+				ErrInvalidManifest, start, path+" → "+fmt.Sprintf("%q", cur))
+		}
+	}
+	return nil
+}
+
+// contentDeclaresKey 判断前端扩展 content 原文内指定键是否在场（只问键在场与否，不看取值，
+// 值为 null 亦算在场；content 非对象或非法 JSON 形态不构成判定对象）
+func contentDeclaresKey(content json.RawMessage, key string) bool {
+	if len(content) == 0 {
+		return false
+	}
+	keys := map[string]json.RawMessage{}
+	if err := json.Unmarshal(content, &keys); err != nil {
+		return false
+	}
+	_, present := keys[key]
+	return present
 }
 
 // menuReferencesViewEntry 判断 frontendExtensions 中的 menu 条目（含递归子项）是否引用给定

@@ -4,6 +4,7 @@ import type { Component } from 'vue'
 import type { ViewSlot, EmbedSlot, DialogSlot, ReplaceViewSlot } from '@renderer/model/slot'
 import type { RouteRecordRaw } from 'vue-router'
 import type { Router } from 'vue-router'
+import { isBlank } from '@renderer/utils/StringUtil.ts'
 
 // 菜单项类型
 export interface MenuSlotItem {
@@ -48,6 +49,69 @@ export function setRouterInstance(router: Router | null) {
  */
 export function getRouterInstance(): Router | null {
   return routerInstance
+}
+
+// meta.parent 链上溯步数上限：宿主侧 routes.ts 静态声明成环属开发期笔误，截断防死循环
+const MAX_PARENT_CHAIN_HOPS = 32
+
+/**
+ * 从复合 slotId（publicId/extensionId）取插件 publicId。
+ * 两段均不含斜杠（publicId 为反向域名格式、extensionId 为 manifest 裸条目 id），
+ * 按最后一个斜杠切分即得 publicId；无斜杠返回 undefined
+ */
+function pluginPublicIdOfSlotId(slotId: string): string | undefined {
+  const separatorIndex = slotId.lastIndexOf('/')
+  return separatorIndex > 0 ? slotId.slice(0, separatorIndex) : undefined
+}
+
+/**
+ * 解析 view 插槽的 parent 声明值为最终路由名（纯查询、不告警）。
+ * 两形态按确定顺序尝试：先同插件复合名（publicId + 裸 extensionId，与菜单 viewId 解析同约定，
+ * 同名重叠时同插件指向胜出为确定行为），后宿主路由名；都不中返回 undefined
+ */
+function tryResolveParentRouteName(router: Router, slot: ViewSlot): string | undefined {
+  const raw = slot.parent
+  if (isBlank(raw)) return undefined
+  const publicId = pluginPublicIdOfSlotId(slot.slotId)
+  const compositeCandidate = publicId !== undefined ? `${publicId}/${raw}` : raw
+  if (compositeCandidate !== raw && router.hasRoute(compositeCandidate)) return compositeCandidate
+  return router.hasRoute(raw) ? raw : undefined
+}
+
+/**
+ * 沿 meta.parent 链自 startName 向上收集祖先路由名序列（紧邻父级在前，不含 startName 自身）。
+ * 消亡路由的记录移除后无法再沿其 meta 上溯，注销级联须在移除前先快照整条链再挑落点。
+ * 环与超长链由 seen 集与步数上限截断，开发态告警
+ */
+function collectParentChain(router: Router, startName: string): string[] {
+  const chain: string[] = []
+  const seen = new Set<string>([startName])
+  let cursor: string | undefined = startName
+  while (chain.length < MAX_PARENT_CHAIN_HOPS) {
+    const record = router.getRoutes().find((r) => r.name === cursor)
+    const parentName = record?.meta?.parent
+    if (isBlank(parentName)) break
+    if (seen.has(parentName)) {
+      console.warn(`[SlotRegistry] 页面 ${startName} 的 meta.parent 链在 "${parentName}" 处闭环，上溯已截断`)
+      break
+    }
+    seen.add(parentName)
+    chain.push(parentName)
+    cursor = parentName
+  }
+  return chain
+}
+
+/**
+ * 注销级联落点：祖先链上第一个不在本批消亡集且路由仍在场的名字；全灭返回 null（调用方落 '/'）。
+ * 同批消亡祖先跳过：朴素跳父会跳进垂死路由（同批到达顺序不定，仅凭当下路由表
+ * 会把同批稍后移除的祖先误判为幸存），宿主父页面必然存活
+ */
+function pickSurvivingAncestor(router: Router, chain: string[], doomed: Set<string>): string | null {
+  for (const name of chain) {
+    if (!doomed.has(name) && router.hasRoute(name)) return name
+  }
+  return null
 }
 
 export const useSlotRegistryStore = defineStore('slotRegistry', {
@@ -129,13 +193,46 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
 
       // 如果是插件视图且 router 可用，自动添加路由
       if (slot.isPlugin && routerInstance && !isSettingsDialog) {
+        const parentName = tryResolveParentRouteName(routerInstance, slot)
+        if (!isBlank(slot.parent) && parentName === undefined) {
+          // 层级保真度让位于页面可用性：页面照常注册，仅丢失层级
+          console.warn(`[SlotRegistry] 插件页面 ${slot.slotId} 的父页面声明 "${slot.parent}" 无法解析（同插件复合名与宿主路由名均未命中），已按无层级页面注册`)
+        }
         routerInstance.addRoute('MainLayout', {
           path: slot.slotId,
           name: slot.slotId,
           component: slot.component,
-          meta: { title: slot.name, order: slot.order ?? 100, isPlugin: true }
+          meta: {
+            title: slot.name,
+            order: slot.order ?? 100,
+            isPlugin: true,
+            ...(parentName !== undefined ? { parent: parentName } : {})
+          }
         })
+        // 注册顺序不定（后端按 map 遍历推送扩展），同插件父页面可能晚于子页面到达：
+        // 为注册时无法解析的同插件子页补检一次，命中即补写其路由 meta.parent
+        this.reconcilePendingPluginParents(slot)
       }
+    },
+
+    // 同插件父页面晚到补写：注册时两形态均未命中、此刻同插件父页面已在场的子页面，
+    // 将解析结果补写进其路由记录的 meta.parent（路由记录 meta 为可变对象，就地补写）
+    reconcilePendingPluginParents(newlyRegistered: ViewSlot) {
+      const router = routerInstance
+      if (!router) return
+      const publicId = pluginPublicIdOfSlotId(newlyRegistered.slotId)
+      if (publicId === undefined) return
+      this.viewSlots.forEach((slot) => {
+        if (isBlank(slot.parent) || slot.slotId === newlyRegistered.slotId) return
+        if (!slot.slotId.startsWith(`${publicId}/`)) return
+        if (!router.hasRoute(slot.slotId)) return
+        const record = router.getRoutes().find((r) => r.name === slot.slotId)
+        if (record === undefined || record.meta?.parent !== undefined) return
+        const resolved = tryResolveParentRouteName(router, slot)
+        if (resolved !== undefined) {
+          record.meta.parent = resolved
+        }
+      })
     },
 
     // 注册视图插槽并同步到路由
@@ -153,25 +250,41 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
       }
     },
 
-    // 取消注册视图插槽
+    // 取消注册视图插槽（单条）
     unregisterViewSlot(id: string) {
-      const slot = this.viewSlots.get(id)
-      // 如果是插件视图且 router 可用，自动移除路由
-      if (slot?.isPlugin && routerInstance) {
-        // 如果当前在被删的路由，导航到首页强制清除已渲染页面
-        if (routerInstance.currentRoute.value.name === id) {
-          routerInstance.push('/')
-        }
-        // 按在场判定移除：弹窗呈现条目注册时未挂路由，对不存在的路由 removeRoute 会在 dev 告警
-        if (routerInstance.hasRoute(id)) {
-          routerInstance.removeRoute(id)
-        }
-      }
+      return this.unregisterViewSlots([id])
+    },
 
-      if (this.activeViewId === id) {
-        this.activeViewId = null
+    // 批量取消注册视图插槽（插件停用/卸载时其后端注册中心整批注销，前端对应批量卸载事件）。
+    // 正停在被删路由时沿 meta.parent 链上溯第一个仍存活的祖先（同批消亡祖先跳过），
+    // 全灭落 '/'。祖先链在移除任何路由前快照：消亡路由记录移除后无法再沿其 meta 上溯。
+    // 返回级联导航的 promise（未触发导航时为 undefined）——调用方在 reload 前须等它落定
+    unregisterViewSlots(ids: string[]) {
+      if (ids.length === 0) return
+      const router = routerInstance
+      // 仅插件视图持有动态路由；不存在或非插件的条目只做桶清理
+      const routeIds = ids.filter((id) => this.viewSlots.get(id)?.isPlugin === true)
+      const currentName = router?.currentRoute.value.name
+      const isCurrentDying = router !== null && typeof currentName === 'string' && routeIds.includes(currentName)
+      const chain = isCurrentDying && router !== null ? collectParentChain(router, currentName) : []
+      routeIds.forEach((id) => {
+        // 按在场判定移除：弹窗呈现条目注册时未挂路由，对不存在的路由 removeRoute 会在 dev 告警
+        if (router?.hasRoute(id)) {
+          router.removeRoute(id)
+        }
+      })
+      let cascadeNav: ReturnType<Router['push']> | undefined
+      if (isCurrentDying && router !== null) {
+        const survivor = pickSurvivingAncestor(router, chain, new Set(routeIds))
+        cascadeNav = router.push(survivor !== null ? { name: survivor } : '/')
       }
-      this.viewSlots.delete(id)
+      ids.forEach((id) => {
+        if (this.activeViewId === id) {
+          this.activeViewId = null
+        }
+        this.viewSlots.delete(id)
+      })
+      return cascadeNav
     },
 
     // 注册嵌入插槽

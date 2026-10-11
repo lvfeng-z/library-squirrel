@@ -12,4 +12,8 @@ export interface ViewSlot {
   isPlugin?: boolean
   // 新增：关闭时的回调
   onClose?: () => void | Promise<void>
+  // view 条目声明的父页面原始值（plugin.json content.parent 原样透传）：
+  // 父页面为本插件页面时是裸 extensionId，为宿主页面时是宿主路由名；
+  // 注册层（SlotRegistryStore）解析两形态后写入路由 meta.parent
+  parent?: string
 }
