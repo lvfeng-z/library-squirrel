@@ -849,8 +849,9 @@ async function reInstallFromPath(publicPublicId: string, packagePath: string) {
         v-model:state="dialogState"
         :mode="DialogMode.VIEW"
       />
+      <!-- 常驻挂载、开关纯由 state 控制：AutoHeightDialog 依赖 @open 做高度封顶测量，
+           同 tick 先赋 publicId 再开窗的 v-if 首挂形态会让 @open 不发射、测量零执行 -->
       <plugin-setting-dialog
-        v-if="isNotBlank(settingPublicId)"
         v-model:state="settingDialogState"
         :public-id="settingPublicId"
       />

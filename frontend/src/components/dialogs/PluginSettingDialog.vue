@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import AutoHeightDialog from '@renderer/components/dialogs/AutoHeightDialog.vue'
 import PluginSettingForm from '@renderer/components/plugin/PluginSettingForm.vue'
 import { SettingItem } from '@bindings/github.com/library-squirrel/backend/plugin/models'
 import type { PluginPreferenceEntryDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
@@ -119,13 +120,14 @@ async function handleReset() {
 </script>
 
 <template>
-  <el-dialog
-    v-model="state"
-    title="插件设置"
-    width="560px"
-    append-to-body
+  <auto-height-dialog
+    v-model:state="state"
+    width="min(560px, 90vw)"
     :close-on-click-modal="false"
   >
+    <template #header>
+      <span class="plugin-setting-dialog-title">插件设置</span>
+    </template>
     <div v-loading="loading" class="plugin-setting-dialog-body">
       <el-empty v-if="!loading && items.length === 0" description="该插件无可配置项" />
       <plugin-setting-form
@@ -165,14 +167,17 @@ async function handleReset() {
       <el-button @click="state = false">取消</el-button>
       <el-button v-if="items.length > 0" type="primary" @click="handleSave">保存</el-button>
     </template>
-  </el-dialog>
+  </auto-height-dialog>
 </template>
 
 <style scoped>
+/* 内容区滚动由 AutoHeightDialog 内置 el-scrollbar 承担（随窗口高度封顶），此处只保底加载/空态占位高度 */
 .plugin-setting-dialog-body {
   min-height: 120px;
-  max-height: 60vh;
-  overflow-y: auto;
+}
+.plugin-setting-dialog-title {
+  font-size: 20px;
+  color: var(--app-text-primary);
 }
 /* 插件偏好条目行：标题 + 键 + 更新时间 + 删除按钮，窄容器下允许折行 */
 .plugin-preference-section {
