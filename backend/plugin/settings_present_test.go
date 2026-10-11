@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/library-squirrel/backend/util"
 	pluginsdktransport "github.com/lvfeng-z/library-squirrel-sdk/transport"
 )
 
@@ -164,8 +163,9 @@ func TestGetPluginStatusReturnsSettingsPresent(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			plantPluginWithManifestOnDisk(t, svc, tc.publicId, tc.manifest)
+			dataRoot := testDataRoot(t)
 			t.Cleanup(func() {
-				_ = os.RemoveAll(filepath.Join(util.RootPath(), PluginPackageRoot, tc.publicId))
+				_ = os.RemoveAll(filepath.Join(dataRoot, PluginPackageRoot, tc.publicId))
 			})
 			status, err := svc.GetPluginStatus(ctx, tc.publicId)
 			if err != nil {

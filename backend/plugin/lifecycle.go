@@ -53,7 +53,11 @@ func (s *Service) NotifyPluginCrashed(ctx context.Context, pluginPublicId string
 
 // removeFiles 删除插件目录文件（不触运行时、不修改数据库记录）
 func (s *Service) removeFiles(plugin *entity2.Plugin) {
-	appRoot := s.getAppRoot()
+	appRoot, err := s.getAppRoot()
+	if err != nil {
+		logger.Log.Warnf("解析数据目录失败，跳过插件目录删除: %v", err)
+		return
+	}
 	rootPath := ""
 	if plugin.RootPath.Valid {
 		rootPath = plugin.RootPath.String

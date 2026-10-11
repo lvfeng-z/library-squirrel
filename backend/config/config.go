@@ -19,13 +19,12 @@ var lockedConfigFS embed.FS
 
 // Config 应用配置（统一配置结构）
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Log      LogConfig      `mapstructure:"log"`
-	App      AppConfig      `mapstructure:"app"`
-	Task     TaskConfig     `mapstructure:"task"`
-	Sites    []SiteConfig   `mapstructure:"sites"`
-	Plugins  []PluginConfig `mapstructure:"plugins"`
+	Server  ServerConfig  `mapstructure:"server"`
+	Log     LogConfig     `mapstructure:"log"`
+	App     AppConfig     `mapstructure:"app"`
+	Task    TaskConfig    `mapstructure:"task"`
+	Sites   []SiteConfig  `mapstructure:"sites"`
+	Plugins []PluginConfig `mapstructure:"plugins"`
 	// Locked 订死配置：随二进制分发的权威数据，由 loadLocked 独立加载（不走 viper 合并链，
 	// 磁盘 config.yaml 无对应覆盖物）；mapstructure:"-" 显式排除出主 Unmarshal，防磁盘手写 locked 键弄脏单一来源
 	Locked LockedConfig `mapstructure:"-"`
@@ -49,11 +48,6 @@ type OfficialPluginEntry struct {
 type ServerConfig struct {
 	Port int    `mapstructure:"port"` // HTTP 端口
 	Mode string `mapstructure:"mode"` // Gin 模式 (debug, release, test)
-}
-
-// DatabaseConfig 数据库配置
-type DatabaseConfig struct {
-	Path string `mapstructure:"path"` // SQLite 数据库路径
 }
 
 // LogConfig 日志配置
@@ -104,10 +98,9 @@ func Load(configPath string) (*Config, error) {
 	viper.SetConfigFile(configPath)
 	viper.SetConfigType("yaml")
 
-	// 设置默认值
+	// 设置默认值（database.path 已删除：实际路径由装配层硬编码于用户数据目录，防「看似可配实不可配」）
 	viper.SetDefault("server.port", 8080)
 	viper.SetDefault("server.mode", "release")
-	viper.SetDefault("database.path", "database/database.db")
 	viper.SetDefault("log.level", "info")
 	viper.SetDefault("log.format", "console")
 	viper.SetDefault("app.host", "127.0.0.1")

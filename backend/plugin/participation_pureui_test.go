@@ -13,7 +13,6 @@ import (
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/plugin/participation"
 	"github.com/library-squirrel/backend/plugin/settingresolver"
-	"github.com/library-squirrel/backend/util"
 	"go.uber.org/zap"
 )
 
@@ -97,17 +96,18 @@ func TestPureUIPluginActivationEvaluatesParticipation(t *testing.T) {
 	cleanupInstallDir(t, publicId)
 
 	// 参与度真相层 + 真实存储服务（SettingsReader 面）+ 设置服务（落库触发接线）
+	dataRoot := testDataRoot(t)
 	storageSvc := NewPluginStorageService(newMockStorageRepo(), newTestStorageCipher(t))
-	mgr := participation.NewManager(storageSvc, util.RootPath())
+	mgr := participation.NewManager(storageSvc, dataRoot)
 	svc.RegisterLifecycleParticipant(&pureUIParticipant{mgr: mgr})
-	settingSvc := NewPluginSettingService(repo, storageSvc, util.RootPath(), mgr, nil)
+	settingSvc := NewPluginSettingService(repo, storageSvc, dataRoot, mgr, nil)
 
 	// 纯 UI 插件落盘（无 entryFile → EntryPath 无效）+ resolver 脚本
 	row := plantPluginWithManifestOnDisk(t, svc, publicId, pureUIResolverManifest(publicId))
 	if row.EntryPath.Valid && row.EntryPath.String != "" {
 		t.Fatalf("前置失败：测试插件应为纯 UI 形态（无 entryFile），实际 EntryPath=%q", row.EntryPath.String)
 	}
-	absRoot := filepath.Join(util.RootPath(), row.RootPath.String)
+	absRoot := filepath.Join(dataRoot, row.RootPath.String)
 	if err := os.WriteFile(filepath.Join(absRoot, "resolver.js"), []byte(pureUIResolverScript), 0o644); err != nil {
 		t.Fatalf("写 resolver 脚本失败: %v", err)
 	}

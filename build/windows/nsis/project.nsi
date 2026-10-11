@@ -62,7 +62,14 @@ ManifestDPIAware true
 !insertmacro MUI_PAGE_INSTFILES # Installing page.
 !insertmacro MUI_PAGE_FINISH # Finished installation page.
 
+# Uninstall finish page text. MUI2 shares MUI_FINISHPAGE_TEXT between the install and uninstall
+# finish pages, and the install page declaration !undef's it (see MUI2 Pages\Finish.nsh:182),
+# so defining it here (after the install page, before the uninstall pages) targets the uninstall
+# finish page only. It tells the user that the user data directory is intentionally retained.
+!define MUI_FINISHPAGE_TEXT "The application files and the legacy WebView2 cache have been removed.$\r$\n$\r$\nYour user data has been kept and was not deleted:$\r$\n%LOCALAPPDATA%\%INFO_PROJECTNAME%$\r$\n(config.yaml, config, database, log, plugin, webview2)$\r$\nYour library folder is not touched either. Delete the user data folder manually if you no longer need it."
+
 !insertmacro MUI_UNPAGE_INSTFILES # Uninstalling page
+!insertmacro MUI_UNPAGE_FINISH # Uninstalling finished page (user data location notice)
 
 !insertmacro MUI_LANGUAGE "English" # Set the Language of the installer
 
@@ -105,9 +112,17 @@ SectionEnd
 Section "uninstall"
     !insertmacro wails.setShellContext
 
+    # Remove the legacy WebView2 DataPath directory created under %APPDATA% by older builds.
     RMDir /r "$AppData\${PRODUCT_EXECUTABLE}" # Remove the WebView2 DataPath
 
+    # Remove the application directory: executable, embedded frontend assets and resources/.
     RMDir /r $INSTDIR
+
+    # Intentionally NOT removed:
+    #   - user data directory  %LOCALAPPDATA%\${INFO_PROJECTNAME}  (config.yaml, config, database,
+    #     log, plugin, webview2) - kept so an uninstall/reinstall does not destroy the library data.
+    #   - library directory (settings.json "workdir": media files, staging, backups) - user chosen.
+    # The uninstall finish page tells the user where the retained user data directory is.
 
     Delete "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk"
     Delete "$DESKTOP\${INFO_PRODUCTNAME}.lnk"

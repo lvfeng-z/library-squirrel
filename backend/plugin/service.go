@@ -589,7 +589,11 @@ func (s *Service) InstallBundled(ctx context.Context, packagePath string) (*enti
 		// 存量官方身份证实（启动扫描顺带）：历史手动安装的官方包在此按已装目录内容纠正 Official 标记
 		installedDir := ""
 		if existing.RootPath.Valid && existing.RootPath.String != "" {
-			installedDir = filepath.Join(s.getAppRoot(), existing.RootPath.String)
+			if appRoot, rootErr := s.getAppRoot(); rootErr == nil {
+				installedDir = filepath.Join(appRoot, existing.RootPath.String)
+			} else {
+				logger.Log.Warnf("解析数据目录失败，跳过已装目录内容核实: %v", rootErr)
+			}
 		}
 		s.verifyExistingOfficial(ctx, officialRoster(), existing, installedDir)
 		return nil, nil
@@ -637,8 +641,11 @@ func (s *Service) installCore(ctx context.Context, installDTO *domain.PluginInst
 		}
 	}
 
-	// 构建安装路径（插件安装到应用根目录）
-	appRoot := s.getAppRoot()
+	// 构建安装路径（插件安装到用户数据目录的插件包根）
+	appRoot, err := s.getAppRoot()
+	if err != nil {
+		return nil, err
+	}
 	pathRelative := filepath.Join(installDTO.PublicID, installDTO.Version)
 	installPath := filepath.Join(appRoot, PluginPackageRoot, pathRelative)
 
@@ -934,9 +941,10 @@ func (s *Service) deactivate(ctx context.Context, pluginPublicId string, op Plug
 	return nil
 }
 
-// getAppRoot 获取应用根目录，用于插件安装、卸载等程序文件操作
-func (s *Service) getAppRoot() string {
-	return util.RootPath()
+// getAppRoot 获取插件文件操作根目录（用户数据目录——插件解包与删除均落在数据目录侧，
+// 与程序目录解耦）。失败为启动期致命语义（解析结果进程内固化，见 util.DataDir）
+func (s *Service) getAppRoot() (string, error) {
+	return util.DataDir()
 }
 
 // GetPluginRoot 获取插件根目录

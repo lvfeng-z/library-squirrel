@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/library-squirrel/backend/base/model/entity"
-	"github.com/library-squirrel/backend/util"
 )
 
 // plantSettingsPagePluginOnDisk 预置带 settingsPage 声明的插件行与安装目录清单（复用清单校验
@@ -17,8 +16,9 @@ import (
 func plantSettingsPagePluginOnDisk(t *testing.T, svc *Service, publicId string) *entity.Plugin {
 	t.Helper()
 	row := plantPluginWithManifestOnDisk(t, svc, publicId, settingsPageManifest(publicId, "v1"))
+	dataRoot := testDataRoot(t)
 	t.Cleanup(func() {
-		_ = os.RemoveAll(filepath.Join(util.RootPath(), PluginPackageRoot, publicId))
+		_ = os.RemoveAll(filepath.Join(dataRoot, PluginPackageRoot, publicId))
 	})
 	return row
 }
@@ -63,8 +63,9 @@ func TestGetPluginStatusReturnsSettingsPageExtensionId(t *testing.T) {
 	// 旧清单（无 settingsPage 字段）：零值兼容返回空串
 	const legacyId = "com.status.settingspage.legacy"
 	plantPluginWithManifestOnDisk(t, svc, legacyId, settingsPageManifest(legacyId, ""))
+	legacyDataRoot := testDataRoot(t)
 	t.Cleanup(func() {
-		_ = os.RemoveAll(filepath.Join(util.RootPath(), PluginPackageRoot, legacyId))
+		_ = os.RemoveAll(filepath.Join(legacyDataRoot, PluginPackageRoot, legacyId))
 	})
 	status, err = svc.GetPluginStatus(ctx, legacyId)
 	if err != nil {

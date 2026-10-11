@@ -4,9 +4,6 @@ server:
   port: 8080
   mode: release
 
-database:
-  path: database/database.db
-
 log:
   level: info
   format: console

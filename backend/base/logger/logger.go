@@ -60,7 +60,12 @@ func Sync() {
 
 // initWithConfig 根据配置构建 Logger
 func initWithConfig(cfg config.LogConfig) error {
-	logDir := filepath.Join(util.RootPath(), "log")
+	// 日志目录落用户数据目录（失败为启动期致命——解析结果进程内固化，见 util.DataDir）
+	dataDir, err := util.DataDir()
+	if err != nil {
+		return fmt.Errorf("解析用户数据目录失败: %w", err)
+	}
+	logDir := filepath.Join(dataDir, "log")
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return fmt.Errorf("创建日志目录失败: %w", err)
 	}

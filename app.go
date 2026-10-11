@@ -65,6 +65,7 @@ import (
 	"github.com/library-squirrel/backend/siteTag"
 	"github.com/library-squirrel/backend/staging"
 	"github.com/library-squirrel/backend/stickymemory"
+	"github.com/library-squirrel/backend/storageLocation"
 	"github.com/library-squirrel/backend/storeRegistry"
 	"github.com/library-squirrel/backend/tagNamespace"
 	"github.com/library-squirrel/backend/task"
@@ -104,6 +105,7 @@ type App struct {
 	SettingsService        *settings.Service
 	BackupService          *backup.Service
 	AppLauncherService     *appLauncher.Service
+	StorageLocationService *storageLocation.Service
 	FileSysUtilService     *fileSysUtil.Service
 	FrontendLogService     *frontendLog.Service
 	PluginService          *plugin.Service
@@ -184,6 +186,7 @@ type App struct {
 	SearchHandler                *search.Handler
 	SettingsHandler              *settings.Handler
 	AppLauncherHandler           *appLauncher.Handler
+	StorageLocationHandler       *storageLocation.Handler
 	FileSysUtilHandler           *fileSysUtil.Handler
 	FrontendLogHandler           *frontendLog.Handler
 	PluginHandler                *plugin.Handler
@@ -214,8 +217,15 @@ type App struct {
 func NewApp() (*App, error) {
 	app := &App{}
 
+	// 0. 解析用户数据目录（全部写输出的根；失败致命——解析结果进程内固化，见 util.DataDir）
+	dataDir, err := util.DataDir()
+	if err != nil {
+		logger.Log.Errorf("解析用户数据目录失败: %v", err)
+		return nil, err
+	}
+
 	// 1. 加载配置
-	cfg, err := config.LoadFromDir(util.RootPath())
+	cfg, err := config.LoadFromDir(dataDir)
 	if err != nil {
 		logger.Log.Errorf("加载配置失败: %v", err)
 		return nil, err
@@ -224,7 +234,7 @@ func NewApp() (*App, error) {
 	logger.Log.Infof("配置已加载")
 
 	// 2. 初始化数据库
-	dbPath := filepath.Join(util.RootPath(), "database/database.db")
+	dbPath := filepath.Join(dataDir, "database/database.db")
 	if err := database.Init(dbPath); err != nil {
 		logger.Log.Errorf("初始化数据库失败: %v", err)
 		return nil, err
@@ -250,7 +260,7 @@ func NewApp() (*App, error) {
 	app.StoreFileHandler = assetserver.NewStoreFileHandler(nil) // statusChecker 在 initBaseServices 后设置
 
 	// 4. 初始化基础服务（按依赖顺序）
-	app.initBaseServices()
+	app.initBaseServices(dataDir)
 
 	// 4.5 注册表投影同步：站点表 = identity 注册表的本库投影（insert-only），缺失键补建。
 	// 同步失败即启动失败——站点表缺行会让任务创建/导入报「站点未找到」等衍生错误掩盖根因，
@@ -320,7 +330,7 @@ func (app *App) InstallBundledPlugins() {
 		return
 	}
 
-	rootPath := util.RootPath()
+	rootPath := util.RootPath() // 捆绑包源在程序目录（只读程序资源）；解包目标由 PluginService 落数据目录
 	for _, pc := range cfg.Plugins {
 		path := pc.PackagePath
 		if pc.PathType == "Relative" || pc.PathType == "" {
@@ -376,6 +386,13 @@ func (app *App) CreateAssetHandler(frontendAssets fs.FS) http.Handler {
 func (app *App) loadInstalledPlugins() {
 	ctx := context.Background()
 
+	// 插件运行体落用户数据目录（安装解包目标，见 PluginService.getAppRoot）
+	dataDir, err := util.DataDir()
+	if err != nil {
+		logger.Log.Errorf("解析用户数据目录失败: %v", err)
+		return
+	}
+
 	// 查询所有插件
 	plugins, err := app.PluginService.List(ctx, &database.QueryOption{})
 	if err != nil {
@@ -419,7 +436,7 @@ func (app *App) loadInstalledPlugins() {
 		}
 
 		// 统计类型
-		pluginRootDir := filepath.Join(util.RootPath(), p.RootPath.String)
+		pluginRootDir := filepath.Join(dataDir, p.RootPath.String)
 		manifestPath := filepath.Join(pluginRootDir, "plugin.json")
 		manifestBytes, _ := os.ReadFile(manifestPath)
 		var manifest dto.PluginManifest
@@ -695,10 +712,9 @@ func (p *wailsFrontendEventProvider) UnsubscribeFrontend(topic string) error {
 	return nil
 }
 
-// initBaseServices 初始化基础服务（无服务依赖）
-func (app *App) initBaseServices() {
-	rootPath := util.RootPath()
-
+// initBaseServices 初始化基础服务（无服务依赖）。dataDir 为用户数据目录
+// （NewApp 已解析，写输出——settings.json/share-instance-id/对话框默认路径——均落在其下）
+func (app *App) initBaseServices(dataDir string) {
 	// 维度清单服务（tag namespace / author role 关联级维度的候选值清单，同构独立两模块）。
 	// 先于 reWorkTag/reWorkAuthor 创建——两者的手动挂联链注入清单登记与事务执行器
 	app.TagNamespaceService = tagNamespace.NewService(tagNamespace.NewRepository(app.db))
@@ -768,7 +784,7 @@ func (app *App) initBaseServices() {
 	app.ReWorkTagService = reWorkTag.NewService(reWorkTagRepo, &dbTransactorAdapter{db: app.db}, app.TagNamespaceService)
 
 	// settings 服务
-	settingsFilePath := filepath.Join(rootPath, "config/settings.json")
+	settingsFilePath := filepath.Join(dataDir, "config/settings.json")
 	app.SettingsService = settings.NewService(settingsFilePath)
 
 	// 粘性记忆服务（交互冲突面显选的记/取；authorInfo 手动拉取面与 task 任务 URL 创建面
@@ -810,8 +826,12 @@ func (app *App) initBaseServices() {
 	// appLauncher 服务
 	app.AppLauncherService = appLauncher.NewService(app.SettingsService)
 
-	// fileSysUtil 服务
-	app.FileSysUtilService = fileSysUtil.NewService(rootPath)
+	// storageLocation 服务（三目录契约展示面：程序目录/用户数据目录/资源库目录，设置页「存储位置」区块数据源）
+	app.StorageLocationService = storageLocation.NewService(app.SettingsService)
+
+	// fileSysUtil 服务（对话框默认路径指向用户数据目录——正式安装在 Program Files 时
+	// 程序目录不可写也非用户惯常浏览起点）
+	app.FileSysUtilService = fileSysUtil.NewService(dataDir)
 
 	// frontendLog 服务
 	app.FrontendLogService = frontendLog.NewService()
@@ -832,8 +852,8 @@ func (app *App) initBaseServices() {
 
 	// share 服务（分享方发布：复用 export 收集/规划数据面 + 出站隧道连中继；事件走 share-events）。
 	// 数据面依赖经接口注入（export.Service 实现 Collect、export.Packer 实现 Plan——发起方 share 编排）；
-	// 设备绑定实例 ID 持久化于程序根 config/，读取失败降级为本次运行的随机实例（溯源锚点不阻断分享）
-	shareInstanceID, err := share.LoadOrCreateInstanceID(filepath.Join(rootPath, "config", "share-instance-id"))
+	// 设备绑定实例 ID 持久化于数据目录 config/，读取失败降级为本次运行的随机实例（溯源锚点不阻断分享）
+	shareInstanceID, err := share.LoadOrCreateInstanceID(filepath.Join(dataDir, "config", "share-instance-id"))
 	if err != nil {
 		shareInstanceID = fmt.Sprintf("ephemeral-%d", time.Now().UnixNano())
 		logger.Log.Warnf("[share] 实例 ID 持久化失败，本次运行使用临时实例: %v", err)
@@ -1056,9 +1076,14 @@ func (app *App) initAdvancedServices() error {
 	})
 	pluginRepo := plugin.NewRepository(app.db)
 	app.PluginService = plugin.NewService(pluginRepo, app.BackupService)
-	// 存储加密钥：密钥文件与 database.db 同目录（{RootPath}/database/secret.key）；
+	// 数据目录根（插件域各根解析共用；插件运行体/设置脚本均落数据目录侧）
+	dataDir, err := util.DataDir()
+	if err != nil {
+		return fmt.Errorf("解析用户数据目录失败: %w", err)
+	}
+	// 存储加密钥：密钥文件与 database.db 同目录（{DataDir}/database/secret.key）；
 	// 密钥装载层无建目录语义，目录不存在则先建（database.Init 已建时为幂等空操作）
-	secretKeyPath := filepath.Join(util.RootPath(), "database", "secret.key")
+	secretKeyPath := filepath.Join(dataDir, "database", "secret.key")
 	if err := os.MkdirAll(filepath.Dir(secretKeyPath), 0o755); err != nil {
 		return fmt.Errorf("创建密钥目录失败: %w", err)
 	}
@@ -1077,10 +1102,10 @@ func (app *App) initAdvancedServices() error {
 	}
 	// 参与度真相层（设置→条目参与度覆盖表）：全量设置读取面由插件 KV 存储服务承担
 	// （加密项解密随读取完成）；参与者注册见装配尾部（激活相位末位）
-	app.ParticipationManager = participation.NewManager(app.PluginStorageService, util.RootPath())
+	app.ParticipationManager = participation.NewManager(app.PluginStorageService, dataDir)
 	// 设置变更通知器：设置落库后向已激活插件进程推送 SettingChanged（尽力而为——
 	// 未激活跳过、发送失败/超时静默降级，不影响保存结果）
-	app.PluginSettingService = plugin.NewPluginSettingService(pluginRepo, app.PluginStorageService, util.RootPath(), app.ParticipationManager, plugin.NewSettingChangeNotifier(app.pluginLoader))
+	app.PluginSettingService = plugin.NewPluginSettingService(pluginRepo, app.PluginStorageService, dataDir, app.ParticipationManager, plugin.NewSettingChangeNotifier(app.pluginLoader))
 
 	// 插件库查询依赖（Tier 1 只读）：各域 repository 直连组装（extension 定义注入接口，
 	// 过滤语义落在各域 repository 的 GORM 管线，provider 不自拼 SQL）
@@ -1605,6 +1630,7 @@ func (app *App) initHandlers() {
 	app.SearchHandler = search.NewHandler(app.SearchService)
 	app.SettingsHandler = settings.NewHandler(app.SettingsService)
 	app.AppLauncherHandler = appLauncher.NewHandler(app.AppLauncherService)
+	app.StorageLocationHandler = storageLocation.NewHandler(app.StorageLocationService)
 	app.FileSysUtilHandler = fileSysUtil.NewHandler(app.FileSysUtilService)
 	app.FrontendLogHandler = frontendLog.NewHandler(app.FrontendLogService)
 	app.PluginHandler = plugin.NewHandler(app.PluginService)
@@ -1715,7 +1741,12 @@ type staticResourceParticipant struct {
 }
 
 func (p *staticResourceParticipant) Activate(ctx context.Context, plugin *entity2.Plugin, manifest *dto.PluginManifest) error {
-	pluginRootDir := filepath.Join(util.RootPath(), plugin.RootPath.String)
+	// 插件运行体（解包产物）在用户数据目录
+	dataDir, err := util.DataDir()
+	if err != nil {
+		return fmt.Errorf("解析用户数据目录失败: %w", err)
+	}
+	pluginRootDir := filepath.Join(dataDir, plugin.RootPath.String)
 	p.svc.RegisterPlugin(plugin.PublicID.String, pluginRootDir, manifestCacheKey(manifest, plugin))
 	logger.Log.Infof("插件 %s: 静态资源已注册", plugin.PublicID.String)
 	return nil
@@ -1867,7 +1898,11 @@ func (p *pluginProcessParticipant) Activate(ctx context.Context, plugin *entity2
 		return nil
 	}
 
-	rootPath := util.RootPath()
+	// 插件运行体（入口 exe 与根路径解析基准）在用户数据目录
+	rootPath, err := util.DataDir()
+	if err != nil {
+		return fmt.Errorf("解析用户数据目录失败: %w", err)
+	}
 	pluginPath := filepath.Join(rootPath, plugin.EntryPath.String)
 	pluginInfo := &extension2.PluginInfo{
 		ID:                  plugin.GetID(),

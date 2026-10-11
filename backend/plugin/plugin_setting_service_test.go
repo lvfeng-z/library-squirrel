@@ -10,7 +10,6 @@ import (
 
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/migration"
-	"github.com/library-squirrel/backend/util"
 	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"github.com/lvfeng-z/library-squirrel-sdk/gen"
 	pluginsdktransport "github.com/lvfeng-z/library-squirrel-sdk/transport"
@@ -19,7 +18,7 @@ import (
 
 // newSettingTestServiceWithDeps 设置服务测试装配：内存库真实插件仓储 + 可注入存储仓储、
 // 求值触发器与通知器（与生产装配同构，见 app.go 的 NewRepository → NewPluginSettingService
-// 链），根目录与 plantPluginWithManifestOnDisk 的落盘位置一致（应用根目录）
+// 链），根目录与 plantPluginWithManifestOnDisk 的落盘位置一致（数据目录根）
 func newSettingTestServiceWithDeps(t *testing.T, storageRepo StorageRepository, evalTrigger ParticipationEvalTrigger, notifier SettingChangeNotifier) (*PluginSettingService, *Service) {
 	t.Helper()
 	if testing.Short() {
@@ -34,7 +33,7 @@ func newSettingTestServiceWithDeps(t *testing.T, storageRepo StorageRepository, 
 	}
 	repo := NewRepository(db)
 	svc := NewService(repo, nil)
-	return NewPluginSettingService(repo, NewPluginStorageService(storageRepo, newTestStorageCipher(t)), util.RootPath(), evalTrigger, notifier), svc
+	return NewPluginSettingService(repo, NewPluginStorageService(storageRepo, newTestStorageCipher(t)), testDataRoot(t), evalTrigger, notifier), svc
 }
 
 // newSettingTestService 设置服务测试装配（求值触发器与通知器均未装配）

@@ -14,15 +14,38 @@ import (
 
 	"github.com/library-squirrel/backend/base/logger"
 	entity "github.com/library-squirrel/backend/base/model/entity"
+	"github.com/library-squirrel/backend/util"
 	pluginsdktransport "github.com/lvfeng-z/library-squirrel-sdk/transport"
 )
 
-// TestMain 测试环境挂 nop logger（生产 logger 由应用启动时 Init，测试中为 nil）
+// TestMain 测试环境挂 nop logger（生产 logger 由应用启动时 Init，测试中为 nil）；
+// 并把用户数据目录指到进程级临时目录——插件包根（getAppRoot→util.DataDir）等落盘面
+// 与真实 %LOCALAPPDATA% 隔离。util.DataDir 首解即进程内固化，注入必须在任何测试
+// 触达前完成（故在 TestMain 而非各用例内设置）
 func TestMain(m *testing.M) {
 	if logger.Log == nil {
 		logger.Log = zap.NewNop().Sugar()
 	}
-	os.Exit(m.Run())
+	dir, err := os.MkdirTemp("", "ls-plugin-test-datadir-")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "建测试数据目录失败: %v\n", err)
+		os.Exit(1)
+	}
+	os.Setenv(util.DataDirEnvVar, dir)
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+// testDataRoot 测试进程的用户数据目录根（TestMain 已注入 LS_DATA_DIR；插件安装/清单
+// 读取/清理等落盘面与生产同源于此根）
+func testDataRoot(t *testing.T) string {
+	t.Helper()
+	dir, err := util.DataDir()
+	if err != nil {
+		t.Fatalf("解析测试数据目录失败: %v", err)
+	}
+	return dir
 }
 
 // fakeUpgradeRepo 检查更新流分支测试用假仓储：仅实现 GetByPublicId，

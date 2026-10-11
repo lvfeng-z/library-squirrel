@@ -9,7 +9,6 @@ import (
 
 	"github.com/library-squirrel/backend/plugin/participation"
 	"github.com/library-squirrel/backend/plugin/settingresolver"
-	"github.com/library-squirrel/backend/util"
 )
 
 // 真相层 Manager 结构性实现参与度概要提供者（装配处直接注入，无需适配器）
@@ -151,15 +150,16 @@ func TestGetPluginStatusParticipationFromTruthLayer(t *testing.T) {
 			{point: "frontendExtensions", id: "v1", active: false, reason: "设置开关已关闭"}
 		]};
 	}`
-	absRoot := filepath.Join(util.RootPath(), row.RootPath.String)
+	dataRoot := testDataRoot(t)
+	absRoot := filepath.Join(dataRoot, row.RootPath.String)
 	if err := os.WriteFile(filepath.Join(absRoot, "resolver.js"), []byte(script), 0o644); err != nil {
 		t.Fatalf("写 resolver 脚本失败: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = os.RemoveAll(filepath.Join(util.RootPath(), PluginPackageRoot, publicId))
+		_ = os.RemoveAll(filepath.Join(dataRoot, PluginPackageRoot, publicId))
 	})
 
-	mgr := participation.NewManager(NewPluginStorageService(newMockStorageRepo(), newTestStorageCipher(t)), util.RootPath())
+	mgr := participation.NewManager(NewPluginStorageService(newMockStorageRepo(), newTestStorageCipher(t)), dataRoot)
 	svc.SetParticipationStatusProvider(mgr)
 
 	parsed, err := readPluginManifest(row)

@@ -15,7 +15,6 @@ import (
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/plugin/participation"
-	"github.com/library-squirrel/backend/util"
 	pluginsdktransport "github.com/lvfeng-z/library-squirrel-sdk/transport"
 )
 
@@ -53,7 +52,7 @@ func newSettingTestServiceWithTrigger(t *testing.T, trigger ParticipationEvalTri
 	}
 	repo := NewRepository(db)
 	svc := NewService(repo, nil)
-	return NewPluginSettingService(repo, NewPluginStorageService(newMockStorageRepo(), newTestStorageCipher(t)), util.RootPath(), trigger, nil), svc
+	return NewPluginSettingService(repo, NewPluginStorageService(newMockStorageRepo(), newTestStorageCipher(t)), testDataRoot(t), trigger, nil), svc
 }
 
 // resolverManifestWith 带根级 settingsResolver 声明的可安装清单（纯 UI 形态：仅前端扩展，
@@ -129,11 +128,12 @@ func TestSaveAndResetSettingTriggerParticipationEval(t *testing.T) {
 	}
 }
 
-// cleanupInstallDir 安装集成用例的落盘目录清理（安装解压发生在真实应用根目录的插件包目录）
+// cleanupInstallDir 安装集成用例的落盘目录清理（安装解压发生在数据目录的插件包根）
 func cleanupInstallDir(t *testing.T, publicId string) {
 	t.Helper()
+	dataRoot := testDataRoot(t)
 	t.Cleanup(func() {
-		_ = os.RemoveAll(filepath.Join(util.RootPath(), PluginPackageRoot, publicId))
+		_ = os.RemoveAll(filepath.Join(dataRoot, PluginPackageRoot, publicId))
 	})
 }
 
@@ -196,7 +196,7 @@ func TestInstallAcceptsValidResolver(t *testing.T) {
 	if err != nil {
 		t.Fatalf("合格 resolver 插件包应安装成功: %v", err)
 	}
-	scriptPath := filepath.Join(util.RootPath(), plugin.RootPath.String, "resolver.js")
+	scriptPath := filepath.Join(testDataRoot(t), plugin.RootPath.String, "resolver.js")
 	if _, err := os.Stat(scriptPath); err != nil {
 		t.Errorf("resolver 脚本应随包落盘供激活装载: %v", err)
 	}

@@ -44,5 +44,6 @@ export * as workdirGuardApi from './wrappers/workdirGuard'
 export * as authorInfoApi from './wrappers/authorInfo'
 export * as stickyMemoryApi from './wrappers/stickyMemory'
 export * as pluginPreferenceApi from './wrappers/pluginPreference'
+export * as storageLocationApi from './wrappers/storageLocation'
 
 // 注意：client.ts, proxy.ts, routes.ts 已不再需要，不再导出

@@ -10,7 +10,7 @@ import ResFileNameFormatEnum from '@renderer/constants/ResFileNameFormatEnum.ts'
 import HighlightRing from '@renderer/components/common/HighlightRing.vue'
 import { useTourTargets } from '@renderer/composables/useTourTargets'
 import { useTourCenterStore } from '@renderer/store/UseTourCenterStore'
-import { settingsApi, fileSysUtilApi, fsmonitorApi, workdirGuardApi, stickyMemoryApi, pluginPreferenceApi } from '@renderer/apis/http'
+import { settingsApi, fileSysUtilApi, fsmonitorApi, workdirGuardApi, stickyMemoryApi, pluginPreferenceApi, storageLocationApi, appLauncherApi } from '@renderer/apis/http'
 import { shareProtocolStatus, shareUnregisterProtocol } from '@renderer/apis/http/wrappers/share'
 import type { ShareProtocolRegStatus } from '@bindings/github.com/library-squirrel/backend/share/models'
 import type { PluginPreferenceEntryDTO, StickyMemoryEntryDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
@@ -23,6 +23,7 @@ import { isBlank, isNotBlank } from '@renderer/utils/StringUtil.ts'
 import type { ThemeId } from '@renderer/theme/themes'
 import type { AutoRepairPolicyDTO } from '@bindings/github.com/library-squirrel/backend/fsmonitor/models'
 import type { GuardInfoResponse } from '@bindings/github.com/library-squirrel/backend/workdirGuard/models'
+import type { StorageLocations } from '@bindings/github.com/library-squirrel/backend/storageLocation/models'
 
 // onBeforeMount
 onBeforeMount(() => {
@@ -306,6 +307,8 @@ async function loadSettings() {
   // 设置就绪后同步加载策略 schema 与目录保护探测（workDir 变更保存后经此刷新）
   await loadPolicySchema()
   await probeWorkDirGuard()
+  // 三目录展示随设置刷新（保存/重置后资源库目录实时反映最新 workdir）
+  void loadStorageLocations()
 }
 // 加载自动修复策略 schema
 async function loadPolicySchema() {
@@ -326,6 +329,50 @@ async function probeWorkDirGuard() {
     ElMessage.error(e.message)
   } finally {
     guardLoading.value = false
+  }
+}
+// 存储位置（三目录契约展示面：程序目录/用户数据目录/资源库目录；随 loadSettings 刷新——
+// 保存/重置设置后资源库目录实时反映最新 workdir）
+const storageLocations: Ref<StorageLocations | null> = ref(null)
+// 加载三目录路径（加载失败提示错误不阻塞其余设置项）
+async function loadStorageLocations(): Promise<void> {
+  try {
+    const response = await storageLocationApi.storageLocationGetLocations()
+    storageLocations.value = response.data
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  }
+}
+// 存储位置三行（固定顺序对齐三目录契约；desc 摘自各目录的内容语义；path 空 = 数据未就绪或资源库目录未配置）
+const storageLocationRows = computed(() => [
+  {
+    key: 'programDir',
+    label: '程序目录',
+    desc: '程序本体与随安装包分发的资源，运行期只读',
+    path: storageLocations.value?.programDir ?? ''
+  },
+  {
+    key: 'dataDir',
+    label: '用户数据目录',
+    desc: '配置、数据库、日志与插件数据',
+    path: storageLocations.value?.dataDir ?? ''
+  },
+  {
+    key: 'workDir',
+    label: '资源库目录',
+    desc: '媒体文件、下载暂存与备份（即工作目录）',
+    path: storageLocations.value?.workDir ?? ''
+  }
+])
+// 打开存储目录（系统文件管理器；路径为空/未配置时按钮已禁用）
+async function openStorageLocation(path: string): Promise<void> {
+  try {
+    const response = await appLauncherApi.appLauncherOpenAbsolutePath(path)
+    if (!response.success) {
+      ElMessage.error(isNotBlank(response.msg) ? response.msg : '打开目录失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message)
   }
 }
 // 策略下拉变更写入（写入 autoRepairPolicies 覆盖表）
@@ -510,6 +557,10 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
             <el-anchor-link
               href="#basicSettings"
               title="基本设置"
+            />
+            <el-anchor-link
+              href="#storageLocationSettings"
+              title="存储位置"
             />
             <el-anchor-link
               href="#appearanceSettings"
@@ -805,6 +856,43 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                   </div>
                 </div>
               </div>
+              </div>
+              <div id="storageLocationSettings">
+              <el-text class="settings-section-title">
+                存储位置
+              </el-text>
+                <div
+                  v-for="row in storageLocationRows"
+                  :key="row.key"
+                  class="settings-item"
+                >
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">{{ row.label }}</span>
+                    <span class="settings-item-desc">{{ row.desc }}</span>
+                    <el-button
+                      size="small"
+                      :disabled="isBlank(row.path)"
+                      @click="openStorageLocation(row.path)"
+                    >
+                      打开
+                    </el-button>
+                  </div>
+                  <el-text
+                    v-if="isNotBlank(row.path)"
+                    class="settings-storage-path"
+                    size="small"
+                  >
+                    {{ row.path }}
+                  </el-text>
+                  <el-text
+                    v-else
+                    class="settings-storage-path"
+                    type="info"
+                    size="small"
+                  >
+                    {{ isNullish(storageLocations) ? '—' : '未配置' }}
+                  </el-text>
+                </div>
               </div>
               <div id="appearanceSettings">
               <el-text class="settings-section-title">
@@ -1471,6 +1559,12 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
 .settings-item-title {
   font-size: var(--el-font-size-medium);
   font-weight: 500;
+  color: var(--app-text-regular);
+}
+/* 存储位置路径文本：长路径在任意字符处折行（完整可见不截断；el-text 为行内元素，块级化以承接纵向间距） */
+.settings-storage-path {
+  display: block;
+  word-break: break-all;
   color: var(--app-text-regular);
 }
 /* 记住的选择列表行：域标签 + 站点域 + 候选摘要 + 当前选中者 + 记住时间 + 删除按钮，

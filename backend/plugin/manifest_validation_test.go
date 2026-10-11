@@ -12,7 +12,6 @@ import (
 
 	"github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/plugin/extension"
-	"github.com/library-squirrel/backend/util"
 	pluginsdktransport "github.com/lvfeng-z/library-squirrel-sdk/transport"
 )
 
@@ -295,12 +294,12 @@ func TestInstallFromPathValidatesSettingsPagePointer(t *testing.T) {
 }
 
 // plantPluginWithManifestOnDisk 预置插件行与其安装目录下的 plugin.json（RootPath 指向
-// <根目录>/plugin/package/<publicId>/1.0.0）。磁盘清单可直接指定，用以构造「旧版本装的、
+// <数据目录>/plugin/package/<publicId>/1.0.0）。磁盘清单可直接指定，用以构造「旧版本装的、
 // 新版本跑」——DB 行已存在，待读的清单不合规
 func plantPluginWithManifestOnDisk(t *testing.T, svc *Service, publicId, manifestJSON string) *entity.Plugin {
 	t.Helper()
 	relRoot := filepath.Join(PluginPackageRoot, publicId, "1.0.0")
-	absRoot := filepath.Join(util.RootPath(), relRoot)
+	absRoot := filepath.Join(testDataRoot(t), relRoot)
 	if err := os.MkdirAll(absRoot, 0o755); err != nil {
 		t.Fatalf("建插件安装目录失败: %v", err)
 	}

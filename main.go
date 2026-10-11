@@ -5,6 +5,7 @@ import (
 	"embed"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -32,12 +33,16 @@ func init() {
 	application.RegisterEvent[string]("time")
 }
 
-// singleInstanceUniqueID 单实例互斥体标识：默认按 RootPath 派生（不同数据目录的应用实例
-// 可并存——多库多开、本地生产与开发环境并存做双端联调均属此列），可用 LS_INSTANCE_ID
-// 环境变量显式覆盖。防双开仅针对同 RootPath（同库并发写 SQLite），不同库互不干扰故不互斥。
-// Windows 命名互斥体名禁反斜杠，RootPath 需净化后拼入。
+// singleInstanceUniqueID 单实例互斥体标识：默认按用户数据目录派生（同一数据目录=同一库，
+// 双开被互斥；不同数据目录的应用实例可并存——多库多开、本地生产与开发环境并存做双端联调
+// 均属此列），可用 LS_INSTANCE_ID 环境变量显式覆盖。防双开仅针对同数据目录（同库并发写
+// SQLite），不同库互不干扰故不互斥。Windows 命名互斥体名禁反斜杠，数据目录路径需净化后拼入。
+// 数据目录解析失败为启动期致命错误（失败结果进程内固化不重试，见 util.DataDir）。
 func singleInstanceUniqueID() string {
-	id := util.RootPath()
+	id, err := util.DataDir()
+	if err != nil {
+		logger.Log.Fatalf("解析用户数据目录失败（单实例互斥键派生）: %v", err)
+	}
 	if override := os.Getenv("LS_INSTANCE_ID"); override != "" {
 		id = override
 	}
@@ -51,6 +56,23 @@ func singleInstanceUniqueID() string {
 		}
 	}
 	return "com.lvfeng.library-squirrel-" + b.String()
+}
+
+// webviewUserDataPath WebView2 用户数据目录（三目录契约之「用户数据目录」的 webview2/
+// 子目录）：重定向至 <DataDir>/webview2/{exe 名}，消除 go-webview2 空 dataPath 兜底的
+// %APPDATA%\{exe 名} 泄漏。exe 名子目录保留「同一数据目录 + 不同 exe 名」的双实例
+// 隔离（与 wails/go-webview2 惯例一致）。数据目录解析失败为启动期致命错误（失败结果
+// 进程内固化不重试，见 util.DataDir）。
+func webviewUserDataPath() string {
+	dataDir, err := util.DataDir()
+	if err != nil {
+		logger.Log.Fatalf("解析用户数据目录失败（WebView2 用户数据目录重定向）: %v", err)
+	}
+	exePath, err := os.Executable()
+	if err != nil {
+		logger.Log.Fatalf("获取可执行文件路径失败（WebView2 用户数据目录重定向）: %v", err)
+	}
+	return filepath.Join(dataDir, "webview2", filepath.Base(exePath))
 }
 
 // main function serves as the application's entry point. It initializes the application, creates a window,
@@ -98,6 +120,8 @@ func main() {
 			// 实机测试通道：设置 LS_CDP_PORT 环境变量时开启 WebView2 CDP 远程调试，
 			// 供外部进程驱动真实前端（调用 bindings/读取页面状态）；未设置时零影响
 			AdditionalBrowserArgs: cdpArgsFromEnv(),
+			// WebView2 缓存/用户数据重定向至用户数据目录下 webview2/{exe 名} 子目录
+			WebviewUserDataPath: webviewUserDataPath(),
 		},
 		// 单实例：二启进程经互斥体检测后将 argv（含深链 URL）转发首实例后自动退出
 		// （顺带根治双开两实例抢 SQLite）；首实例回调提取深链进分享拉取流程并聚焦主窗口
@@ -125,6 +149,7 @@ func main() {
 			application.NewService(app.SearchHandler),
 			application.NewService(app.SettingsHandler),
 			application.NewService(app.AppLauncherHandler),
+			application.NewService(app.StorageLocationHandler),
 			application.NewService(app.FileSysUtilHandler),
 			application.NewService(app.FrontendLogHandler),
 			application.NewService(app.PluginHandler),
