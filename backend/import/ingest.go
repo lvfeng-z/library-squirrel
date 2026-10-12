@@ -135,6 +135,10 @@ type ImportResult struct {
 	// 供调用方在导入成功后登记终态回滚：回滚复活被替换旧代前须先丢弃新建行，释放其占用的
 	// file_path（部分唯一索引对活行生效）；无新建行时为 nil
 	CreatedStoreIDs []int64 `json:"createdStoreIds"`
+	// CreatedWorkIDs 本次导入新建的 work 行 ID 清单（与 CreatedWorks 计数对应；随摘要经
+	// Ingest 成功返回到达调用方——事务提交后）。供调用方在导入成功后挂提交后动作（journal
+	// 入库域记账按此清单逐作品落账）；无新建作品时为 nil
+	CreatedWorkIDs []int64 `json:"createdWorkIds"`
 }
 
 // ingestor ManifestIngestor 实现。
@@ -712,9 +716,12 @@ func (ing *ingestor) ingestEntities(
 		if err := ing.repo.CreateWorks(ctx, workRows); err != nil {
 			return nil, fmt.Errorf("新建作品失败: %w", err)
 		}
+		createdWorkIDs := make([]int64, 0, len(toCreate))
 		for i, w := range toCreate {
 			workRemap[w.ID] = workRows[i].GetID()
+			createdWorkIDs = append(createdWorkIDs, workRows[i].GetID())
 		}
+		result.CreatedWorkIDs = createdWorkIDs
 	}
 	result.CreatedWorks = int64(len(toCreate))
 	result.SkippedWorks = int64(len(manifest.Works)) - int64(len(toCreate)) - int64(len(toReplace))

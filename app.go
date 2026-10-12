@@ -38,6 +38,7 @@ import (
 	"github.com/library-squirrel/backend/frontendLog"
 	"github.com/library-squirrel/backend/fsmonitor"
 	importer "github.com/library-squirrel/backend/import"
+	"github.com/library-squirrel/backend/journal"
 	"github.com/library-squirrel/backend/localAuthor"
 	"github.com/library-squirrel/backend/localTag"
 	"github.com/library-squirrel/backend/merge"
@@ -129,6 +130,9 @@ type App struct {
 	FsmonitorService                  *fsmonitor.Service
 	BackupGovernanceService           *backupGovernance.Service
 	WorkDirGuard                      workdirGuard.Guard
+	// 领域记账服务（append-only 账表，无服务依赖）。任务终态记账经组合推送器 fan-out 接入，
+	// 见 wrapTaskPusherWithJournal（journal.TaskTerminalPusher）
+	JournalService *journal.Service
 
 	// 任务仓储（用于TaskManager）
 	taskRepo *task.TaskRepository
@@ -367,10 +371,20 @@ func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter, onEvent fu
 		} else {
 			pusher = taskManager.NewWailsTaskProgressPusher(emitter)
 		}
-		app.TaskManagerService.SetPusher(pusher)
+		app.TaskManagerService.SetPusher(app.wrapTaskPusherWithJournal(pusher))
 	}
 	// 工作目录未配置通知的发射口接线（settings 包级发射口；闭包延迟读取发射器，规避初始化时序问题）
 	settings.SetUnconfiguredEmitter(func() settings.EventEmitter { return app.taskProgressEmitter })
+}
+
+// wrapTaskPusherWithJournal 把任务推送器包成两路组合推送器：原推送器（Wails/Snapshot/Noop）
+// 纯透传保持语义不变，另一路经记账适配器落任务终态账（适配器内部仅终态落账，进度类零落账）。
+// 记账接入的唯一装配缝在此：taskManager 域代码零改动
+func (app *App) wrapTaskPusherWithJournal(pusher taskManager.TaskProgressPusher) taskManager.TaskProgressPusher {
+	if pusher == nil || app.JournalService == nil {
+		return pusher
+	}
+	return journal.NewTaskTerminalPusher(pusher, journal.NewTaskTerminalRecorder(app.JournalService))
 }
 
 // CreateAssetHandler 创建路由多路复用器并注册所有路由
@@ -716,6 +730,9 @@ func (p *wailsFrontendEventProvider) UnsubscribeFrontend(topic string) error {
 // initBaseServices 初始化基础服务（无服务依赖）。dataDir 为用户数据目录
 // （NewApp 已解析，写输出——settings.json/share-instance-id/对话框默认路径——均落在其下）
 func (app *App) initBaseServices(dataDir string) {
+	// 领域记账服务（纯 append-only 账表写读，无服务依赖；任务终态记账的记账一路在此注入）
+	app.JournalService = journal.NewService(journal.NewRepository(app.db))
+
 	// 维度清单服务（tag namespace / author role 关联级维度的候选值清单，同构独立两模块）。
 	// 先于 reWorkTag/reWorkAuthor 创建——两者的手动挂联链注入清单登记与事务执行器
 	app.TagNamespaceService = tagNamespace.NewService(tagNamespace.NewRepository(app.db))
@@ -1198,6 +1215,9 @@ func (app *App) initAdvancedServices() error {
 	} else {
 		taskManagerPusher = taskManager.NewNoopProgressPusher()
 	}
+	// 任务终态记账装配：组合推送器两路 fan-out（此处 emitter 常未就绪，SetEventEmitter 就绪后
+	// 以同款包装替换，两处注入保证任一阶段都有记账一路）
+	taskManagerPusher = app.wrapTaskPusherWithJournal(taskManagerPusher)
 
 	// 创建 ResourceSaver 适配器
 	resourceSaverAdapter := &resourceSaverAdapter{svc: app.ResourceService}
@@ -1224,19 +1244,31 @@ func (app *App) initAdvancedServices() error {
 	dupRepo := duplicate.NewRepository(app.db)
 	app.DuplicateService = duplicate.NewService(dupRepo, app.ResourceService)
 
-	// 导入能力先行构建（import handler 与 share-receive 任务执行器共用同一实例）
-	app.manifestIngestor = importer.NewIngestor(
-		dupRepo,
-		importer.NewRepository(app.db),
-		&dbTransactorAdapter{db: app.db},
-		app.PersistentStoreService,
+	// 导入能力先行构建（import handler 与 share-receive 任务执行器共用同一实例）；
+	// 外包 journal 入库记账装饰器（ManifestIngestJournalDecorator）：Ingest 成功后按
+	// ImportResult.CreatedWorkIDs 建行清单逐作品落账（写账失败仅日志，业务语义不变）——
+	// 分享收件（share/task_execution.go:170）与 zip 导入（import/task_execution.go:154）
+	// 两路径共用此装饰实例
+	ingestRecorder := journal.NewWorkIngestRecorder(app.JournalService)
+	app.manifestIngestor = journal.NewManifestIngestJournalDecorator(
+		importer.NewIngestor(
+			dupRepo,
+			importer.NewRepository(app.db),
+			&dbTransactorAdapter{db: app.db},
+			app.PersistentStoreService,
+		),
+		ingestRecorder,
+		app.WorkService, // WorkTitleReader（建行作品标题批量读取）
 	)
 
 	// 插件下载执行面策略（plugin-download 任务的执行面；依赖提供方与任务管理器共享同批服务实例）
 	pluginDownloadStrategy := download.NewPluginDownloadStrategy(&download.Deps{
-		WorkTasks:           app.workTaskRepo,
-		PluginExecFactory:   &pluginExecFactoryAdapter{registry: app.WorkFetchRegistry},
-		WorkInfoSaver:       app.WorkService, // 实现 WorkInfoSaver 接口
+		WorkTasks:         app.workTaskRepo,
+		PluginExecFactory: &pluginExecFactoryAdapter{registry: app.WorkFetchRegistry},
+		WorkInfoSaver: journal.NewSaveWorkInfoIngestDecorator(
+			app.WorkService, // 原保存器（实现 WorkInfoSaver 接口）
+			ingestRecorder,  // 外包入库记账装饰：保存成功后按返回作品 ID 落账（写账失败仅日志）
+		), // 结构化类型满足 download.WorkInfoSaver 注入面
 		WorkLocator:         app.WorkService, // 实现 WorkLocator 接口（续传会话按复合键定位作品）
 		ResourceSaver:       resourceSaverAdapter,
 		WorkDirProvider:     app.SettingsService,

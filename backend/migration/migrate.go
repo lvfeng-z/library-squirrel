@@ -148,6 +148,8 @@ func AutoMigrate(db *gorm.DB) error {
 		entity2.NewFsmonitorCursor(),
 		// 粘性记忆（交互冲突面的显选记录；独立 KV 表，无外键依赖）
 		entity2.NewStickyMemory(),
+		// 领域记账账表（append-only 游标流；无外键、无软删，老化行由 journal 模块轮转物理裁剪）
+		entity2.NewJournalEntry(),
 
 		// 关联表(有外键依赖)
 		&entity2.ReWorkAuthor{},
