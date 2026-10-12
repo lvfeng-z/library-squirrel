@@ -115,5 +115,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { title: '状态色板', order: 101 }
       }
     ]
+  },
+  {
+    // 失配 hash 兜底：路由表不存在的路径（动态路由注销后的残留 hash、手改/外部携带的过期
+    // 路径）重定向回主页，避免 router-view 空匹配白屏。通配记录特异性最低，具名路由与运行期
+    // 动态注册的插件路由均不受影响
+    path: '/:pathMatch(.*)*',
+    redirect: '/'
   }
 ]
