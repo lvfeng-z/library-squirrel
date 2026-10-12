@@ -610,7 +610,7 @@ func TestHandleStopCmdTriggersRegisteredRollback(t *testing.T) {
 	m, stubs := newRollbackTestTask()
 	m.strategy = &stubStrategy{}
 	// 停止命令收口含内存清理（cleanupFinishedTask），须挂真实 manager（空表幂等）
-	mgr := NewManager(1, nil, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()}, nil, nil, nil)
+	mgr := NewManager(1, nil, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()}, nil, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 	m.manager = mgr
 	h := newStrategyHandle(m)
@@ -661,7 +661,7 @@ func TestSetFailedNoVictimsKeepsCreatedStores(t *testing.T) {
 func TestStrategyConfirmThroughManager(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
 	strategy := newConfirmStrategy([]ConflictInfo{{WorkID: 100, WorkName: "作品A", ConflictRoles: []string{"image"}}})
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher(), WorkLockChecker: shareLock.NewShareLockRegistry()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher(), WorkLockChecker: shareLock.NewShareLockRegistry()},
 		map[string]ExecutionStrategy{"demo": strategy}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -691,7 +691,7 @@ func TestStrategyConfirmThroughManager(t *testing.T) {
 func TestStrategyPauseDuringConfirmWait(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
 	strategy := newConfirmStrategy([]ConflictInfo{{WorkID: 100}})
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher(), WorkLockChecker: shareLock.NewShareLockRegistry()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher(), WorkLockChecker: shareLock.NewShareLockRegistry()},
 		map[string]ExecutionStrategy{"demo": strategy}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -724,7 +724,7 @@ func TestStrategyMultipleWaitingNotHogConcurrency(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"), newBuiltinTask(2, "demo"))
 	s1 := newConfirmStrategy([]ConflictInfo{{WorkID: 100}})
 	s2 := newConfirmStrategy([]ConflictInfo{{WorkID: 200}})
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher(), WorkLockChecker: shareLock.NewShareLockRegistry()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher(), WorkLockChecker: shareLock.NewShareLockRegistry()},
 		map[string]ExecutionStrategy{"demo": &multiStrategy{s1: s1, s2: s2}}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 

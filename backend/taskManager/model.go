@@ -90,7 +90,7 @@ type WorkLockChecker interface {
 // TaskDeps ManagedTask 的共享依赖集合
 // 将 NewManager 和 NewManagedTask 的大量参数收敛为一个结构体，新增依赖只需改此处
 type TaskDeps struct {
-	Pusher          TaskProgressPusher       // 状态/进度/事件推送
+	Pusher          TaskEventPusher          // 状态/进度/事件推送
 	WorkLockChecker WorkLockChecker          // 替换确认投递前置作品锁守卫（Manager 确认答复面使用）
 	ReplaceStoreOps resource.ReplaceStoreOps // 替换链复活能力（终态回滚单点触发登记的受害者清单）
 }

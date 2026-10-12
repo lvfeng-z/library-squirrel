@@ -71,8 +71,8 @@ type Manager struct {
 	// 任务下载暂存目录清理（work 删除链治理调用）
 	stagingCleaner StagingCleaner
 
-	// 进度推送器
-	pusher TaskProgressPusher
+	// 任务事件推送器
+	pusher TaskEventPusher
 	// 快照推送器引用（仅在快照模式下非 nil，供 GetTaskSnapshot 使用）
 	snapshotPusher *SnapshotPusher
 
@@ -94,7 +94,7 @@ type Manager struct {
 // builtinStrategies 任务类型执行面策略表（task_type → 策略；可为 nil=无注册类型）；
 // workTaskProjector/stagingCleaner 为作品任务领域行窄访问与暂存治理（可为 nil=活跃插件计数
 // 恒零/清理跳过，测试用）
-func NewManager(maxParallel int, repo Repository, pusher TaskProgressPusher, deps *TaskDeps, builtinStrategies map[string]ExecutionStrategy, workTaskProjector WorkTaskProjector, stagingCleaner StagingCleaner) *Manager {
+func NewManager(maxParallel int, repo Repository, pusher TaskEventPusher, deps *TaskDeps, builtinStrategies map[string]ExecutionStrategy, workTaskProjector WorkTaskProjector, stagingCleaner StagingCleaner) *Manager {
 	if builtinStrategies == nil {
 		builtinStrategies = make(map[string]ExecutionStrategy)
 	}
@@ -754,13 +754,13 @@ func (m *Manager) GetTaskState(taskId int64) (TaskState, error) {
 	return managedTask.GetState(), nil
 }
 
-// GetPusher 获取进度推送器
-func (m *Manager) GetPusher() TaskProgressPusher {
+// GetPusher 获取任务事件推送器
+func (m *Manager) GetPusher() TaskEventPusher {
 	return m.deps.Pusher
 }
 
-// SetPusher 设置进度推送器（用于 emitter 延迟就绪时替换 Noop）
-func (m *Manager) SetPusher(pusher TaskProgressPusher) {
+// SetPusher 设置任务事件推送器（用于 emitter 延迟就绪时替换 Noop）
+func (m *Manager) SetPusher(pusher TaskEventPusher) {
 	m.deps.Pusher = pusher
 	// 若为快照推送器，保存引用以供 GetTaskSnapshot 使用
 	if sp, ok := pusher.(*SnapshotPusher); ok {

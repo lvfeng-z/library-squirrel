@@ -1,7 +1,7 @@
 import { notNullish } from '@renderer/utils/CommonUtil.ts'
 
 /**
- * 后端 taskScheduleDTO（progress_pusher.go）的前端映射。
+ * 后端 taskScheduleDTO（event_pusher.go）的前端映射。
  *
  * 后端通过 Events.Emit("task-events"/"parent-events", {type: "updateSchedule"|"updateParentSchedule", data: []*taskScheduleDTO})
  * 推送增量进度，taskScheduleDTO 字段为非指针值类型，Go 零值不会序列化到 JSON 中，

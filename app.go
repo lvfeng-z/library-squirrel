@@ -357,7 +357,7 @@ func (app *App) InstallBundledPlugins() {
 	}
 }
 
-// SetEventEmitter 设置 Wails 事件发射器并创建 FrontendExtensionPusher 和 TaskProgressPusher
+// SetEventEmitter 设置 Wails 事件发射器并创建 FrontendExtensionPusher 和 TaskEventPusher
 func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter, onEvent func(topic string, callback func(data any)) func()) {
 	pusher := extension2.NewWailsFrontendExtensionPusher(emitter)
 	app.FrontendExtensionRegistry.SetPusher(pusher)
@@ -365,11 +365,11 @@ func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter, onEvent fu
 	app.frontendEventOn = onEvent
 	// Manager 在 initAdvancedServices 中已创建（此时 emitter 尚未就绪），需要补设 pusher
 	if app.TaskManagerService != nil {
-		var pusher taskManager.TaskProgressPusher
+		var pusher taskManager.TaskEventPusher
 		if app.cfg.Task.UseSnapshotMode {
 			pusher = taskManager.NewSnapshotPusher(emitter, app.TaskManagerService, 50)
 		} else {
-			pusher = taskManager.NewWailsTaskProgressPusher(emitter)
+			pusher = taskManager.NewWailsTaskEventPusher(emitter)
 		}
 		app.TaskManagerService.SetPusher(app.wrapTaskPusherWithJournal(pusher))
 	}
@@ -380,7 +380,7 @@ func (app *App) SetEventEmitter(emitter extension2.WailsEventEmitter, onEvent fu
 // wrapTaskPusherWithJournal 把任务推送器包成两路组合推送器：原推送器（Wails/Snapshot/Noop）
 // 纯透传保持语义不变，另一路经记账适配器落任务终态账（适配器内部仅终态落账，进度类零落账）。
 // 记账接入的唯一装配缝在此：taskManager 域代码零改动
-func (app *App) wrapTaskPusherWithJournal(pusher taskManager.TaskProgressPusher) taskManager.TaskProgressPusher {
+func (app *App) wrapTaskPusherWithJournal(pusher taskManager.TaskEventPusher) taskManager.TaskEventPusher {
 	if pusher == nil || app.JournalService == nil {
 		return pusher
 	}
@@ -1209,11 +1209,11 @@ func (app *App) initAdvancedServices() error {
 	)
 
 	// taskManager 服务
-	var taskManagerPusher taskManager.TaskProgressPusher
+	var taskManagerPusher taskManager.TaskEventPusher
 	if app.taskProgressEmitter != nil {
-		taskManagerPusher = taskManager.NewWailsTaskProgressPusher(app.taskProgressEmitter)
+		taskManagerPusher = taskManager.NewWailsTaskEventPusher(app.taskProgressEmitter)
 	} else {
-		taskManagerPusher = taskManager.NewNoopProgressPusher()
+		taskManagerPusher = taskManager.NewNoopEventPusher()
 	}
 	// 任务终态记账装配：组合推送器两路 fan-out（此处 emitter 常未就绪，SetEventEmitter 就绪后
 	// 以同款包装替换，两处注入保证任一阶段都有记账一路）

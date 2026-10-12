@@ -7,8 +7,8 @@ import (
 	"github.com/library-squirrel/backend/base/logger"
 )
 
-// TaskProgressPusher 任务进度推送器接口
-type TaskProgressPusher interface {
+// TaskEventPusher 任务事件推送器接口
+type TaskEventPusher interface {
 	PushStateChange(taskId int64, taskName string, state TaskState)
 	PushParentStateChange(taskId int64, taskName string, state TaskState)
 	PushProgress(taskId int64, total int64, finished int64)
@@ -32,29 +32,29 @@ type ipcEvent struct {
 	Data any    `json:"data"`
 }
 
-// WailsTaskProgressPusher 基于 Wails Events 的任务进度推送器
-type WailsTaskProgressPusher struct {
+// WailsTaskEventPusher 基于 Wails Events 的任务事件推送器
+type WailsTaskEventPusher struct {
 	emitter WailsEventEmitter
 }
 
-// NewWailsTaskProgressPusher 创建 Wails 任务进度推送器
-func NewWailsTaskProgressPusher(emitter WailsEventEmitter) *WailsTaskProgressPusher {
-	logger.Log.Info("[TaskPusher] 创建 WailsTaskProgressPusher")
-	return &WailsTaskProgressPusher{emitter: emitter}
+// NewWailsTaskEventPusher 创建 Wails 任务事件推送器
+func NewWailsTaskEventPusher(emitter WailsEventEmitter) *WailsTaskEventPusher {
+	logger.Log.Info("[TaskPusher] 创建 WailsTaskEventPusher")
+	return &WailsTaskEventPusher{emitter: emitter}
 }
 
 // emitTaskEvent 向子任务统一 topic 推送事件
-func (p *WailsTaskProgressPusher) emitTaskEvent(eventType string, data any) {
+func (p *WailsTaskEventPusher) emitTaskEvent(eventType string, data any) {
 	p.emitter.Emit("task-events", &ipcEvent{Type: eventType, Data: data})
 }
 
 // emitParentEvent 向父任务统一 topic 推送事件
-func (p *WailsTaskProgressPusher) emitParentEvent(eventType string, data any) {
+func (p *WailsTaskEventPusher) emitParentEvent(eventType string, data any) {
 	p.emitter.Emit("parent-events", &ipcEvent{Type: eventType, Data: data})
 }
 
 // PushStateChange 推送任务状态变化到前端
-func (p *WailsTaskProgressPusher) PushStateChange(taskId int64, taskName string, state TaskState) {
+func (p *WailsTaskEventPusher) PushStateChange(taskId int64, taskName string, state TaskState) {
 	dto := &taskStateDTO{
 		ID:       taskId,
 		TaskName: taskName,
@@ -65,7 +65,7 @@ func (p *WailsTaskProgressPusher) PushStateChange(taskId int64, taskName string,
 }
 
 // PushProgress 推送下载进度到前端
-func (p *WailsTaskProgressPusher) PushProgress(taskId int64, total int64, finished int64) {
+func (p *WailsTaskEventPusher) PushProgress(taskId int64, total int64, finished int64) {
 	dto := &taskScheduleDTO{
 		ID:       taskId,
 		Total:    total,
@@ -76,7 +76,7 @@ func (p *WailsTaskProgressPusher) PushProgress(taskId int64, total int64, finish
 }
 
 // PushProgressBatch 批量推送下载进度到前端（合并多次进度更新为一次 Emit）
-func (p *WailsTaskProgressPusher) PushProgressBatch(batch []*taskScheduleDTO) {
+func (p *WailsTaskEventPusher) PushProgressBatch(batch []*taskScheduleDTO) {
 	if len(batch) == 0 {
 		return
 	}
@@ -84,21 +84,21 @@ func (p *WailsTaskProgressPusher) PushProgressBatch(batch []*taskScheduleDTO) {
 }
 
 // PushError 推送错误到前端
-func (p *WailsTaskProgressPusher) PushError(taskId int64, err string) {
+func (p *WailsTaskEventPusher) PushError(taskId int64, err string) {
 }
 
 // PushTaskRemove 通知前端移除任务
-func (p *WailsTaskProgressPusher) PushTaskRemove(taskIds []int64) {
+func (p *WailsTaskEventPusher) PushTaskRemove(taskIds []int64) {
 	p.emitTaskEvent("removeTask", taskIds)
 }
 
 // PushParentTaskRemove 通知前端移除父任务
-func (p *WailsTaskProgressPusher) PushParentTaskRemove(taskIds []int64) {
+func (p *WailsTaskEventPusher) PushParentTaskRemove(taskIds []int64) {
 	p.emitParentEvent("removeParentTask", taskIds)
 }
 
 // PushParentStateChange 推送父任务状态变化到前端
-func (p *WailsTaskProgressPusher) PushParentStateChange(taskId int64, taskName string, state TaskState) {
+func (p *WailsTaskEventPusher) PushParentStateChange(taskId int64, taskName string, state TaskState) {
 	dto := &taskStateDTO{
 		ID:       taskId,
 		TaskName: taskName,
@@ -109,7 +109,7 @@ func (p *WailsTaskProgressPusher) PushParentStateChange(taskId int64, taskName s
 }
 
 // PushParentProgress 推送父任务进度（已完成子任务数/总子任务数）到前端
-func (p *WailsTaskProgressPusher) PushParentProgress(taskId int64, total int64, finished int64) {
+func (p *WailsTaskEventPusher) PushParentProgress(taskId int64, total int64, finished int64) {
 	dto := &taskScheduleDTO{
 		ID:       taskId,
 		Total:    total,
@@ -143,7 +143,7 @@ type duplicateDetectedDTO struct {
 }
 
 // PushDuplicateDetected 推送作品重复检测事件到前端
-func (p *WailsTaskProgressPusher) PushDuplicateDetected(taskId int64, taskName string, existingWorkId int64, existingWorkName string, conflictRoles []string) {
+func (p *WailsTaskEventPusher) PushDuplicateDetected(taskId int64, taskName string, existingWorkId int64, existingWorkName string, conflictRoles []string) {
 	dto := &duplicateDetectedDTO{
 		TaskId:           taskId,
 		TaskName:         taskName,
@@ -154,24 +154,24 @@ func (p *WailsTaskProgressPusher) PushDuplicateDetected(taskId int64, taskName s
 	p.emitter.Emit("taskStatus-duplicateDetected", dto)
 }
 
-// NoopProgressPusher 空推送器，用于测试或 emitter 未就绪时
-type NoopProgressPusher struct{}
+// NoopEventPusher 空事件推送器，用于测试或 emitter 未就绪时
+type NoopEventPusher struct{}
 
-// NewNoopProgressPusher 创建空推送器
-func NewNoopProgressPusher() *NoopProgressPusher {
-	logger.Log.Warn("[TaskPusher] 创建 NoopProgressPusher（emitter 未就绪，事件将丢失）")
-	return &NoopProgressPusher{}
+// NewNoopEventPusher 创建空事件推送器
+func NewNoopEventPusher() *NoopEventPusher {
+	logger.Log.Warn("[TaskPusher] 创建 NoopEventPusher（emitter 未就绪，事件将丢失）")
+	return &NoopEventPusher{}
 }
 
-func (p *NoopProgressPusher) PushStateChange(int64, string, TaskState)                     {}
-func (p *NoopProgressPusher) PushParentStateChange(int64, string, TaskState)               {}
-func (p *NoopProgressPusher) PushProgress(int64, int64, int64)                             {}
-func (p *NoopProgressPusher) PushProgressBatch([]*taskScheduleDTO)                         {}
-func (p *NoopProgressPusher) PushParentProgress(int64, int64, int64)                       {}
-func (p *NoopProgressPusher) PushError(int64, string)                                      {}
-func (p *NoopProgressPusher) PushTaskRemove([]int64)                                       {}
-func (p *NoopProgressPusher) PushParentTaskRemove([]int64)                                 {}
-func (p *NoopProgressPusher) PushDuplicateDetected(int64, string, int64, string, []string) {}
+func (p *NoopEventPusher) PushStateChange(int64, string, TaskState)                     {}
+func (p *NoopEventPusher) PushParentStateChange(int64, string, TaskState)               {}
+func (p *NoopEventPusher) PushProgress(int64, int64, int64)                             {}
+func (p *NoopEventPusher) PushProgressBatch([]*taskScheduleDTO)                         {}
+func (p *NoopEventPusher) PushParentProgress(int64, int64, int64)                       {}
+func (p *NoopEventPusher) PushError(int64, string)                                      {}
+func (p *NoopEventPusher) PushTaskRemove([]int64)                                       {}
+func (p *NoopEventPusher) PushParentTaskRemove([]int64)                                 {}
+func (p *NoopEventPusher) PushDuplicateDetected(int64, string, int64, string, []string) {}
 
 // TaskSnapshotDTO 快照推送 DTO，包含 Manager 实时快照 + 被移除任务的缓冲区
 type TaskSnapshotDTO struct {

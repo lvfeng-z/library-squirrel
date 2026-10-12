@@ -150,7 +150,7 @@ func TestAckActorExitedPromptReturn(t *testing.T) {
 // 善后消费的退出条件）。经 NewManagedTask 构造（生产路径,actor 真实运转）
 func TestAckPriorityOnActorTerminalExit(t *testing.T) {
 	// 停止命令收口含内存清理（cleanupFinishedTask 推送前端移除），manager 须带推送器依赖
-	mgr := NewManager(1, nil, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()}, nil, nil, nil)
+	mgr := NewManager(1, nil, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()}, nil, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
 	mt := NewManagedTask(1, 0, domain.NewTask(), nil, mgr, make(chan struct{}, 1))

@@ -96,7 +96,7 @@ func TestTaskTerminalPusherFanOutPassthroughAndTerminalOnly(t *testing.T) {
 	svc, repo := newTestService(t)
 
 	emitter := &terminalRecordingEmitter{}
-	rawPusher := taskManager.NewWailsTaskProgressPusher(emitter)
+	rawPusher := taskManager.NewWailsTaskEventPusher(emitter)
 	composite := NewTaskTerminalPusher(rawPusher, NewTaskTerminalRecorder(svc))
 
 	// 基线：原推送器的发射签名
@@ -276,7 +276,7 @@ func TestTaskTerminalPusherConcurrentAccounting(t *testing.T) {
 	svc, repo := newTestService(t)
 
 	emitter := &terminalRecordingEmitter{}
-	composite := NewTaskTerminalPusher(taskManager.NewWailsTaskProgressPusher(emitter), NewTaskTerminalRecorder(svc))
+	composite := NewTaskTerminalPusher(taskManager.NewWailsTaskEventPusher(emitter), NewTaskTerminalRecorder(svc))
 
 	const workers, perWorker = 8, 10
 	states := []taskManager.TaskState{

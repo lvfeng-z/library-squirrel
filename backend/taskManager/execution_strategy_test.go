@@ -166,7 +166,7 @@ func waitIdle(t *testing.T, mgr *Manager, timeout time.Duration) {
 func TestBuiltinTaskFinishLifecycle(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
 	strat := newScriptedStrategy("finish")
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -199,7 +199,7 @@ func TestBuiltinTaskFinishLifecycle(t *testing.T) {
 func TestRedownloadTwoStepOrchestration(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
 	strat := newScriptedStrategy("fail")
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 	recorder := &recordSectionRecorder{}
@@ -229,7 +229,7 @@ func TestRedownloadTwoStepOrchestration(t *testing.T) {
 func TestRedownloadInfoOnlyRecordsEmptyScope(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
 	strat := newScriptedStrategy("finish")
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 	recorder := &recordSectionRecorder{}
@@ -256,7 +256,7 @@ func TestRedownloadInfoOnlyRecordsEmptyScope(t *testing.T) {
 func TestStartTwoStepOrchestration(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
 	strat := newScriptedStrategy("finish")
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 	recorder := &recordSectionRecorder{}
@@ -317,7 +317,7 @@ func (s *softPauseStrategy) execCount() int {
 func TestSoftPauseDrainCompletionLandsPaused(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
 	strat := &softPauseStrategy{entered: make(chan struct{}, 4)}
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -364,7 +364,7 @@ func TestSoftPauseDrainCompletionLandsPaused(t *testing.T) {
 func TestBuiltinTaskPauseStopResume(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
 	strat := newScriptedStrategy("interrupt")
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -475,7 +475,7 @@ func stopInterruptedTask(t *testing.T, mgr *Manager, strat *scriptedStrategy, ta
 func TestStopLeafCleansAndRetryWorks(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinParent(10), newBuiltinLeaf(11, 10, "demo"))
 	strat := newScriptedStrategy("interrupt")
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -516,7 +516,7 @@ func TestStopLeafCleansAndRetryWorks(t *testing.T) {
 // ErrTaskNotProcessing（不假成功），状态不被改写
 func TestPauseTerminalTargetReturnsNotProcessing(t *testing.T) {
 	repo := newFakeBuiltinRepo()
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"demo": newScriptedStrategy("interrupt")}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -541,7 +541,7 @@ func TestPauseTreeSkipsFinishedSibling(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinParent(30), newBuiltinLeaf(31, 30, "finisher"), newBuiltinLeaf(32, 30, "demo"))
 	finisher := newScriptedStrategy("finish")
 	runner := newScriptedStrategy("interrupt")
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"finisher": finisher, "demo": runner}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -585,7 +585,7 @@ func TestPauseTreeSkipsFinishedSibling(t *testing.T) {
 func TestPauseRacingFinishSurfacesError(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "finisher"))
 	strat := newScriptedStrategy("finish")
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"finisher": strat}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -664,7 +664,7 @@ func TestStopTreeCleansAllAndSingleParentRemove(t *testing.T) {
 func TestBuiltinTaskFailTerminal(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(7, "demo"))
 	strat := newScriptedStrategy("fail")
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -759,7 +759,7 @@ func TestResumeSignalColdLoad(t *testing.T) {
 			row.Status = int(tc.rowStatus)
 			repo := newFakeBuiltinRepo(row)
 			strat := newScriptedStrategy("fail")
-			mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+			mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 				map[string]ExecutionStrategy{"demo": strat}, nil, nil)
 			defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -786,7 +786,7 @@ func TestResumeSignalColdLoad(t *testing.T) {
 func TestResumeSignalHotPath(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
 	strat := newScriptedStrategy("interrupt")
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -888,7 +888,7 @@ func TestRunStrategyInterrupted(t *testing.T) {
 func TestStopAndWaitTerminalStopsRunningTask(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
 	strat := newScriptedStrategy("interrupt") // 阻塞执行，停止靠控制面取消后释放
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -920,7 +920,7 @@ func TestStopAndWaitTerminalStopsRunningTask(t *testing.T) {
 // 回滚删 Created 态树形态）无 actor 可停可等，不经轮询挂等即返回 nil
 func TestStopAndWaitTerminalNonRunningFastReturn(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"), newBuiltinTask(2, "demo"))
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"demo": newScriptedStrategy("finish")}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -945,7 +945,7 @@ func TestStopAndWaitTerminalUndispatchedSiblingFastReturn(t *testing.T) {
 	leaf2.Pid = sql.NullInt64{Int64: 10, Valid: true}
 	repo := newFakeBuiltinRepo(parent, leaf1, leaf2)
 	strat := newScriptedStrategy("interrupt")
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 
@@ -992,7 +992,7 @@ func TestStopAndWaitTerminalUndispatchedSiblingFastReturn(t *testing.T) {
 func TestStopAndWaitTerminalTimeoutRefuses(t *testing.T) {
 	repo := newFakeBuiltinRepo(newBuiltinTask(1, "demo"))
 	strat := newScriptedStrategy("interrupt")
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
 	defer func() { close(mgr.closeCh); <-mgr.flushDone }()
 

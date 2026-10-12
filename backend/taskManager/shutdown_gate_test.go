@@ -65,7 +65,7 @@ func TestShutdownGateWaitAllTimeoutPropagates(t *testing.T) {
 func TestManagerShutdownGateWaitsTasksPaused(t *testing.T) {
 	repo := newFakeBuiltinRepo()
 	strat := &slowNotifyStrategy{notifyDelay: 100 * time.Millisecond}
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
 	// 优雅关闭经 gate 触发，closeCh 由其内部收口关闭，测试不再补 close
 
@@ -108,7 +108,7 @@ func TestManagerShutdownGateWaitsTasksPaused(t *testing.T) {
 func TestGracefulShutdownSettlesParkedTasks(t *testing.T) {
 	repo := newFakeBuiltinRepo()
 	strat := &slowNotifyStrategy{notifyDelay: 50 * time.Millisecond}
-	mgr := NewManager(2, repo, NewNoopProgressPusher(), &TaskDeps{Pusher: NewNoopProgressPusher()},
+	mgr := NewManager(2, repo, NewNoopEventPusher(), &TaskDeps{Pusher: NewNoopEventPusher()},
 		map[string]ExecutionStrategy{"demo": strat}, nil, nil)
 
 	// running：Processing 任务（被暂停收口）

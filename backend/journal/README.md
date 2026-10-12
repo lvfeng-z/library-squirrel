@@ -35,7 +35,7 @@
 2. **事件类型与载荷**：在本包内定义 `EventType*` 常量与载荷结构体（JSON 摘要）。主体引用放账行 `subject_id` 列，载荷内**冗余一份**便于消费方直接读摘要（先例：`task_terminal_adapter.go:16-27`、`ingest_adapter.go:28-35`）。
 3. **写入口**：统一走 `Service.Append(ctx, domain, eventType, subjectID, payload)`（`service.go:89`）——内含写入校验（域/类型非空、主体引用为正，`service.go:26-33`）与写前顺带轮转（:99-101）。新域只定义目录与载荷，不改写入口。
 4. **域内适配器（过滤边界在适配器内做）**：适配器文件放 `backend/journal/`，按事件源形态二选一：
-   - **事件源型**（推送/回调）：组合器包住原接口——**先纯透传原实现（语义零变化），再落账**。实例 `TaskTerminalPusher`（`task_terminal_adapter.go:102`）：内嵌 `taskManager.TaskProgressPusher` 接口而非逐方法实现，令形参未导出的进度方法经接口提升天然转发、**零落账**（:99-103、:117-126）。
+   - **事件源型**（推送/回调）：组合器包住原接口——**先纯透传原实现（语义零变化），再落账**。实例 `TaskTerminalPusher`（`task_terminal_adapter.go:102`）：内嵌 `taskManager.TaskEventPusher` 接口而非逐方法实现，令形参未导出的进度方法经接口提升天然转发、**零落账**（:99-103、:117-126）。
    - **提交点型**（业务事务已提交后挂写）：装饰器包住原能力——成功返回后落账，**失败原样透传零落账**。实例 `SaveWorkInfoIngestDecorator`（`ingest_adapter.go:80`，包装 `SaveWorkInfo`，:94-101）与 `ManifestIngestJournalDecorator`（:123，包装 `importer.ManifestIngestor`，:140-150）。
    - **依赖方向纪律**：适配器可 import 领域包取类型；若该领域包是记账的**消费方**（如 download 依赖 `work.Service`），journal 侧按**同签名结构化接口**声明依赖面（`WorkInfoSaver` `ingest_adapter.go:73`、`WorkTitleReader` :113），装配期由装饰器满足——**禁止 journal 反向 import 消费方**（避免装配环）。
    - **健壮性约定**：`recorder`/`svc` 为 nil（未装配）时**静默跳过**，不影响业务；写账失败**仅日志、不上抛**（`ingest_adapter.go:54-68`、`task_terminal_adapter.go:88-93`）；落账用独立 `Background` 上下文，不随调用方任务取消而取消（`ingest_adapter.go:51-53`）。

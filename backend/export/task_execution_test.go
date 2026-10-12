@@ -666,8 +666,8 @@ func TestExportExecutionViaManager(t *testing.T) {
 
 	wtRepo := download.NewWorkTaskRepository(env.db)
 	mgrRepo := task.NewRepository(env.db, wtRepo, wtRepo)
-	mgr := taskManager.NewManager(2, mgrRepo, taskManager.NewNoopProgressPusher(),
-		&taskManager.TaskDeps{Pusher: taskManager.NewNoopProgressPusher()},
+	mgr := taskManager.NewManager(2, mgrRepo, taskManager.NewNoopEventPusher(),
+		&taskManager.TaskDeps{Pusher: taskManager.NewNoopEventPusher()},
 		map[string]taskManager.ExecutionStrategy{TaskTypeExport: env.exec}, nil, nil)
 	defer func() { _ = mgr.GracefulShutdown(context.Background()) }()
 

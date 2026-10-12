@@ -92,35 +92,35 @@ func (r *TaskTerminalRecorder) RecordTerminalState(ctx context.Context, taskID i
 	return true
 }
 
-// TaskTerminalPusher 组合推送器：taskManager.TaskProgressPusher 的两路 fan-out——一路原推送器
+// TaskTerminalPusher 组合推送器：taskManager.TaskEventPusher 的两路 fan-out——一路原推送器
 // （Wails/Snapshot/Noop 任一，纯透传：参数、调用顺序、返回不增不改），一路任务终态记账适配器。
 // 装配点在应用主文件把我们包在原推送器外注入，taskManager 域代码零改动。
 //
 // 内嵌接口而非逐方法实现：接口的 PushProgressBatch 形参类型 taskManager.taskScheduleDTO 未导出
-// （taskManager/progress_pusher.go:15），包外无法声明该方法；内嵌令其经接口提升转发给原推送器，
+// （taskManager/event_pusher.go:15），包外无法声明该方法；内嵌令其经接口提升转发给原推送器，
 // 进度类（风险3 的零落账对象）由此天然不落账
 type TaskTerminalPusher struct {
-	taskManager.TaskProgressPusher
+	taskManager.TaskEventPusher
 	recorder *TaskTerminalRecorder
 }
 
 // NewTaskTerminalPusher 创建任务终态组合推送器（wailsPusher = 原推送器，保持其语义不变）
-func NewTaskTerminalPusher(wailsPusher taskManager.TaskProgressPusher, recorder *TaskTerminalRecorder) *TaskTerminalPusher {
-	return &TaskTerminalPusher{TaskProgressPusher: wailsPusher, recorder: recorder}
+func NewTaskTerminalPusher(wailsPusher taskManager.TaskEventPusher, recorder *TaskTerminalRecorder) *TaskTerminalPusher {
+	return &TaskTerminalPusher{TaskEventPusher: wailsPusher, recorder: recorder}
 }
 
 // 编译期断言：组合器满足注入面接口（PushProgressBatch 等未导出形参方法经内嵌接口提升）
-var _ taskManager.TaskProgressPusher = (*TaskTerminalPusher)(nil)
+var _ taskManager.TaskEventPusher = (*TaskTerminalPusher)(nil)
 
 // PushStateChange 子任务状态推送：先原样透传原推送器（前端链路零变化），再对终态落账
 // （非终态由适配器内部零落账）
 func (p *TaskTerminalPusher) PushStateChange(taskId int64, taskName string, state taskManager.TaskState) {
-	p.TaskProgressPusher.PushStateChange(taskId, taskName, state)
+	p.TaskEventPusher.PushStateChange(taskId, taskName, state)
 	p.recorder.RecordTerminalState(context.Background(), taskId, taskName, state, false)
 }
 
 // PushParentStateChange 父任务状态推送：同款两路（父任务同为任务行，终态迁移同属记账目录）
 func (p *TaskTerminalPusher) PushParentStateChange(taskId int64, taskName string, state taskManager.TaskState) {
-	p.TaskProgressPusher.PushParentStateChange(taskId, taskName, state)
+	p.TaskEventPusher.PushParentStateChange(taskId, taskName, state)
 	p.recorder.RecordTerminalState(context.Background(), taskId, taskName, state, true)
 }
