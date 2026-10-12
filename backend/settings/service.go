@@ -74,6 +74,11 @@ func defaultSettings() *Settings {
 		AuthorSettings: AuthorSettings{
 			AutoFetchInfo: true,
 		},
+		ExternalApi: ExternalApiSettings{
+			Enabled: false,
+			Port:    0,
+			Token:   "",
+		},
 	}
 }
 

@@ -44,5 +44,10 @@ export const emptySettings: Settings = {
   },
   authorSettings: {
     autoFetchInfo: true
+  },
+  externalApi: {
+    enabled: false,
+    port: 0,
+    token: ''
   }
 }

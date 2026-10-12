@@ -1172,8 +1172,6 @@ http://wails.localhost:{backend-port}/plugin/{publicId}/{cacheKey}/{relativePath
 
 静态资源服务直接服务**插件根目录**：目录内打包的全部文件——组件 JS/CSS、图标、组件运行时 fetch 的图片/字体/数据等额外资源——均可经上述 URL 访问，无需在清单声明。含 `..` 的路径与解析后落在插件根目录之外的路径返回 404（publicId→插件根目录的路由隔离与穿越防护）。
 
-server 模式（`-tags server`，无 GUI）下，插件目录内全部文件（含插件可执行文件与 plugin.json）经网络可取。
-
 ### 缓存
 
 静态资源带 `ETag` + `Cache-Control: public, max-age=31536000, immutable`（基于版本号），版本升级自动失效。

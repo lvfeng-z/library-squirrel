@@ -19,8 +19,8 @@ import (
 //  4. %LOCALAPPDATA%\library-squirrel（Windows 本机应用数据标准位置，不随域漫游）
 //
 // 边界约定：
-//   - 解析器只依赖 os 与环境变量，不依赖 GUI/WebView 初始化——无 GUI 的
-//     server 模式（task run:server）走同一入口；
+//   - 解析器只依赖 os 与环境变量，不依赖 GUI/WebView 初始化——无 GUI 前置的调用方
+//     （测试基建、多开实例的数据目录覆盖）走同一入口；
 //   - 只解析根目录并 MkdirAll，不预建 config.yaml、config/、database/、log/、
 //     plugin/、webview2/ 等内容条目（由各使用方自建）；
 //   - RootPath() 语义保留为「程序目录」专用（exe 所在目录），与本解析器职责分离。

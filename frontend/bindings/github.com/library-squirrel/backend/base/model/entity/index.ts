@@ -3,6 +3,7 @@
 
 export {
     AuthorRole,
+    ExternalApiOpRecord,
     ReWorkTag,
     TagNamespace
 } from "./models.js";

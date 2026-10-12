@@ -150,6 +150,9 @@ func AutoMigrate(db *gorm.DB) error {
 		entity2.NewStickyMemory(),
 		// 领域记账账表（append-only 游标流；无外键、无软删，老化行由 journal 模块轮转物理裁剪）
 		entity2.NewJournalEntry(),
+		// 外部操作记录账表（外部 AI 操作接口调用的事后问责行；append-only 游标流，无外键、
+		// 无软删，老化行由 externalapi 模块按 TTL 与容量轮转物理裁剪）
+		entity2.NewExternalApiOpRecord(),
 
 		// 关联表(有外键依赖)
 		&entity2.ReWorkAuthor{},

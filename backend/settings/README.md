@@ -8,10 +8,13 @@
 | --- | --- |
 | `Get` | 获取全部设置 |
 | `Save(changes)` | 按变更列表保存（每项 path+value，如 `workdir`、`fsmonitor.autoRepairEnabled`） |
-| `Reset` | 重置为默认设置 |
+| `Reset` | 重置为默认设置；外部接口 token 随重置清空后自动重新生成持久化（恒非空不变量） |
+| `SetExternalApiEnabled(enabled)` | 切换外部接口开关：持久化并同步运行时（起停监听、发现文件写删）；同步失败为降级（成功信封附注 + `ExternalApiStatus` 载荷） |
+| `ResetExternalApiToken` | 重置外部接口 token：生成新 token 持久化并同步（旧 token 立即失效、启用中发现文件随写）；data 携带新 token |
 
 ## 核心概念
-- **Settings**：`WorkDir` 顶层字段 + 11 个设置组，koanf 两层合并（代码默认值 → settings.json 文件层；文件缺失/字段缺失/解析失败均回落默认值）
+- **Settings**：`WorkDir` 顶层字段 + 12 个设置组，koanf 两层合并（代码默认值 → settings.json 文件层；文件缺失/字段缺失/解析失败均回落默认值）
+- **外部接口设置组**（`ExternalApiSettings`）：`enabled`（回环监听开关，默认关）/`port`（固定端口，0=随机）/`token`（鉴权凭据，恒非空——装配期与重置路径空则自动生成持久化）。运行时联动（监听起停、用户数据目录发现文件 `api-access.json` 写删、token 换钥）经注入的 `ExternalApiRuntime` 接口（externalapi 模块生命周期管理器实现，原语入出参）完成，开关/token 控制方法保存后显式同步，其余保存路径（整体保存/重置）经 app 注入的 afterSave 回调同步
 - **作者信息设置组**（`AuthorSettings`）：`autoFetchInfo`（作品入库后自动拉取站点作者信息，默认开；只控制自动触发面，手动拉取不受限。`AuthorAutoFetchInfoEnabled` 实现 authorInfo 侧 `AuthorFetchSettings` 接口）。
 - **导出设置组**（`ExportSettings`）：`outputDir`（导出默认输出目录，空 = 工作目录根；导出弹窗临时改选不写回）+ `fileNameFormat`（导出文件名模板，`GetFileNameFormat` 实现 export 侧 `FileNameFormatProvider` 接口，空回退 `DefaultFileNameFormat` 常量）。新增字段的默认值须 `defaultSettings()` 与 `NewSettings()` 两处同步——koanf 合并下文件层缺字段回落代码默认值，两处不同步会让默认值随加载路径漂移
 - **外观设置组**（`AppearanceSettings`）：`theme`（当前主题 id，前端 `useThemeStore` 管理）+ `viewCloseButtonEnabled`（视图关闭按钮显示开关，默认关；开启后非主页视图时应用外壳左上角露出圆形悬浮按钮，点击返回主页；无专属读取接口，前端经 `Get` 全量读取）。`multiSelectEnabled` 为休眠旧字段（主页多选已是会话内开关，不再读写）。默认值双源同步纪律同导出设置组条目所述

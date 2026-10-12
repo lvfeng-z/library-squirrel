@@ -5,7 +5,7 @@
 
 import type { ApiResponse } from '../types'
 import { Handler as SettingsHandler } from '@bindings/github.com/library-squirrel/backend/settings'
-import type { SettingChange, Settings } from '@bindings/github.com/library-squirrel/backend/settings/models'
+import type { ExternalApiStatus, SettingChange, Settings } from '@bindings/github.com/library-squirrel/backend/settings/models'
 
 export interface SettingsVO {
   [key: string]: unknown
@@ -48,4 +48,26 @@ export async function settingsResetSettings(): Promise<ApiResponse<boolean>> {
     return { success: false, msg: '重置失败：接口返回为空' }
   }
   return { success: result.success, msg: result.msg ?? '', data: result.success }
+}
+
+/**
+ * 切换外部接口开关（持久化并联动监听起停与发现文件写删；降级附注在 msg，运行态在 data）
+ */
+export async function settingsSetExternalApiEnabled(enabled: boolean): Promise<ApiResponse<ExternalApiStatus>> {
+  const result = await SettingsHandler.SetExternalApiEnabled(enabled)
+  if (!result) {
+    return { success: false, msg: '设置失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '', data: result.data ?? undefined }
+}
+
+/**
+ * 重置外部接口 token（旧 token 立即失效、启用中发现文件随写；data 携带新 token）
+ */
+export async function settingsResetExternalApiToken(): Promise<ApiResponse<string>> {
+  const result = await SettingsHandler.ResetExternalApiToken()
+  if (!result) {
+    return { success: false, msg: '重置失败：接口返回为空' }
+  }
+  return { success: result.success, msg: result.msg ?? '', data: result.data ?? undefined }
 }

@@ -28,11 +28,23 @@ export function Get(): $CancellablePromise<model$0.ApiResponse<$models.Settings 
 }
 
 /**
- * Reset 重置设置
+ * Reset 重置设置。重置会把外部接口 token 清回空默认值——随后重新生成持久化，
+ * 维持 token 恒非空不变量（设置保存回调完成运行时同步：默认关停监听、删发现文件、
+ * 监听器换新 token）
  */
 export function Reset(): $CancellablePromise<model$0.ApiResponse<any> | null> {
     return $Call.ByID(1648641499).then(($result: any) => {
         return $$createType5($result);
+    });
+}
+
+/**
+ * ResetExternalApiToken 重置外部接口 token：生成新 token 持久化并同步运行时（监听器
+ * 换钥——旧 token 立即失效、启用中发现文件随写）；返回新 token 供前端刷新展示
+ */
+export function ResetExternalApiToken(): $CancellablePromise<model$0.ApiResponse<string> | null> {
+    return $Call.ByID(124015533).then(($result: any) => {
+        return $$createType7($result);
     });
 }
 
@@ -45,6 +57,17 @@ export function Save(changes: $models.SettingChange[]): $CancellablePromise<mode
     });
 }
 
+/**
+ * SetExternalApiEnabled 切换外部接口开关：持久化设置并同步运行时（起停监听、发现文件
+ * 写删）。运行时同步失败为降级——设置已保存，成功信封以附注说明失败原因，状态载荷
+ * 同步给出（前端提示用户，重开一次开关即重试）
+ */
+export function SetExternalApiEnabled(enabled: boolean): $CancellablePromise<model$0.ApiResponse<$models.ExternalApiStatus | null> | null> {
+    return $Call.ByID(773240570, enabled).then(($result: any) => {
+        return $$createType11($result);
+    });
+}
+
 // Private type creation functions
 const $$createType0 = $models.Settings.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);
@@ -52,3 +75,9 @@ const $$createType2 = model$0.ApiResponse.createFrom($$createType1);
 const $$createType3 = $Create.Nullable($$createType2);
 const $$createType4 = model$0.ApiResponse.createFrom($Create.Any);
 const $$createType5 = $Create.Nullable($$createType4);
+const $$createType6 = model$0.ApiResponse.createFrom($Create.Any);
+const $$createType7 = $Create.Nullable($$createType6);
+const $$createType8 = $models.ExternalApiStatus.createFrom;
+const $$createType9 = $Create.Nullable($$createType8);
+const $$createType10 = model$0.ApiResponse.createFrom($$createType9);
+const $$createType11 = $Create.Nullable($$createType10);

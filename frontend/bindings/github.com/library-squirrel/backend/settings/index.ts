@@ -11,6 +11,8 @@ export {
     AuthorSettings,
     BackupGovernanceSettings,
     ExportSettings,
+    ExternalApiSettings,
+    ExternalApiStatus,
     FsmonitorSettings,
     ImportSettings,
     MergeSettings,

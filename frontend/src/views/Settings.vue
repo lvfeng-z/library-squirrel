@@ -10,11 +10,12 @@ import ResFileNameFormatEnum from '@renderer/constants/ResFileNameFormatEnum.ts'
 import HighlightRing from '@renderer/components/common/HighlightRing.vue'
 import { useTourTargets } from '@renderer/composables/useTourTargets'
 import { useTourCenterStore } from '@renderer/store/UseTourCenterStore'
-import { settingsApi, fileSysUtilApi, fsmonitorApi, workdirGuardApi, stickyMemoryApi, pluginPreferenceApi, storageLocationApi, appLauncherApi } from '@renderer/apis/http'
+import { settingsApi, externalApiApi, fileSysUtilApi, fsmonitorApi, workdirGuardApi, stickyMemoryApi, pluginPreferenceApi, storageLocationApi, appLauncherApi } from '@renderer/apis/http'
 import { shareProtocolStatus, shareUnregisterProtocol } from '@renderer/apis/http/wrappers/share'
 import type { ShareProtocolRegStatus } from '@bindings/github.com/library-squirrel/backend/share/models'
 import type { PluginPreferenceEntryDTO, StickyMemoryEntryDTO } from '@bindings/github.com/library-squirrel/backend/base/model/dto'
 import type { Settings } from '@bindings/github.com/library-squirrel/backend/settings/models'
+import type { ExternalApiStatus } from '@bindings/github.com/library-squirrel/backend/settings/models'
 import { emptySettings } from '@renderer/model/util/Settings.js'
 import { useThemeStore } from '@renderer/store/UseThemeStore.ts'
 import { useViewCloseButtonStore } from '@renderer/store/UseViewCloseButtonStore.ts'
@@ -24,6 +25,7 @@ import type { ThemeId } from '@renderer/theme/themes'
 import type { AutoRepairPolicyDTO } from '@bindings/github.com/library-squirrel/backend/fsmonitor/models'
 import type { GuardInfoResponse } from '@bindings/github.com/library-squirrel/backend/workdirGuard/models'
 import type { StorageLocations } from '@bindings/github.com/library-squirrel/backend/storageLocation/models'
+import type { ExternalApiOpRecord } from '@bindings/github.com/library-squirrel/backend/base/model/entity/models'
 
 // onBeforeMount
 onBeforeMount(() => {
@@ -31,6 +33,7 @@ onBeforeMount(() => {
   void loadProtocolStatus()
   void loadStickyMemories()
   void loadPluginPreferences()
+  void loadExternalApiOpRecords()
 })
 
 // 变量
@@ -39,6 +42,8 @@ const apis = {
   settingsGetSettings: settingsApi.settingsGetSettings,
   settingsSaveSettings: settingsApi.settingsSaveSettings,
   settingsResetSettings: settingsApi.settingsResetSettings,
+  settingsSetExternalApiEnabled: settingsApi.settingsSetExternalApiEnabled,
+  settingsResetExternalApiToken: settingsApi.settingsResetExternalApiToken,
   fsmonitorGetAutoRepairPolicySchema: fsmonitorApi.fsmonitorGetAutoRepairPolicySchema,
   workdirGuardGetInfo: workdirGuardApi.workdirGuardGetInfo
 } // 接口
@@ -197,6 +202,103 @@ async function deletePluginPreference(entry: PluginPreferenceEntryDTO): Promise<
 }
 // 偏好更新时间（本地化展示）
 function pluginPreferenceTime(timestamp: number): string {
+  return timestamp > 0 ? new Date(timestamp).toLocaleString() : '—'
+}
+// 外部接口（本机回环 HTTP 操作面，供同机部署的外部智能体程序化操作本软件）：开关与 token
+// 重置走即时生效控制方法（独立于表单整体保存流程）；固定端口随表单保存，保存回调联动换绑
+const externalApiToggling = ref(false)
+// 切换外部接口开关：切换即持久化并联动监听起停与发现文件写删；同步本地表单态与对比基准，
+// 避免整体保存产出冗余变更路径。监听未随开启启动（如端口被占用）为降级：开关已生效，
+// 按状态载荷提示用户，重开一次开关即重试
+async function handleToggleExternalApi(v: string | number | boolean): Promise<void> {
+  const enabled = Boolean(v)
+  externalApiToggling.value = true
+  try {
+    const response = await apis.settingsSetExternalApiEnabled(enabled)
+    if (ApiUtil.check(response)) {
+      settings.value.externalApi.enabled = enabled
+      oldSettings.externalApi.enabled = enabled
+      const status = ApiUtil.data<ExternalApiStatus>(response)
+      if (enabled) {
+        if (notNullish(status) && !status.running) {
+          ElMessage({
+            message: `开关已保存，但监听未启动：${isNotBlank(status.lastError) ? status.lastError : '未知原因'}，重开一次开关即可重试`,
+            type: 'warning',
+            duration: 6000
+          })
+        } else if (notNullish(status)) {
+          ElMessage.success(`外部接口已开启（${status.addr}）`)
+        }
+      } else {
+        ElMessage.success('外部接口已关闭')
+      }
+    }
+  } catch (e: any) {
+    ElMessage.error(e instanceof Error ? e.message : '设置外部接口开关失败')
+  } finally {
+    externalApiToggling.value = false
+  }
+}
+// 重置外部接口 token（确认后：旧 token 立即失效，已接入的外部智能体需更新 token）
+async function resetExternalApiToken(): Promise<void> {
+  const confirm = await ElMessageBox.confirm(
+    '重置后当前 token 立即失效，已接入的外部智能体需更新 token 后才能继续调用。',
+    '重置接口 token',
+    { confirmButtonText: '重置', cancelButtonText: '取消', type: 'warning' }
+  ).then(() => true).catch(() => false)
+  if (!confirm) return
+  try {
+    const response = await apis.settingsResetExternalApiToken()
+    if (ApiUtil.check(response)) {
+      const newToken = ApiUtil.data<string>(response)
+      if (notNullish(newToken)) {
+        settings.value.externalApi.token = newToken
+        oldSettings.externalApi.token = newToken
+      }
+      ElMessage.success('token 已重置')
+    }
+  } catch (e: any) {
+    ElMessage.error(e instanceof Error ? e.message : '重置 token 失败')
+  }
+}
+// 复制外部接口 token 到剪贴板
+async function copyExternalApiToken(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(settings.value.externalApi.token)
+    ElMessage.success('已复制 token')
+  } catch {
+    ElMessage.error('复制 token 失败')
+  }
+}
+// 外部操作记录（外部智能体经接口调用本软件的问责账）：只读列表，分页读取最新调用在前。
+// 记录在接口侧落库时已脱敏（URL 查询串不落库），此处纯展示；列表不随开关态隐藏——
+// 关闭接口后历史记录仍可回看
+const externalApiOpRecords: Ref<ExternalApiOpRecord[]> = ref([])
+const externalApiOpRecordPage = ref(1)
+const externalApiOpRecordTotal = ref(0)
+const externalApiOpRecordPageSize = 10
+const externalApiOpRecordLoading = ref(false)
+// 加载外部操作记录列表（设置页挂载时与翻页时拉取；失败提示错误不阻塞其余设置项）
+async function loadExternalApiOpRecords(): Promise<void> {
+  externalApiOpRecordLoading.value = true
+  try {
+    const response = await externalApiApi.externalApiListOpRecords(externalApiOpRecordPage.value, externalApiOpRecordPageSize)
+    // 绑定层的页对象行可空，过滤后落列表
+    externalApiOpRecords.value = (response.data?.data ?? []).filter((row): row is ExternalApiOpRecord => row !== null)
+    externalApiOpRecordTotal.value = response.data?.dataCount ?? 0
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  } finally {
+    externalApiOpRecordLoading.value = false
+  }
+}
+// 外部操作记录翻页
+function handleExternalApiOpRecordPageChange(page: number): void {
+  externalApiOpRecordPage.value = page
+  void loadExternalApiOpRecords()
+}
+// 记录时间（本地化展示）
+function externalApiOpRecordTime(timestamp: number): string {
   return timestamp > 0 ? new Date(timestamp).toLocaleString() : '—'
 }
 // 路由实例
@@ -854,6 +956,120 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                       />
                     </el-select>
                   </div>
+                </div>
+              </div>
+              <div class="settings-item settings-external-api-switch-item">
+                <div class="settings-item-header">
+                  <span class="settings-item-title">外部接口</span>
+                  <el-switch
+                    :model-value="settings.externalApi.enabled"
+                    inline-prompt
+                    size="large"
+                    active-text="开"
+                    inactive-text="关"
+                    :loading="externalApiToggling"
+                    @change="handleToggleExternalApi"
+                  />
+                  <el-tooltip
+                    placement="top"
+                    effect="customized"
+                  >
+                    <template #content>
+                      供部署在本机的 AI 代理运行时（外部智能体）经 HTTP 接口程序化操作本软件（查询库、创建与控制下载任务），与图形界面汇入同一服务层。<br>
+                      仅监听本机回环地址（127.0.0.1）；开启后在用户数据目录写 api-access.json 发现文件（含端口与 token），外部智能体据此寻址鉴权；<b>关闭即停止监听并删除发现文件</b>。
+                    </template>
+                    <el-text
+                      type="info"
+                      size="small"
+                    >
+                      什么是外部接口？
+                    </el-text>
+                  </el-tooltip>
+                </div>
+              </div>
+              <template v-if="settings.externalApi.enabled">
+                <div class="settings-item settings-external-api-token-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">接口 token</span>
+                    <span class="settings-item-desc settings-external-api-token">{{ settings.externalApi.token }}</span>
+                    <el-button
+                      size="small"
+                      @click="copyExternalApiToken"
+                    >
+                      复制
+                    </el-button>
+                    <el-button
+                      size="small"
+                      type="danger"
+                      class="tone-fail"
+                      @click="resetExternalApiToken"
+                    >
+                      重置
+                    </el-button>
+                  </div>
+                </div>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">监听端口</span>
+                    <span class="settings-item-desc">固定端口保存后即时换绑；0 = 每次开启随机分配</span>
+                    <el-input-number
+                      v-model="settings.externalApi.port"
+                      :min="0"
+                      :max="65535"
+                      size="small"
+                    />
+                  </div>
+                </div>
+              </template>
+              <div class="settings-item settings-external-api-records-item">
+                <div class="settings-item-header">
+                  <span class="settings-item-title">外部操作记录</span>
+                  <el-text
+                    type="info"
+                    size="small"
+                  >
+                    外部智能体经接口调用本软件的问责记录（只读；参数已脱敏，地址查询串不落记录）
+                  </el-text>
+                  <el-button
+                    size="small"
+                    :loading="externalApiOpRecordLoading"
+                    @click="loadExternalApiOpRecords"
+                  >
+                    刷新
+                  </el-button>
+                </div>
+                <div
+                  v-for="row in externalApiOpRecords"
+                  :key="row.id"
+                  class="settings-external-api-record-row"
+                >
+                  <span class="settings-external-api-record-time">{{ externalApiOpRecordTime(row.createTime) }}</span>
+                  <span
+                    class="settings-external-api-record-outcome"
+                    :class="{ 'settings-external-api-record-failed': !row.success }"
+                  >{{ row.success ? '成功' : '失败' }}</span>
+                  <span class="settings-external-api-record-op">{{ row.operation }}</span>
+                  <span class="settings-external-api-record-duration">{{ row.durationMs }} ms</span>
+                  <span class="settings-external-api-record-label">{{ isBlank(row.clientLabel) ? '未自报' : row.clientLabel }}</span>
+                  <span class="settings-external-api-record-params">{{ row.params }}</span>
+                </div>
+                <el-text
+                  v-if="arrayIsEmpty(externalApiOpRecords)"
+                  type="info"
+                  size="small"
+                  class="settings-external-api-record-empty"
+                >
+                  暂无外部调用记录
+                </el-text>
+                <div class="settings-external-api-record-pager">
+                  <el-pagination
+                    v-model:current-page="externalApiOpRecordPage"
+                    :page-size="externalApiOpRecordPageSize"
+                    :total="externalApiOpRecordTotal"
+                    layout="prev, pager, next, total"
+                    small
+                    @current-change="handleExternalApiOpRecordPageChange"
+                  />
                 </div>
               </div>
               </div>
@@ -1668,6 +1884,50 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
 }
 .settings-auto-repair-policy-select {
   width: 160px;
+}
+/* 外部操作记录列表行：时间 + 成败 + 操作标识 + 耗时 + 自报标签 + 参数摘要，窄容器下
+   允许折行（摘要可能较长）；失败行成败标记以红色示警 */
+.settings-external-api-record-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 6px 0;
+}
+.settings-external-api-record-time {
+  font-size: 12px;
+  color: var(--app-text-secondary);
+}
+.settings-external-api-record-outcome {
+  font-weight: 500;
+  color: var(--app-text-primary);
+}
+.settings-external-api-record-failed {
+  color: var(--app-color-danger);
+}
+.settings-external-api-record-op {
+  font-weight: 500;
+  color: var(--app-text-primary);
+}
+.settings-external-api-record-duration,
+.settings-external-api-record-label {
+  font-size: 13px;
+  color: var(--app-text-regular);
+}
+.settings-external-api-record-params {
+  flex-basis: 100%;
+  font-size: 12px;
+  word-break: break-all;
+  color: var(--app-text-secondary);
+}
+.settings-external-api-record-empty {
+  display: block;
+  padding: 6px 0;
+}
+.settings-external-api-record-pager {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
 }
 </style>
 <style>

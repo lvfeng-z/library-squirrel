@@ -174,6 +174,7 @@ func main() {
 			application.NewService(app.WorkDirGuardHandler),
 			application.NewService(app.AuthorInfoHandler),
 			application.NewService(app.WindowHandler),
+			application.NewService(app.ExternalApiOpRecordHandler),
 		},
 		Assets: application.AssetOptions{
 			Handler: app.CreateAssetHandler(assets),
@@ -271,6 +272,14 @@ func main() {
 	// If an error occurred while running the application, log it and exit.
 	if err != nil {
 		logger.Log.Fatal(err)
+	}
+
+	// 停止外部接口监听（未启动时为幂等空操作）：先于任务收尾阻断点切断外部操作入口，
+	// 关闭序列内不再接受外部调用
+	if app.ExternalApiServer != nil {
+		if externalApiErr := app.ExternalApiServer.Stop(); externalApiErr != nil {
+			logger.Log.Warnf("外部接口监听停止异常: %v", externalApiErr)
+		}
 	}
 
 	// 程序关闭阻断点：窗口已销毁、进程退出前，有界等待全部任务真正暂停完成并落盘。

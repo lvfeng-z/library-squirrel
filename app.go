@@ -34,6 +34,7 @@ import (
 	"github.com/library-squirrel/backend/download"
 	"github.com/library-squirrel/backend/duplicate"
 	"github.com/library-squirrel/backend/export"
+	"github.com/library-squirrel/backend/externalapi"
 	"github.com/library-squirrel/backend/fileSysUtil"
 	"github.com/library-squirrel/backend/frontendLog"
 	"github.com/library-squirrel/backend/fsmonitor"
@@ -133,6 +134,14 @@ type App struct {
 	// 领域记账服务（append-only 账表，无服务依赖）。任务终态记账经组合推送器 fan-out 接入，
 	// 见 wrapTaskPusherWithJournal（journal.TaskTerminalPusher）
 	JournalService *journal.Service
+	// 外部接口服务（本机回环 HTTP 操作面：监听器起停、token 鉴权、操作注册表分发）
+	ExternalApiServer *externalapi.Server
+	// 外部接口生命周期管理器（设置目标态→监听起停/发现文件写删/token 换钥的差量同步）
+	ExternalApiLifecycle *externalapi.Lifecycle
+	// 外部操作记录服务（外部接口调用的事后问责账：分发层落账 + 游标/分页读取）
+	ExternalApiOpRecordService *externalapi.OpRecordService
+	// 外部接口读取面 handler（设置页外部操作记录只读列表的 Wails 绑定入口）
+	ExternalApiOpRecordHandler *externalapi.Handler
 
 	// 任务仓储（用于TaskManager）
 	taskRepo *task.TaskRepository
@@ -899,6 +908,45 @@ func (app *App) initBaseServices(dataDir string) {
 	// manifest 与各收件子任务文件拉取共享同一门控，接收方把并发流数与拨号速率对齐到发送方
 	// 会话上限与中继限流之内，避免并发自由竞争触发流被拒与拨号限流的拥塞反馈。
 	app.ShareService.SetDialCoordinator(share.NewDialCoordinator(8, 50))
+
+	// 外部接口服务（本机回环 HTTP 操作面）：监听默认关闭，起停由设置侧控制。操作注册表
+	// 当前仅样例操作（无业务依赖，自检注册表与信封通路）。token 恒非空不变量：设置为空
+	//（首次启动或整体重置后）即生成随机值持久化，监听器、设置页展示、发现文件三方同值
+	externalApiToken := app.SettingsService.GetSettings().ExternalApi.Token
+	if externalApiToken == "" {
+		if generated, genErr := externalapi.GenerateToken(); genErr != nil {
+			logger.Log.Warnf("外部接口 token 生成失败，交由监听器构造随机兜底: %v", genErr)
+		} else if saveErr := app.SettingsService.SaveSettings([]settings.SettingChange{
+			{Path: "externalApi.token", Value: generated},
+		}); saveErr != nil {
+			logger.Log.Warnf("外部接口 token 持久化失败: %v", saveErr)
+		} else {
+			externalApiToken = generated
+		}
+	}
+	externalApiRegistry := externalapi.NewRegistry()
+	if err := externalapi.RegisterSampleOperation(externalApiRegistry); err != nil {
+		logger.Log.Warnf("外部接口样例操作注册失败: %v", err)
+	}
+	app.ExternalApiServer, err = externalapi.NewServer(externalApiRegistry, externalApiToken)
+	if err != nil {
+		logger.Log.Warnf("外部接口服务装配失败: %v", err)
+	} else {
+		// 外部操作记录面：外部调用的问责账由监听器在操作分发层统一落库（尽力而为，
+		// 写账失败不影响操作响应），游标查询端点与设置页只读列表读同一账表
+		app.ExternalApiOpRecordService = externalapi.NewOpRecordService(externalapi.NewOpRecordRepository(app.db))
+		app.ExternalApiServer.SetOpRecordStore(app.ExternalApiOpRecordService)
+		// 生命周期管理器：设置保存回调与设置页控制方法经它差量同步监听起停与发现文件
+		// 写删；发现文件位于用户数据目录（外部智能体寻址鉴权的契约文件）
+		app.ExternalApiLifecycle = externalapi.NewLifecycle(app.ExternalApiServer, dataDir)
+		// 启动即按设置应用目标态：上次开着→起监听+写发现文件。失败降级为日志（设置页
+		// 开关仍为开，用户重开一次即重试）
+		if externalApiCfg := app.SettingsService.GetSettings().ExternalApi; externalApiCfg.Enabled {
+			if syncErr := app.ExternalApiLifecycle.SyncExternalApi(externalApiCfg.Enabled, externalApiCfg.Port, externalApiCfg.Token); syncErr != nil {
+				logger.Log.Warnf("外部接口监听启动失败: %v", syncErr)
+			}
+		}
+	}
 }
 
 // registerStoreDirs 装配期注册 store 存储目录白名单（调用须先于 fsmonitor 启动——
@@ -975,6 +1023,13 @@ func (app *App) initAdvancedServices() error {
 		// /store/ 文件服务的工作目录快照随保存即时刷新（保存即生效，无需重启）；
 		// fsmonitor 懒启动经评估降级为重启生效（保存成功后前端提示），此处不联动
 		app.StoreFileHandler.SetWorkDir(s.WorkDir)
+		// 外部接口设置联动（差量同步：开关起停监听与发现文件写删、固定端口换绑、token
+		// 换钥）。同步失败降级为日志——设置已持久化，设置页开关操作另有带失败原因的响应附注
+		if app.ExternalApiLifecycle != nil {
+			if syncErr := app.ExternalApiLifecycle.SyncExternalApi(s.ExternalApi.Enabled, s.ExternalApi.Port, s.ExternalApi.Token); syncErr != nil {
+				logger.Log.Errorw("外部接口设置联动失败", "error", syncErr)
+			}
+		}
 	})
 	// 启动监控前规范化 file_path 分隔符（历史数据统一正斜杠，避免对账路径比对误报）
 	if n, err := app.PersistentStoreService.NormalizeFilePaths(context.Background()); err != nil {
@@ -1661,7 +1716,13 @@ func (app *App) initHandlers() {
 	app.WorkHandler = work.NewHandler(app.WorkService)
 	app.WorkSetHandler = workSet.NewHandler(app.WorkSetService)
 	app.SearchHandler = search.NewHandler(app.SearchService)
-	app.SettingsHandler = settings.NewHandler(app.SettingsService)
+	// 外部接口控制方法的运行时联动注入（生命周期管理器在基础服务阶段创建；装配失败时
+	// 传 nil 接口——控制方法降级为纯持久化，不因 nil 具体指针触发接口非空陷阱）
+	var externalApiRuntime settings.ExternalApiRuntime
+	if app.ExternalApiLifecycle != nil {
+		externalApiRuntime = app.ExternalApiLifecycle
+	}
+	app.SettingsHandler = settings.NewHandler(app.SettingsService, externalApiRuntime)
 	app.AppLauncherHandler = appLauncher.NewHandler(app.AppLauncherService)
 	app.StorageLocationHandler = storageLocation.NewHandler(app.StorageLocationService)
 	app.FileSysUtilHandler = fileSysUtil.NewHandler(app.FileSysUtilService)
@@ -1713,6 +1774,33 @@ func (app *App) initHandlers() {
 		}
 		return 0
 	}))
+	// 外部接口操作注册：注册表由监听器持有，各操作的目标方法面即上面构造的 handler，故须
+	// 在全部 handler 就位后注册——任一依赖缺失注册函数即整体报错（缺实现的操作标识会误导外部
+	// 调用方）。注册后能力清单与统一操作端点自监听可达起即可用
+	if app.ExternalApiServer != nil {
+		if regErr := externalapi.RegisterQueryOperations(app.ExternalApiServer.Registry(), externalapi.QueryDeps{
+			Search:          app.SearchHandler,
+			Work:            app.WorkHandler,
+			Task:            app.TaskHandler,
+			TaskManager:     app.TaskManagerHandler,
+			Plugin:          app.PluginHandler,
+			StorageLocation: app.StorageLocationHandler,
+			Resource:        app.ResourceHandler,
+			Journal:         app.JournalService,
+		}); regErr != nil {
+			logger.Log.Warnf("外部接口只读操作注册失败: %v", regErr)
+		}
+		// 任务创建与控制操作（写面）：URL 建任务、任务树启停/重试/强停、覆盖确认——确认
+		// 与消歧复用任务模块既有状态机，此处只是第二入口
+		if regErr := externalapi.RegisterTaskOperations(app.ExternalApiServer.Registry(), externalapi.TaskDeps{
+			Task:        app.TaskHandler,
+			TaskManager: app.TaskManagerHandler,
+		}); regErr != nil {
+			logger.Log.Warnf("外部接口任务操作注册失败: %v", regErr)
+		}
+	}
+	// 外部接口读取面 handler（设置页外部操作记录只读列表；记录服务未装配时列表方法回失败）
+	app.ExternalApiOpRecordHandler = externalapi.NewHandler(app.ExternalApiOpRecordService)
 }
 
 // onDomReady 窗口 DOM 准备就绪时的回调（内部使用，不暴露给前端）

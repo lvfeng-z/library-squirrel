@@ -14,6 +14,7 @@ type Settings struct {
 	ExportSettings     ExportSettings           `json:"exportSettings" koanf:"exportSettings"`
 	ShareSettings      ShareSettings            `json:"shareSettings" koanf:"shareSettings"`
 	AuthorSettings     AuthorSettings           `json:"authorSettings" koanf:"authorSettings"`
+	ExternalApi        ExternalApiSettings      `json:"externalApi" koanf:"externalApi"`
 }
 
 // ImportSettings 导入相关设置
@@ -96,6 +97,18 @@ type AuthorSettings struct {
 	AutoFetchInfo bool `json:"autoFetchInfo" koanf:"autoFetchInfo"`
 }
 
+// ExternalApiSettings 外部接口设置（本机回环 HTTP 操作面：供部署在同一台机器上的
+// 外部智能体运行时程序化操作本软件）
+type ExternalApiSettings struct {
+	// Enabled 监听开关（默认关）。开启=起回环监听并写发现文件，关闭=停监听并删发现文件
+	Enabled bool `json:"enabled" koanf:"enabled"`
+	// Port 固定监听端口；0 = 每次启动随机分配。监听运行中变更固定端口即换绑到新端口
+	Port int `json:"port" koanf:"port"`
+	// Token 鉴权 token（Bearer）。重置换新、旧值立即失效；应用装配保证恒非空
+	//（首次启动与整体重置后自动生成持久化）
+	Token string `json:"token" koanf:"token"`
+}
+
 // DefaultShareRelayAddress 官方中继占位地址（正式部署前为占位值，用户可在设置页改指社区自建中继）
 const DefaultShareRelayAddress = "relay.library-squirrel.cn"
 
@@ -153,6 +166,11 @@ func NewSettings() *Settings {
 		},
 		AuthorSettings: AuthorSettings{
 			AutoFetchInfo: true,
+		},
+		ExternalApi: ExternalApiSettings{
+			Enabled: false,
+			Port:    0,
+			Token:   "",
 		},
 	}
 }

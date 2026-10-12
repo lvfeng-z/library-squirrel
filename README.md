@@ -111,7 +111,6 @@ task dev                # 开发模式（前端热重载，直接运行程序）
 task build              # 构建生产版本（输出到 bin/）
 task run                # 运行编译产物
 task build:plugins      # 构建全部捆绑插件并更新 resources/bundled-plugins/
-task build:server && task run:server   # 服务器模式（无 GUI）
 ```
 
 > Windows 下因 CGO 兼容性问题，请使用 `task build`（内部调用 `wails3 build`）而非直接 `go build`。

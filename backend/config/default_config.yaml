@@ -1,9 +1,5 @@
 # LibrarySquirrel Go 服务配置（生产环境默认值）
 
-server:
-  port: 8080
-  mode: release
-
 log:
   level: info
   format: console

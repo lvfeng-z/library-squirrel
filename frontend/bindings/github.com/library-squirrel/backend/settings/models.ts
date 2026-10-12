@@ -140,6 +140,91 @@ export class ExportSettings {
 }
 
 /**
+ * ExternalApiSettings 外部接口设置（本机回环 HTTP 操作面：供部署在同一台机器上的
+ * 外部智能体运行时程序化操作本软件）
+ */
+export class ExternalApiSettings {
+    /**
+     * Enabled 监听开关（默认关）。开启=起回环监听并写发现文件，关闭=停监听并删发现文件
+     */
+    "enabled": boolean;
+
+    /**
+     * Port 固定监听端口；0 = 每次启动随机分配。监听运行中变更固定端口即换绑到新端口
+     */
+    "port": number;
+
+    /**
+     * Token 鉴权 token（Bearer）。重置换新、旧值立即失效；应用装配保证恒非空
+     * （首次启动与整体重置后自动生成持久化）
+     */
+    "token": string;
+
+    /** Creates a new ExternalApiSettings instance. */
+    constructor($$source: Partial<ExternalApiSettings> = {}) {
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("port" in $$source)) {
+            this["port"] = 0;
+        }
+        if (!("token" in $$source)) {
+            this["token"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ExternalApiSettings instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ExternalApiSettings {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ExternalApiSettings($$parsedSource as Partial<ExternalApiSettings>);
+    }
+}
+
+/**
+ * ExternalApiStatus 外部接口运行时状态（开关切换响应载荷，前端降级提示与监听地址展示用）
+ */
+export class ExternalApiStatus {
+    "running": boolean;
+
+    /**
+     * Addr 监听地址（未监听为空）
+     */
+    "addr": string;
+
+    /**
+     * LastError 最近一次同步失败原因（无失败为空）
+     */
+    "lastError": string;
+
+    /** Creates a new ExternalApiStatus instance. */
+    constructor($$source: Partial<ExternalApiStatus> = {}) {
+        if (!("running" in $$source)) {
+            this["running"] = false;
+        }
+        if (!("addr" in $$source)) {
+            this["addr"] = "";
+        }
+        if (!("lastError" in $$source)) {
+            this["lastError"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ExternalApiStatus instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ExternalApiStatus {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ExternalApiStatus($$parsedSource as Partial<ExternalApiStatus>);
+    }
+}
+
+/**
  * FsmonitorSettings 工作目录监控设置
  */
 export class FsmonitorSettings {
@@ -360,6 +445,7 @@ export class Settings {
     "exportSettings": ExportSettings;
     "shareSettings": ShareSettings;
     "authorSettings": AuthorSettings;
+    "externalApi": ExternalApiSettings;
 
     /** Creates a new Settings instance. */
     constructor($$source: Partial<Settings> = {}) {
@@ -399,6 +485,9 @@ export class Settings {
         if (!("authorSettings" in $$source)) {
             this["authorSettings"] = (new AuthorSettings());
         }
+        if (!("externalApi" in $$source)) {
+            this["externalApi"] = (new ExternalApiSettings());
+        }
 
         Object.assign(this, $$source);
     }
@@ -418,6 +507,7 @@ export class Settings {
         const $$createField9_0 = $$createType9;
         const $$createField10_0 = $$createType10;
         const $$createField11_0 = $$createType11;
+        const $$createField12_0 = $$createType12;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("importSettings" in $$parsedSource) {
             $$parsedSource["importSettings"] = $$createField1_0($$parsedSource["importSettings"]);
@@ -451,6 +541,9 @@ export class Settings {
         }
         if ("authorSettings" in $$parsedSource) {
             $$parsedSource["authorSettings"] = $$createField11_0($$parsedSource["authorSettings"]);
+        }
+        if ("externalApi" in $$parsedSource) {
+            $$parsedSource["externalApi"] = $$createField12_0($$parsedSource["externalApi"]);
         }
         return new Settings($$parsedSource as Partial<Settings>);
     }
@@ -509,7 +602,7 @@ export class TourSettings {
      * Creates a new TourSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): TourSettings {
-        const $$createField0_0 = $$createType12;
+        const $$createField0_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("completed" in $$parsedSource) {
             $$parsedSource["completed"] = $$createField0_0($$parsedSource["completed"]);
@@ -531,4 +624,5 @@ const $$createType8 = BackupGovernanceSettings.createFrom;
 const $$createType9 = ExportSettings.createFrom;
 const $$createType10 = ShareSettings.createFrom;
 const $$createType11 = AuthorSettings.createFrom;
-const $$createType12 = $Create.Map($Create.Any, $Create.Any);
+const $$createType12 = ExternalApiSettings.createFrom;
+const $$createType13 = $Create.Map($Create.Any, $Create.Any);
