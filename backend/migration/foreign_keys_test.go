@@ -127,7 +127,7 @@ func TestTaskDomainTablesSchema(t *testing.T) {
 	})
 	assertColumns("export_task", []string{
 		"id", "create_time", "update_time",
-		"work_ids", "work_set_ids", "output_dir",
+		"work_ids", "work_set_ids", "output_dir", "title",
 	})
 
 	// FK 在册：共享主键 id→task；work_task 另挂站点引用
