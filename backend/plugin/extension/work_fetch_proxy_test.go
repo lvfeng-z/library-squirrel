@@ -43,3 +43,34 @@ func TestProtoToTaskCreateResponseFieldFidelity(t *testing.T) {
 		t.Fatalf("children 转换丢失: %+v", got.Children)
 	}
 }
+
+// TestProtoToWorkResponseLocalAuthorRoleName 作品声明面本地作者 RoleName 保真回归：
+// LocalAuthorDTO.RoleName 是 proto optional（*string），携带本地作者时随条目声明关联级角色
+// （事故：转换漏拷 RoleName 致插件声明的关联级角色在代理层丢失、落库 role_name 恒空）。
+// 断言指针值原样保留：有声明的条目拷出同一角色串，未声明的条目保持 nil。
+func TestProtoToWorkResponseLocalAuthorRoleName(t *testing.T) {
+	role := "原画"
+	src := &gen.WorkResponse{
+		LocalAuthors: []*gen.LocalAuthorDTO{
+			{AuthorName: ptrOf("作者甲"), RoleName: &role},
+			{AuthorName: ptrOf("作者乙")},
+		},
+	}
+
+	got := protoToWorkResponse(src)
+	if got == nil {
+		t.Fatal("转换返回 nil")
+	}
+	if len(got.LocalAuthors) != len(src.LocalAuthors) {
+		t.Fatalf("localAuthors 条目数不符: %+v", got.LocalAuthors)
+	}
+	if got.LocalAuthors[0].RoleName == nil || *got.LocalAuthors[0].RoleName != role {
+		t.Fatalf("声明的 RoleName 丢失: %+v", got.LocalAuthors[0])
+	}
+	if got.LocalAuthors[1].RoleName != nil {
+		t.Fatalf("未声明的 RoleName 应保持 nil: %+v", got.LocalAuthors[1])
+	}
+}
+
+// ptrOf 测试辅助：取字符串指针（proto optional 字段赋值用）
+func ptrOf(s string) *string { return &s }

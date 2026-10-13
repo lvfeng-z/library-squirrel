@@ -673,6 +673,9 @@ func protoToWorkResponse(pb *gen.WorkResponse) *pluginsdkdto.WorkResponse {
 			LastUse:    a.LastUse,
 			CreateTime: a.CreateTime,
 			UpdateTime: a.UpdateTime,
+			// RoleName 为 proto optional（*string），直接拷指针以保留 nil=未声明角色的语义，
+			// 与同循环 AuthorName/Introduce 的指针拷贝惯例一致
+			RoleName: a.RoleName,
 		})
 	}
 	for _, t := range pb.LocalTags {
