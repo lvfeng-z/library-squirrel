@@ -1,6 +1,6 @@
 module github.com/library-squirrel
 
-go 1.26.9
+go 1.27.2
 
 require (
 	github.com/dop251/goja v0.0.0-20260917113740-793a2a65c13b

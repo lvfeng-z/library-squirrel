@@ -8,6 +8,9 @@ import { Create as $Create } from "@wailsio/runtime";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as json$0 from "../../../../../encoding/json/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as jsontext$0 from "../../../../../encoding/json/jsontext/models.js";
 
 /**
  * FrontendExtensionResponse 前端扩展 IPC 响应 DTO（Type 字段值=Kind 字符串，前端按 slot.type 分流消费，保留字段名避免前端无谓改动）
