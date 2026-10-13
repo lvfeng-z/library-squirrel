@@ -44,15 +44,14 @@ func TestValidateContractVersion(t *testing.T) {
 	}
 }
 
-// TestContractVersionBaseline 契约版本双点基线锚定：SDK 当前版本 16（插件设置变更通知——
-// PluginLifecycle 线级新增 SettingChanged 一元 RPC，宿主在 SaveSetting/ResetSetting 落库
-// 成功后向已激活插件异步推送 {source,keys} 纯通知，插件经 SDK WithSettingChangeHandler
-// 处置函数感知；线级新增非破坏，旧插件内嵌 Unimplemented 兜底、宿主静默降级零行为变化），
-// 主程序最低支持版本 12（扩展点正名的破坏性分界——设置通知不升 min：契约 12 插件在新宿主
-// 照常运行），任一侧升版须同步更新本基线
+// TestContractVersionBaseline 契约版本双点基线锚定：SDK 当前版本 17（本地导入作者关联级
+// 角色声明面——LocalAuthorDTO 加可选 RoleName 字段，作品声明携带本地作者时随条目声明
+// 关联级 role，落点为作品-作者关联行、不写作者实体；加字段向前兼容，作为本地导入解析
+// 新能力标识升版），主程序最低支持版本 12（扩展点正名的破坏性分界——本地导入 role
+// 声明不升 min：契约 12 插件在新宿主照常运行），任一侧升版须同步更新本基线
 func TestContractVersionBaseline(t *testing.T) {
-	if pluginsdktransport.ContractVersion != 16 {
-		t.Errorf("SDK 当前契约版本 = %d, 期望 16", pluginsdktransport.ContractVersion)
+	if pluginsdktransport.ContractVersion != 17 {
+		t.Errorf("SDK 当前契约版本 = %d, 期望 17", pluginsdktransport.ContractVersion)
 	}
 	if minSupportedContractVersion != 12 {
 		t.Errorf("最低支持契约版本 = %d, 期望 12", minSupportedContractVersion)

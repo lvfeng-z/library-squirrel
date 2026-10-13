@@ -9,6 +9,7 @@ import (
 	"github.com/library-squirrel/backend/base/constant"
 	entity2 "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/authorRole"
+	"github.com/library-squirrel/backend/localAuthor"
 	"github.com/library-squirrel/backend/migration"
 	"github.com/library-squirrel/backend/reWorkAuthor"
 	"github.com/library-squirrel/backend/reWorkTag"
@@ -77,14 +78,14 @@ func newCrossSiteTestEnv(t *testing.T) (*Service, *gorm.DB) {
 		nil, // LocalTagBatchReader
 		nil, // SiteTagBatchReader
 		nil, // SiteBatchReader
-		nil, // LocalAuthorBatchReader
+		localAuthor.NewService(localAuthor.NewRepository(db), &txTransactor{db: db}, nil, nil, nil), // LocalAuthorBatchReader（真实件：ID 模式声明存在性校验）
 		nil, // SiteAuthorBatchReader
 		nil, // ResourceBatchReader
 		nil, // ResourceStoreBatchReader
 		nil, // StoreBatchReader
 		nil, // ReWorkTagBatchReader
 		nil, // LocalTagFindOrCreator
-		nil, // LocalAuthorFindOrCreator
+		localAuthor.NewService(localAuthor.NewRepository(db), &txTransactor{db: db}, nil, nil, nil), // LocalAuthorFindOrCreator（真实件：名称模式声明 find-or-create；删除编排依赖不涉入库链，nil 跳过）
 		nil, // StoreDeleter
 		nil, // RunningTaskStopper
 		nil, // ResourceStoreHardDeleter

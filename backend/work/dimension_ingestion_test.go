@@ -218,3 +218,84 @@ func TestManualLinkMultiRoleBothTracks(t *testing.T) {
 		t.Fatalf("LOCAL 轨同作者应 2 行，实际 %d", n)
 	}
 }
+
+// TestIngestLocalAuthorRoleDeclaration 本地作者 role 声明入库（本地导入链）：双本地作者各带不同
+// role 落库后各自关联行携带正确 role_name（含归一化）；role 清单登记（origin=plugin）覆盖 LOCAL
+// 路径；无 role 声明与既往行为一致（零值空串落库）；重拉再声明同 role 不重复建行。
+// ID 模式与名称模式混排声明（resolveLocalAuthors 按 DTO 原序返回 ID，role 顺序对位不漂移）。
+func TestIngestLocalAuthorRoleDeclaration(t *testing.T) {
+	svc, db := newCrossSiteTestEnv(t)
+	pixiv := seedSite(t, db, "pixiv")
+
+	p := func(s string) *string { return &s }
+	siteWorkId := "local-role-ingest-work"
+	pull := func(authors ...*sdkdto.LocalAuthorDTO) *sdkdto.WorkResponse {
+		return &sdkdto.WorkResponse{
+			Work:         &sdkdto.WorkDTO{SiteWorkId: &siteWorkId, SiteWorkName: &siteWorkId},
+			LocalAuthors: authors,
+		}
+	}
+	task, wt := newWorkTaskOfSite(pixiv.GetID())
+	// ID 模式目标行先在场（存在性校验轨），名称模式三条走 find-or-create
+	idModeAuthor := seedLocalAuthorRow(t, db, "本地作者丁")
+	workId, err := svc.saveWorkInfoInTx(context.Background(), task, wt, pull(
+		&sdkdto.LocalAuthorDTO{AuthorName: p("本地作者甲"), RoleName: p(" 原画 ")},
+		&sdkdto.LocalAuthorDTO{AuthorName: p("本地作者乙"), RoleName: p("脚本")},
+		&sdkdto.LocalAuthorDTO{AuthorName: p("本地作者丙")},
+		&sdkdto.LocalAuthorDTO{Id: idModeAuthor.GetID(), RoleName: p("插图")},
+	))
+	if err != nil {
+		t.Fatalf("首次入库失败: %v", err)
+	}
+
+	if n := countRows(t, db, &entity2.ReWorkAuthor{}, "work_id = ? AND author_type = ?", workId, constant.LOCAL); n != 4 {
+		t.Fatalf("LOCAL 作者关联应 4 行，实际 %d", n)
+	}
+	// 按作者名回查关联行断言 role（名称模式建行，名字即身份；ID 模式行复用直插名）
+	assertLocalRoleRow := func(name, wantRole string) {
+		t.Helper()
+		var la entity2.LocalAuthor
+		if err := db.Where("author_name = ?", name).First(&la).Error; err != nil {
+			t.Fatalf("查本地作者行失败 %s: %v", name, err)
+		}
+		var rel entity2.ReWorkAuthor
+		if err := db.Where("work_id = ? AND local_author_id = ?", workId, la.GetID()).First(&rel).Error; err != nil {
+			t.Fatalf("回查 LOCAL 作者关联失败 %s: %v", name, err)
+		}
+		if rel.RoleName != wantRole {
+			t.Fatalf("本地作者 %s 关联 role_name 应为 %q，实际 %q", name, wantRole, rel.RoleName)
+		}
+		if rel.Source != constant.PLUGIN {
+			t.Fatalf("入库链 LOCAL 关联 source 应为 PLUGIN，实际 %d", rel.Source)
+		}
+	}
+	assertLocalRoleRow("本地作者甲", "原画") // 声明值带空白，归一化后落库
+	assertLocalRoleRow("本地作者乙", "脚本")
+	assertLocalRoleRow("本地作者丙", "") // 无 role 声明零值空串
+	assertLocalRoleRow("本地作者丁", "插图") // ID 模式声明，role 顺序对位
+
+	// role 清单登记（origin=plugin）覆盖 LOCAL 路径
+	for _, role := range []string{"原画", "脚本", "插图"} {
+		var inv entity2.AuthorRole
+		if err := db.Where("value = ?", role).First(&inv).Error; err != nil {
+			t.Fatalf("role %q 应登记清单: %v", role, err)
+		}
+		if inv.Origin != constant.ORIGIN_PLUGIN {
+			t.Fatalf("LOCAL 路径登记的 role 清单 origin 应为 plugin，实际 %d", inv.Origin)
+		}
+	}
+
+	// 重拉再声明同 role：关联不重复建行、role 保持（LOCAL 增量追加 + 唯一键冲突折叠）
+	if _, err := svc.saveWorkInfoInTx(context.Background(), task, wt, pull(
+		&sdkdto.LocalAuthorDTO{AuthorName: p("本地作者甲"), RoleName: p("原画")},
+		&sdkdto.LocalAuthorDTO{AuthorName: p("本地作者乙"), RoleName: p("脚本")},
+		&sdkdto.LocalAuthorDTO{AuthorName: p("本地作者丙")},
+		&sdkdto.LocalAuthorDTO{Id: idModeAuthor.GetID(), RoleName: p("插图")},
+	)); err != nil {
+		t.Fatalf("重拉失败: %v", err)
+	}
+	if n := countRows(t, db, &entity2.ReWorkAuthor{}, "work_id = ? AND author_type = ?", workId, constant.LOCAL); n != 4 {
+		t.Fatalf("重拉再声明同 role 不应重复建行，实际 %d", n)
+	}
+	assertLocalRoleRow("本地作者甲", "原画")
+}

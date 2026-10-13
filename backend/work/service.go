@@ -1357,7 +1357,17 @@ func (s *Service) saveWorkInfoInTx(ctx context.Context, task *entity2.Task, work
 			return 0, fmt.Errorf("保存作品 SITE 作者关联失败: %w", err)
 		}
 	}
-	localAuthorLinks := buildLocalAuthorLinks(workId, localAuthorDBIds)
+	// 插件声明的本地作者 role 直写关联行（role 是关联级维度，不写作者实体行）；维度值归一化，
+	// 顺序与 localAuthorDBIds 一致（resolveLocalAuthors 按 dtos 顺序返回）。
+	// role 清单登记与关联写入同事务（ctx 即 SaveWorkInfo 事务上下文），来源 origin=plugin
+	localAuthorRoleNames := make([]string, len(workResp.LocalAuthors))
+	for i, a := range workResp.LocalAuthors {
+		localAuthorRoleNames[i] = constant.NormalizeDimensionValue(a.GetRoleName())
+	}
+	if err := s.authorRoleInventory.EnsureUsedBatch(ctx, localAuthorRoleNames, constant.ORIGIN_PLUGIN); err != nil {
+		return 0, fmt.Errorf("登记 role 维度清单失败: %w", err)
+	}
+	localAuthorLinks := buildLocalAuthorLinks(workId, localAuthorDBIds, localAuthorRoleNames)
 	if len(localAuthorLinks) > 0 {
 		if err := s.reWorkAuthorWriter.SaveBatchOnConflict(ctx, localAuthorLinks); err != nil {
 			return 0, fmt.Errorf("保存作品 LOCAL 作者关联失败: %w", err)
@@ -2117,14 +2127,19 @@ func buildSiteTagLinks(workId int64, siteTagIds []int64, namespaces []string) []
 	return links
 }
 
-func buildLocalAuthorLinks(workId int64, localAuthorIds []int64) []*entity2.ReWorkAuthor {
+func buildLocalAuthorLinks(workId int64, localAuthorIds []int64, roleNames []string) []*entity2.ReWorkAuthor {
 	links := make([]*entity2.ReWorkAuthor, 0, len(localAuthorIds))
 	for i, authorId := range localAuthorIds {
+		role := ""
+		if i < len(roleNames) {
+			role = roleNames[i]
+		}
 		links = append(links, &entity2.ReWorkAuthor{
 			BaseEntity:    &model.BaseEntity{},
 			AuthorType:    sql.NullInt64{Int64: constant.LOCAL, Valid: true},
 			WorkID:        sql.NullInt64{Int64: workId, Valid: true},
 			LocalAuthorID: sql.NullInt64{Int64: authorId, Valid: true},
+			RoleName:      role,
 			SortOrder:     sql.NullInt64{Int64: int64(i), Valid: true},
 			Source:        constant.PLUGIN,
 		})
