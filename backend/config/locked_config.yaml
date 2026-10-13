@@ -59,6 +59,9 @@ officialPlugins:
     buildId: 3f9aa64
     contentDigest: 14dea1e6150b833fffd5deb56e7bfcf79105dbdde3caaeb23d87e20500c87b26
   - publicId: com.lvfeng.bilibiliSuite
+    buildId: 836350c
+    contentDigest: 963e7a40cf9c7cc0728b01387c28b699fe94132d66187f0a73f498a919b32365
+  - publicId: com.lvfeng.bilibiliSuite
     buildId: 931d216
     contentDigest: 29a9e57afdd3ffc36dbde165ebf4c465c9cccb381562d2c84f2a57741e377366
   - publicId: com.lvfeng.bilibiliSuite
@@ -128,6 +131,9 @@ officialPlugins:
     buildId: 15f3735
     contentDigest: 2ffaa54b027cdbab27c45859d7499aaa25f30d8c3d695421b08a1f02f9379fb7
   - publicId: com.lvfeng.localImport
+    buildId: 1fd100c
+    contentDigest: 242415d4c825645c19c8c02d6d6c73faf909c6a2118a8d96c0d6503e783ab13e
+  - publicId: com.lvfeng.localImport
     buildId: 1fd2cb8
     contentDigest: 15d77949b7762cc3a7fdd042e1a69bc1201507956a971e3edb4a4e4b399515db
   - publicId: com.lvfeng.localImport
@@ -167,6 +173,9 @@ officialPlugins:
     buildId: ae80e8f-dirty
     contentDigest: 8b847cfd73da5e4b33a5b816b27deab03e5ccf7e48450a3e05c4572a14f1ba66
   - publicId: com.lvfeng.localImport
+    buildId: b0223bb-dirty
+    contentDigest: 3e033d45989a3b0b71194790750d32ea0786352925dca232556cbaff9d4e636e
+  - publicId: com.lvfeng.localImport
     buildId: b32a646
     contentDigest: 6d8898bf559b9b19ae9b573b61d9829af3b158f3d03d0b0b00d6b98c1b6e14a3
   - publicId: com.lvfeng.localImport
@@ -190,6 +199,9 @@ officialPlugins:
   - publicId: com.lvfeng.pixivSuite
     buildId: 114fffa
     contentDigest: 17540a16e3834356c31f691bdf04311c51cbd939edaf994f4d5b412daf47eded
+  - publicId: com.lvfeng.pixivSuite
+    buildId: 2bf8d33
+    contentDigest: 1a94410a9012b887ecf8e0f0a553f1271930586c7b0d10eee4bfcdd4a31183f1
   - publicId: com.lvfeng.pixivSuite
     buildId: 4c472a7
     contentDigest: 238415695e3d48b27abad23f7a810a017e15001ac8f5196457b73c4af211638c
@@ -265,6 +277,9 @@ officialPlugins:
   - publicId: com.lvfeng.test-plugin
     buildId: 9065f64-dirty
     contentDigest: ccba1298a2c9fc05c056264b0e8311b6eebdaf60a19e117a304a64c1c6675a9e
+  - publicId: com.lvfeng.test-plugin
+    buildId: 961db24
+    contentDigest: 97cb91320c2d0a0fdf8f263d3b4934ef9c071e1c0ce6d959c591717cafcbfa69
   - publicId: com.lvfeng.test-plugin
     buildId: b1fe045-dirty
     contentDigest: 90c975518aadf5c7bff385c406ca9956d66dd5776aaa932bec2c0d2979ff5721
