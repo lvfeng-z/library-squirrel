@@ -147,7 +147,7 @@ export function QueryTreeDataPage(page: model$0.Page<dto$1.TaskDTO> | null, quer
 }
 
 /**
- * RefreshStatus 刷新任务状态
+ * RefreshStatus 刷新父任务状态（按子任务状态聚合重算；叶子/独立任务无子行，无操作）
  */
 export function RefreshStatus(taskId: number): $CancellablePromise<model$0.ApiResponse<number> | null> {
     return $Call.ByID(2647555349, taskId).then(($result: any) => {
