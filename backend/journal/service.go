@@ -11,12 +11,14 @@ import (
 	"github.com/library-squirrel/backend/util"
 )
 
-// 轮转参数（常量化；可配置需求出现时再议）
+// 轮转参数（常量化；可配置需求出现时再议）。取值口径：TTL 365 天 = 消费方可触及约一年
+// 历史（游标休眠近一年不过期）；容量 20 万行 ≈ 548 事件/天持续一年的兜底上限，正常
+// 事件速率下 TTL 先于容量生效，容量轨仅作异常速率的保活封顶
 const (
 	// RotationTTL 轮转 TTL：账行创建时刻早于该年龄即被裁剪
-	RotationTTL = 180 * 24 * time.Hour
+	RotationTTL = 365 * 24 * time.Hour
 	// RotationMaxRows 轮转容量上限：存活账行数超过该值时裁最旧
-	RotationMaxRows = 50000
+	RotationMaxRows = 200000
 )
 
 // defaultListLimit ListSince 未给有效限量时的缺省每批行数

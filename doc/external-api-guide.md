@@ -160,7 +160,7 @@ curl -s -X POST "http://127.0.0.1:$LS_PORT/api/op/search.work" \
 - 机器查询：`GET /api/oplog?cursor=&limit=`，游标增量返回——信封 `data` 为 `Entries`（记录行，行内字段 `id` / `createTime` / `operation` / `params` / `success` / `clientLabel` / `durationMs`）、`NextCursor`、`HasMore`、`CursorExpired` 四个字段（注意是**大写开头的字段名**）；`cursor` 传上次的 `NextCursor` 即增量消费，`cursor=0` 从头消费，`CursorExpired=true` 表示消费位置已被轮转裁掉，需从留存起点（`cursor=0`）重读并接受缺口。`/api/journal` 返回同一套游标字段。
 - 人查：设置页「外部操作记录」只读列表（最新在前，分页）。
 - 脱敏：URL 类参数只落协议 + 主机 + 路径，查询串不落库（只记存在与字符数），防凭据类参数进入记录与界面展示；摘要超长截断。
-- 保留：TTL 180 天、容量 5 万行，超出裁最旧——**记录不是永久档案**，长期留档请自行导出。
+- 保留：TTL 365 天、容量 20 万行，超出裁最旧——**记录不是永久档案**，长期留档请自行导出（游标休眠近一年不过期，即智能体可触及约一年的历史）。
 - 落账口径：探测、能力清单、`/api/oplog` 这三个固定端点不落账；经操作分发的调用（含 `/api/journal` 与全部 `POST /api/op/{id}`）落账。
 
 ## 八、信任边界声明（token 防线定位）

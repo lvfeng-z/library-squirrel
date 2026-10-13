@@ -31,10 +31,11 @@ const (
 	// 落库。自报非鉴别——token 才是鉴权凭据，标签只服务问责时的归属提示
 	ClientLabelHeader = "X-Client-Label"
 	// opRecordRotationTTL 记录轮转 TTL：行创建时刻早于该年龄即被裁剪（与记账账表同一
-	// 缺省口径；可配置需求出现时再议）
-	opRecordRotationTTL = 180 * 24 * time.Hour
-	// opRecordRotationMaxRows 记录轮转容量上限：存活行数超过该值时裁最旧
-	opRecordRotationMaxRows = 50000
+	// 缺省口径——365 天 = 消费方可触及约一年历史；可配置需求出现时再议）
+	opRecordRotationTTL = 365 * 24 * time.Hour
+	// opRecordRotationMaxRows 记录轮转容量上限：存活行数超过该值时裁最旧（与记账账表
+	// 同一缺省口径，正常调用速率下 TTL 先于容量生效）
+	opRecordRotationMaxRows = 200000
 	// opRecordDefaultListLimit ListSince 未给有效限量时的缺省每批行数
 	opRecordDefaultListLimit = 100
 	// opRecordMaxParamsLength 参数摘要的最大保留长度（按字符计，超出截断并附截断标记）

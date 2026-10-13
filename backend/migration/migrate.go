@@ -170,6 +170,18 @@ func AutoMigrate(db *gorm.DB) error {
 		return err
 	}
 
+	// 命名迁移(后置)：journal_entry / external_api_op_record 建 create_time 索引——两表为
+	// append-only 账表，轮转裁剪的 TTL 轨（create_time < 阈值）随每次写账顺带触发，无索引时
+	// OR 谓词退化为全表扫描；建索引后 TTL 轨为索引区间探测，容量上限放大后写路径仍保持
+	// 低毫秒级开销。两表行只追加不更新，索引维护成本极低；IF NOT EXISTS 幂等（两表列在
+	// BaseEntity 共享，索引无法走实体标签声明，故入命名迁移）
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_journal_entry_create_time ON journal_entry(create_time)`).Error; err != nil {
+		return fmt.Errorf("迁移 journal_entry create_time 索引创建失败: %w", err)
+	}
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_external_api_op_record_create_time ON external_api_op_record(create_time)`).Error; err != nil {
+		return fmt.Errorf("迁移 external_api_op_record create_time 索引创建失败: %w", err)
+	}
+
 	// 数据迁移：share-host 任务行退役清理（分享方发布去任务化——发布直跑不经任务模块，
 	// 分享参数与生命周期改由 share_record 承载）。存量 share-host 任务行一次性物理删除
 	// （原生 DELETE，无软删改写；task 表无软删列；幂等——二次启动无命中行）

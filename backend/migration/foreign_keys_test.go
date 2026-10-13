@@ -326,3 +326,18 @@ func TestRebuildPreservesIndexes(t *testing.T) {
 		t.Fatal("同键关联行应被唯一索引拒绝（索引随重建复原的锚定）")
 	}
 }
+
+// TestRotationTablesCreateTimeIndex 轮转账表的 create_time 索引存在性：journal_entry 与
+// external_api_op_record 的 TTL 轮转轨随每次写账顺带触发，索引缺失会令其退化为全表扫描
+// （索引经迁移后置段命名建出——共享 BaseEntity 列的局部索引无法走实体标签声明）
+func TestRotationTablesCreateTimeIndex(t *testing.T) {
+	db := openFKTestDB(t)
+	var count int
+	if err := db.Raw(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index'
+		AND name IN ('idx_journal_entry_create_time', 'idx_external_api_op_record_create_time')`).Scan(&count).Error; err != nil {
+		t.Fatalf("查询轮转索引存在性失败: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("轮转账表 create_time 索引应各建一个，实际 %d 个", count)
+	}
+}
