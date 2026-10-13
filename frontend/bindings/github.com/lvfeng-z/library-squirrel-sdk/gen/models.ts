@@ -13,6 +13,11 @@ export class LocalAuthorDTO {
     "createTime"?: number;
     "updateTime"?: number;
 
+    /**
+     * 关联级 role:该作者在本作品关联行上的角色分工(原画/脚本/声优等开放字符串),落点为作品-作者关联行,不写作者实体;空=无 role
+     */
+    "roleName"?: string | null;
+
     /** Creates a new LocalAuthorDTO instance. */
     constructor($$source: Partial<LocalAuthorDTO> = {}) {
 
