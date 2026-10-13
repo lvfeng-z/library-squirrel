@@ -43,7 +43,7 @@ func (h *Handler) Update(ctx context.Context, task *sdkdto.TaskDTO) *model.ApiRe
 	return model.Success[any](nil)
 }
 
-// RefreshStatus 刷新任务状态
+// RefreshStatus 刷新父任务状态（按子任务状态聚合重算；叶子/独立任务无子行，无操作）
 func (h *Handler) RefreshStatus(ctx context.Context, taskId int64) *model.ApiResponse[int64] {
 	return model.HandleResult(h.svc.RefreshTaskStatus(ctx, taskId))
 }

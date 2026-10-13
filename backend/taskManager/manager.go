@@ -181,6 +181,9 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 	processedUnits := make(map[int64]struct{})
 	// parentUnitId → 需 dispatch 的叶子集合(unitLeaf 触发;nil/空=整树 Start,dispatch 全部子任务)
 	leafIdsPerParent := make(map[int64]map[int64]struct{})
+	// 显式入选启动请求的父单元集合：父任务在请求内即整树语义（操作父任务=作用于全部
+	// 子任务），其叶子集合不收窄派发面——显式子集只在没有父任务入选时限定派发范围
+	wholeTreeParents := make(map[int64]struct{})
 	var standaloneChildren []*ManagedTask
 	var parentUnits []int64
 
@@ -199,6 +202,7 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 			unitId = rootTask.Pid.Int64
 		case unitParent:
 			unitId = taskId
+			wholeTreeParents[unitId] = struct{}{}
 		}
 
 		// unitLeaf 先累积到所属父单元的叶子集合(须在单元去重与 loaded 跳过之前,保证同父多叶子都记录、
@@ -209,10 +213,11 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 			}
 			leafIdsPerParent[unitId][taskId] = struct{}{}
 		}
-		// 重复执行保护:独立/父单元已 loaded 则跳过整树重复加载;unitLeaf 不跳过——
-		// 其父已 loaded 时由 processParentUnit 的 !created 分支重新纳入终态叶子(运行中父单元重纳)。
+		// 重复执行保护:独立单元已 loaded 则跳过重复加载。unitLeaf 与父单元不跳过——
+		// 父已 loaded 时经 processParentUnit 的 claim 输者路径补派从未派发的滞留兄弟
+		// (叶子单启后整树加载驻留 Created 的兄弟),unitLeaf 请求叶子同路径重新纳入。
 		// 创建层 claimTask/claimParent 保证并发安全,此处 isUnitLoaded 仅作快路径优化。
-		if kind != unitLeaf && m.isUnitLoaded(unitId, kind == unitStandalone) {
+		if kind == unitStandalone && m.isUnitLoaded(unitId, true) {
 			logger.Log.Infof("loadAndStartTaskTrees: 单元 %d 已在运行，跳过", unitId)
 			continue
 		}
@@ -243,7 +248,12 @@ func (m *Manager) loadAndStartTaskTrees(ctx context.Context, taskIds []int64, sk
 	allToCheck := make([]*ManagedTask, 0, len(standaloneChildren)+len(parentUnits)*4)
 	allToCheck = append(allToCheck, standaloneChildren...)
 	for _, parentId := range parentUnits {
-		allToCheck = append(allToCheck, m.processParentUnit(tasks, taskById, parentId, skipTerminal, leafIdsPerParent[parentId])...)
+		// 父任务显式入选=整树派发（叶子集合不收窄）；仅叶子入选时按叶子集合限定
+		leafSet := leafIdsPerParent[parentId]
+		if _, wholeTree := wholeTreeParents[parentId]; wholeTree {
+			leafSet = nil
+		}
+		allToCheck = append(allToCheck, m.processParentUnit(tasks, taskById, parentId, skipTerminal, leafSet)...)
 	}
 
 	// 4. 分发（受信号量控制；查重在执行面策略内按任务逐个进行——命中冲突经执行内挂起等待用户答复）
@@ -264,12 +274,14 @@ func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*do
 		parentTaskName = parentEntity.TaskName.String
 	}
 
-	// 创建层 claim:赢家构建子任务;输者(父单元已在运行)复用 parentTask,把请求的终态叶子重新纳入
+	// 创建层 claim:赢家构建子任务;输者(父单元已在运行)复用 parentTask,按请求范围补派——
+	// 整树 Start(leafSet 空)补派从未派发的滞留兄弟,单独请求叶子(leafSet 非空)重纳请求叶子
 	parentTask, created := m.claimParent(actualParentId, parentTaskName)
 	if !created {
-		// 父单元已在运行:整树 Start(leafSet 空)不重复加载;单独请求叶子(leafSet 非空)重纳终态叶子
+		// 父单元已在运行:整树 Start(leafSet 空)不重复加载、不重跑终态子任务(重试语义),
+		// 仅补派整树加载驻留但从未派发的兄弟;单独请求叶子(leafSet 非空)重纳请求叶子
 		if len(leafSet) == 0 {
-			return nil
+			return m.collectUndispatchedChildren(parentTask)
 		}
 		return m.reinjectLeaves(parentTask, taskById, leafSet)
 	}
@@ -310,10 +322,24 @@ func (m *Manager) processParentUnit(tasks []*domain.Task, taskById map[int64]*do
 	return parentTask.GetChildren()
 }
 
-// reinjectLeaves 把请求的终态叶子重新纳入已运行的父单元(claimParent 输者路径)。
-// 仅纳入终态子任务(Finished/Failed,已从 taskMap 清理、actor 已退出):buildOrReuseChild 重建新对象,
+// collectUndispatchedChildren 收集父单元内已加载(claim)但从未派发的子任务:
+// Created 且 actor 未启动(叶子单启路径整树加载驻留的兄弟)。整树 Start 请求命中
+// 已加载父单元时补派它们;已派发的运行/终态子任务不动(重复开始幂等、终态重跑属重试语义)。
+func (m *Manager) collectUndispatchedChildren(parent *ParentTask) []*ManagedTask {
+	var out []*ManagedTask
+	for _, child := range parent.GetChildren() {
+		if !child.actorStarted.Load() && child.GetState() == TaskStateCreated {
+			out = append(out, child)
+		}
+	}
+	return out
+}
+
+// reinjectLeaves 把请求的叶子重新纳入已运行的父单元(claimParent 输者路径)。
+// 终态子任务(Finished/Failed,已从 taskMap 清理、actor 已退出):buildOrReuseChild 重建新对象,
 // AddChild 覆盖 children 中的旧终态对象,返回者统一交 dispatch 重跑。
-// 非终态子任务(Paused/Processing/Waiting 等,仍在 taskMap)一律跳过:
+// 从未派发的子任务(Created 且 actor 未启动,叶子单启路径驻留):直接返回交 dispatch 补投 cmdStart。
+// 其余非终态子任务(Paused/Processing/Waiting 等,仍在 taskMap 且已派发)一律跳过:
 //  1. Paused 的恢复由 ResumeTaskTrees 经 resolveTargets 内存路径直接投 cmdResume,不经本路径;
 //  2. 对运行中任务重投开始会重入其查重/板块组合执行,破坏运行中任务;
 //  3. 对 Processing/Waiting "开始"属幂等/语义模糊,跳过最安全。
@@ -324,16 +350,20 @@ func (m *Manager) reinjectLeaves(parent *ParentTask, taskById map[int64]*domain.
 		if t == nil {
 			continue
 		}
-		if !isTerminalState(TaskState(t.Status)) {
-			continue // 非终态不纳入,理由见方法注释
-		}
-		// 终态已从 taskMap 清理→claimTask 重建新对象;skipTerminal=false 表示用户显式请求、不跳过
-		child, _ := m.buildOrReuseChild(t, false)
-		if child == nil {
+		if isTerminalState(TaskState(t.Status)) {
+			// 终态已从 taskMap 清理→claimTask 重建新对象;skipTerminal=false 表示用户显式请求、不跳过
+			child, _ := m.buildOrReuseChild(t, false)
+			if child == nil {
+				continue
+			}
+			parent.AddChild(child) // 覆盖 children 中的旧终态对象(其 actor 已退出、无在途命令)
+			out = append(out, child)
 			continue
 		}
-		parent.AddChild(child) // 覆盖 children 中的旧终态对象(其 actor 已退出、无在途命令)
-		out = append(out, child)
+		// 从未派发(整树加载驻留):交 dispatch 补投 cmdStart
+		if child, ok := parent.GetChild(leafId); ok && !child.actorStarted.Load() && child.GetState() == TaskStateCreated {
+			out = append(out, child)
+		}
 	}
 	return out
 }

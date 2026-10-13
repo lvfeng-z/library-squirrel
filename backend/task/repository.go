@@ -125,7 +125,10 @@ func (r *TaskRepository) QueryParentPage(ctx context.Context, opt *database.Page
 	return model.NewPage[domain.Task](tasks, total, opt.Page, opt.PageSize), nil
 }
 
-// RefreshTaskStatus 刷新任务状态
+// RefreshTaskStatus 刷新父任务状态：按子任务状态聚合重算（运行中→Processing、
+// 暂停→Paused、全完成→Finished、全失败→Failed、完成失败混合→PartlyFinished）。
+// 仅命中有子行的父任务（has_child=1 且子行数>0）——叶子/独立任务无子行不可聚合，
+// 无分支命中时保持原状态（不写 NULL）
 func (r *TaskRepository) RefreshTaskStatus(ctx context.Context, taskId int64) (int64, error) {
 	statement := fmt.Sprintf(`
 			WITH total AS (
@@ -150,9 +153,12 @@ func (r *TaskRepository) RefreshTaskStatus(ctx context.Context, taskId int64) (i
 					WHEN (SELECT num FROM finished) = (SELECT num FROM total) THEN %d
 					WHEN (SELECT num FROM failed) = (SELECT num FROM total) THEN %d
 					WHEN (SELECT num FROM total) > (SELECT num FROM finished) AND (SELECT num FROM finished) > 0 THEN %d
+					ELSE status
 				END
 			)
-			WHERE id = %d`,
+			WHERE id = %d
+				AND has_child = 1
+				AND (SELECT num FROM total) > 0`,
 		taskId,
 		taskId, TaskStatusFinished,
 		taskId, TaskStatusFailed,

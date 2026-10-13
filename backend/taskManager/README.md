@@ -28,10 +28,9 @@
 
 ## 控制语义
 
-- **操作范围按对象类型**：操作**父任务**→作用于整棵树（全部子任务）；操作**叶子/独立任务**→仅作用于自身，不扩散兄弟。前端单行操作传 `[id]`、批量操作传多 id，统一走批量接口。
-- **整树加载**：任务运行时整棵树加载到内存（`ParentTask.children` 含全部子任务，含未启动的兄弟），供父状态聚合与完成判定，避免「整树/非整树」分支。
-- **单独 Start 叶子**：`processParentUnit` 的 `leafSet` 参数控制——整树仍加载到 children，但只 dispatch 被请求的叶子，其余兄弟保持 Created 未 dispatch。
-- **运行中父单元重纳终态子任务**：父任务运行中对终态（Finished/Failed）子任务发起开始/重试/恢复时，`processParentUnit` 检测到父单元已 claim（`claimParent` 输者），复用已有父单元、经 `reinjectLeaves` 把终态子任务重建（旧对象 actor 已退出）并重新 dispatch，而非静默跳过；板块选择写行只覆盖请求的任务（重下载入口在启动前已写行），不波及运行中兄弟。非终态子任务不纳入——Paused 的恢复走 `ResumeTaskTrees`→`resolveTargets` 内存路径，本不经此。
+- **操作范围按对象类型**：操作**父任务**→作用于整棵树（全部子任务）；操作**叶子/独立任务**→仅作用于自身，不扩散兄弟。前端单行操作传 `[id]`、批量操作传多 id，统一走批量接口。多行混合入选（父+部分子）时父任务的整树语义不被显式子集收窄——派发范围为各入选对象作用范围的并集。
+- **派发范围与树查询形态**：`processParentUnit` 的 `leafSet` 参数控制派发面——请求内含父任务时 leafSet 恒为空（整树派发，全部子任务 dispatch）；请求内仅叶子时按叶子集合限定。仓储 `ListTaskTreeCore` 对仅叶子的请求只返回父+该叶（兄弟不加载、父单元随该叶收口即清）；含父请求返回全树（父+全部子，整树加载到 `ParentTask.children` 供聚合与完成判定）。
+- **运行中父单元的补派与重纳**：父单元已加载（`claimParent` 输者）时按请求范围处置——整树请求补派从未派发的滞留兄弟（Created 且 actor 未启动；不重跑终态子任务，重跑属重试语义）；仅叶子请求把终态子任务重建重跑（旧对象 actor 已退出）、从未派发的请求叶子补投 cmdStart；已派发的运行/暂停子任务跳过（Paused 的恢复走 `ResumeTaskTrees`→`resolveTargets` 内存路径，本不经此；对运行中任务重投开始会破坏其查重/板块组合执行）。
 - **未启动兄弟守卫**：Pause/Stop/Resume 对 `!actorStarted && Created` 的兄弟（整树加载驻留但未 dispatch）跳过不投命令（避免误推 Paused/Failed）；`cleanupStoppedTree` 对这些兄弟 `cancel()` 退出 actor 防泄漏。
 - **跳过收口（Skip）**：用户在覆盖确认选跳过、或仅作品信息板块完成时，执行面经 `StrategyHandle.Skip` 上报——控制面释放槽位、置 `skipped` 收口标志（内存态、不持久化，`AllChildrenTerminal` 据此视为终态）、状态回任务行加载时 DB 快照（执行前状态，不产生终态）并单次清理。崩溃重启当作未跳过重新执行。
 - **静默跳过**：Pause/Stop/Resume 对不在内存的 taskId（`!ok`）静默跳过 return nil（控制操作幂等）。

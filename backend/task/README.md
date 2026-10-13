@@ -16,7 +16,7 @@
 | `CreateTaskByURL(req)` | URL → 路由到处理该 URL 的插件扩展点 → 创建任务。`CreateTaskByURLRequest{URL, ChosenPluginPublicId, ChosenExtensionId, Remember}`：两显选键为空即未显选（程序化触发恒为此态）；交互触发命中多候选且未显选时先查消歧记忆，命中即静默直路由，未命中返回冲突载荷 `Conflict=true` + `ConflictCandidates`（未调用任何插件），前端选择后带键重发；`Remember` 为显选附带「记住此选择」勾选态，显选且路由成功后落粘性记忆 |
 | `Save` / `Update` | 保存 / 更新任务（DTO 组装/拆向覆盖核心行与领域行双表） |
 | `DeleteTask(ids)` | 批量删除任务（含子任务；运行态编排——树内含 Processing/Waiting 行先经 `RunningStopper` 停止并有界等待终态，超时拒绝删除，非运行态直通；事务内先清 resource.task_id 引用（置 NULL=非任务产，resource 行保留）、删 work_task / share_task 领域行，再删任务核心行；提交后清理被删任务（含子任务）的任务暂存目录） |
-| `RefreshStatus(taskId)` | 刷新任务状态 |
+| `RefreshStatus(taskId)` | 刷新父任务状态（按子任务状态聚合重算；叶子/独立任务无子行，无操作） |
 | `SetTreeStatus(taskIds, status, includeStatus)` | 设置任务树状态 |
 | `GetById` / `QueryPage` | 单查 / 分页查询 |
 | `QueryParentPage` / `QueryChildrenTaskPage` | 父任务 / 子任务分页（带站点名） |

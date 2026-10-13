@@ -98,7 +98,7 @@ type Repository interface {
 	Page(ctx context.Context, opt *database.PageOption) (*model.Page[entity.Task], error)
 	// QueryParentPage 分页查询父任务（挂作品任务领域表左连接，支持领域列过滤）
 	QueryParentPage(ctx context.Context, opt *database.PageOption) (*model.Page[entity.Task], error)
-	// RefreshTaskStatus 刷新任务状态
+	// RefreshTaskStatus 刷新父任务状态（按子任务状态聚合；叶子/独立任务无子行，无操作）
 	RefreshTaskStatus(ctx context.Context, taskId int64) (int64, error)
 	// ListTaskTree 获取任务树列表（核心行圈定 + 领域行双查组装）
 	ListTaskTree(ctx context.Context, taskIds []int64, includeStatus ...TaskStatusEnum) (*TaskTreeRows, error)
@@ -473,7 +473,7 @@ func (s *Service) pairWithWorkTasks(ctx context.Context, page *model.Page[entity
 	return model.NewPage[TaskWithWorkTask](data, page.DataCount, page.PageNumber, page.PageSize), nil
 }
 
-// RefreshTaskStatus 刷新任务状态
+// RefreshTaskStatus 刷新父任务状态（按子任务状态聚合；叶子/独立任务无子行，无操作）
 func (s *Service) RefreshTaskStatus(ctx context.Context, taskId int64) (int64, error) {
 	return s.repo.RefreshTaskStatus(ctx, taskId)
 }
