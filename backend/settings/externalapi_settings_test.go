@@ -152,7 +152,7 @@ func TestResetExternalApiTokenReplacesStoredToken(t *testing.T) {
 }
 
 // TestResetRegeneratesExternalApiToken 整体重置把 token 清回空默认后自动重新生成持久化
-//（恒非空不变量），开关回落默认关
+// （恒非空不变量），开关回落默认关
 func TestResetRegeneratesExternalApiToken(t *testing.T) {
 	handler, _, path := newTestService(t)
 	if resp := handler.SetExternalApiEnabled(true); !resp.Success {
@@ -172,7 +172,7 @@ func TestResetRegeneratesExternalApiToken(t *testing.T) {
 }
 
 // TestSetExternalApiEnabledSyncFailureDegradesWithNote 运行时同步失败为降级：设置已保存
-//（成功信封），失败原因进附注
+// （成功信封），失败原因进附注
 func TestSetExternalApiEnabledSyncFailureDegradesWithNote(t *testing.T) {
 	handler, fake, path := newTestService(t)
 	fake.syncErr = errSyncStub

@@ -40,8 +40,8 @@ func (f *fakeTaskCreate) CreateTaskByURL(ctx context.Context, req *task.CreateTa
 	}
 	if req.ChosenPluginPublicId == "" && req.ChosenExtensionId == "" {
 		return model.Success(&task.CreateTaskByURLResponse{
-			Succeed: false,
-			Msg:     "该链接可由多个插件处理，请选择插件",
+			Succeed:  false,
+			Msg:      "该链接可由多个插件处理，请选择插件",
 			Conflict: true,
 			ConflictCandidates: []*dto.PluginCandidate{
 				{PluginPublicId: "pub-a", PluginName: "插件甲", ExtensionId: "ext-a"},
@@ -63,19 +63,19 @@ func (f *fakeTaskCreate) CreateTaskByURL(ctx context.Context, req *task.CreateTa
 // 机——建任务替身登记等待确认态，ConfirmReplace / ConfirmReplaceBatch 解除；各控制方法
 // 记录入参即回成功（与真实状态机同为「持久状态 + 后续调用解除」形态）
 type fakeTaskManagerControl struct {
-	gotStartIDs         []int64
-	gotPauseIDs         []int64
-	gotResumeIDs        []int64
-	gotStopIDs          []int64
-	gotRetryIDs         []int64
-	gotConfirmTaskID    int64
-	gotConfirmAction    string
-	gotConfirmBatchIDs  []int64
-	gotConfirmBatchAct  string
-	gotTreeStateTaskID  int64
-	waitingForInput     map[int64]bool
-	nextTaskID          int64
-	failMsg             string
+	gotStartIDs        []int64
+	gotPauseIDs        []int64
+	gotResumeIDs       []int64
+	gotStopIDs         []int64
+	gotRetryIDs        []int64
+	gotConfirmTaskID   int64
+	gotConfirmAction   string
+	gotConfirmBatchIDs []int64
+	gotConfirmBatchAct string
+	gotTreeStateTaskID int64
+	waitingForInput    map[int64]bool
+	nextTaskID         int64
+	failMsg            string
 }
 
 func (f *fakeTaskManagerControl) GetTaskSnapshot() *model.ApiResponse[*taskManager.TaskSnapshotDTO] {
@@ -244,10 +244,10 @@ func callVoidOperation(t *testing.T, base, operationID, body string) envelopeVie
 
 // createResultView 建任务响应的断言视图（业务结果对象自带成败字段）
 type createResultView struct {
-	Succeed            bool     `json:"succeed"`
-	AddedQuantity      int      `json:"addedQuantity"`
-	Msg                string   `json:"msg"`
-	Conflict           bool     `json:"conflict"`
+	Succeed            bool   `json:"succeed"`
+	AddedQuantity      int    `json:"addedQuantity"`
+	Msg                string `json:"msg"`
+	Conflict           bool   `json:"conflict"`
 	ConflictCandidates []struct {
 		PluginPublicId string `json:"pluginPublicId"`
 		ExtensionId    string `json:"extensionId"`
@@ -256,13 +256,13 @@ type createResultView struct {
 
 // oplogRowView 记录行的断言视图
 type oplogRowView struct {
-	ID         int64  `json:"id"`
-	CreateTime int64  `json:"createTime"`
-	Operation  string `json:"operation"`
-	Params     string `json:"params"`
-	Success    bool   `json:"success"`
+	ID          int64  `json:"id"`
+	CreateTime  int64  `json:"createTime"`
+	Operation   string `json:"operation"`
+	Params      string `json:"params"`
+	Success     bool   `json:"success"`
 	ClientLabel string `json:"clientLabel"`
-	DurationMs int64  `json:"durationMs"`
+	DurationMs  int64  `json:"durationMs"`
 }
 
 // oplogResultView 记录游标契约的断言视图
@@ -545,7 +545,7 @@ func TestTaskCreateConfirmFullChainWithRecords(t *testing.T) {
 // ========== 记录查询端点 ==========
 
 // TestOplogEndpointAuthAndParams 记录查询端点：无 token 401；非法查询参数属查询失败
-//（200 + 纯失败信封）；未装配记录面时 503 快速失败
+// （200 + 纯失败信封）；未装配记录面时 503 快速失败
 func TestOplogEndpointAuthAndParams(t *testing.T) {
 	// 未装配记录面：不以空结果冒充成功
 	unwired, err := NewServer(NewRegistry(), testToken)
@@ -615,7 +615,7 @@ func TestOpRecordRotationAndCursor(t *testing.T) {
 	}
 
 	// TTL 轨：把存活行拨回超龄，Record 顺带轮转裁掉旧行、新行留存
-	aged := util.GetCurrentTimestamp() - int64((opRecordRotationTTL+time.Hour).Milliseconds())
+	aged := util.GetCurrentTimestamp() - int64((opRecordRotationTTL + time.Hour).Milliseconds())
 	if err := db.Exec("UPDATE external_api_op_record SET create_time = ?", aged).Error; err != nil {
 		t.Fatalf("拨回行龄失败: %v", err)
 	}
