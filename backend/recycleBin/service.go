@@ -265,10 +265,7 @@ func (s *Service) computeExpireDaysLeft(deleteTime int64) *int {
 	}
 	now := util.GetCurrentTimestamp()
 	retentionMillis := int64(retentionDays) * 24 * 60 * 60 * 1000
-	daysLeft := int(retentionMillis-(now-deleteTime)+24*60*60*1000-1) / (24 * 60 * 60 * 1000)
-	if daysLeft < 0 {
-		daysLeft = 0
-	}
+	daysLeft := max(int(retentionMillis-(now-deleteTime)+24*60*60*1000-1)/(24*60*60*1000), 0)
 	return &daysLeft
 }
 

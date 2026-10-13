@@ -227,12 +227,12 @@ func TestRecycleStoreConditions(t *testing.T) {
 	}
 
 	// 备份状态：有备份
-	set = listIds(t, repo, &dto.RecycleStorePageQuery{HasBackup: ptrBool(true)})
+	set = listIds(t, repo, &dto.RecycleStorePageQuery{HasBackup: new(true)})
 	if len(set) != 1 {
 		t.Fatalf("有备份应仅命中 storeB2（聚合行被谓词排除），实际 %d", len(set))
 	}
 	// 备份状态：无备份（MarkInvalid 行）
-	set = listIds(t, repo, &dto.RecycleStorePageQuery{HasBackup: ptrBool(false)})
+	set = listIds(t, repo, &dto.RecycleStorePageQuery{HasBackup: new(false)})
 	if _, ok := set[env.storeB]; !ok {
 		t.Fatalf("无备份过滤应命中 MarkInvalid 形态行 storeB")
 	}
@@ -281,6 +281,8 @@ func TestListRecycleStoreIdsDeletedBefore(t *testing.T) {
 }
 
 // ptrBool 布尔取指针（条件字段可空语义用）
+//
+//go:fix inline
 func ptrBool(v bool) *bool {
-	return &v
+	return new(v)
 }

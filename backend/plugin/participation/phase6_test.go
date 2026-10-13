@@ -60,7 +60,7 @@ func TestPhase6BundledTestPluginPassesInstallGate(t *testing.T) {
 
 	// 布尔开关关闭态直接求值：两条条目（resourceViewer 参与 + workFetch 候选）均停用
 	result, err := settingresolver.NewRunner().Evaluate(context.Background(), string(scriptBytes),
-		settingresolver.Input{Settings: map[string]interface{}{"enableParticipation": "false"}})
+		settingresolver.Input{Settings: map[string]any{"enableParticipation": "false"}})
 	if err != nil {
 		t.Fatalf("关闭态求值失败: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestPhase6BundledTestPluginPassesInstallGate(t *testing.T) {
 
 	// 开关打开态（默认值）：空参与度清单 = 全基线参与
 	baseline, err := settingresolver.NewRunner().Evaluate(context.Background(), string(scriptBytes),
-		settingresolver.Input{Settings: map[string]interface{}{"enableParticipation": "true"}})
+		settingresolver.Input{Settings: map[string]any{"enableParticipation": "true"}})
 	if err != nil {
 		t.Fatalf("打开态求值失败: %v", err)
 	}

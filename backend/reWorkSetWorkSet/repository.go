@@ -107,7 +107,7 @@ func (r *ReWorkSetWorkSetRepository) UpdateSiteSortOrdersForChild(ctx context.Co
 		Model(new(domain.ReWorkSetWorkSet)).
 		Where("child_work_set_id = ?", childWorkSetId).
 		Where("parent_work_set_id IN ?", parentIds).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"site_sort_order": gorm.Expr(caseExpr),
 			"update_time":     util.GetCurrentTimestamp(),
 		}).Error

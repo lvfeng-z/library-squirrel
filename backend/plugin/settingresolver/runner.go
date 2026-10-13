@@ -88,26 +88,26 @@ func (r *Runner) Evaluate(ctx context.Context, script string, in Input) (*Result
 
 // toJSInput 构造与契约输入形状一致的值（settings 键承载设置快照），并深拷贝
 // JSON 形状的值——脚本对输入的改写不泄回调用方数据。空设置图映射为空对象。
-func (in Input) toJSInput() map[string]interface{} {
+func (in Input) toJSInput() map[string]any {
 	settings := copyJSONShape(in.Settings)
 	if settings == nil {
-		settings = map[string]interface{}{}
+		settings = map[string]any{}
 	}
-	return map[string]interface{}{"settings": settings}
+	return map[string]any{"settings": settings}
 }
 
 // copyJSONShape 深拷贝 JSON 形状的值（对象与数组递归复制），标量与未知形态原样
 // 返回（标量不可变；未知形态超出契约输入范围）。
-func copyJSONShape(v interface{}) interface{} {
+func copyJSONShape(v any) any {
 	switch val := v.(type) {
-	case map[string]interface{}:
-		cp := make(map[string]interface{}, len(val))
+	case map[string]any:
+		cp := make(map[string]any, len(val))
 		for k, item := range val {
 			cp[k] = copyJSONShape(item)
 		}
 		return cp
-	case []interface{}:
-		cp := make([]interface{}, len(val))
+	case []any:
+		cp := make([]any, len(val))
 		for i, item := range val {
 			cp[i] = copyJSONShape(item)
 		}
@@ -193,9 +193,8 @@ func (r *Runner) compiledProgram(script string) (*goja.Program, error) {
 // 类型断言识别、回读注入原因区分超时与调用方取消（取消原样返回 context 的取消
 // 错误）；其余错误（含脚本抛出的 JS 异常）归 FailureRuntime。
 func classifyEvalError(ctx context.Context, err error) error {
-	var intErr *goja.InterruptedError
-	if errors.As(err, &intErr) {
-		if intErr.Value() == interface{}(errCanceledInterrupt) {
+	if intErr, ok := errors.AsType[*goja.InterruptedError](err); ok {
+		if intErr.Value() == any(errCanceledInterrupt) {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return ctxErr
 			}

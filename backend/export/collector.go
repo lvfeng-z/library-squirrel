@@ -3,6 +3,7 @@ package export
 import (
 	"context"
 	"errors"
+	"slices"
 	"sort"
 
 	"github.com/library-squirrel/backend/base/constant"
@@ -174,7 +175,7 @@ func (c *Collector) buildManifest(ctx context.Context, workMap map[int64]*entity
 	for id := range storeIDSet {
 		storeIDs = append(storeIDs, id)
 	}
-	sort.Slice(storeIDs, func(i, j int) bool { return storeIDs[i] < storeIDs[j] })
+	slices.Sort(storeIDs)
 
 	storeList, err := c.repo.ListPersistentStoresByIds(ctx, storeIDs)
 	if err != nil {
@@ -387,7 +388,7 @@ func (c *Collector) collectTagRecords(ctx context.Context, reWorkTags []*entity.
 // collectLocalTagAncestors 迭代补齐本地标签的祖先链（base_local_tag_id 逐层追溯）。
 // 引用悬空（父标签已删）时无新行可加，自然终止。
 func (c *Collector) collectLocalTagAncestors(ctx context.Context, tagMap map[int64]*entity.LocalTag) error {
-	for depth := 0; depth < localTagAncestorMaxDepth; depth++ {
+	for range localTagAncestorMaxDepth {
 		var missingIDs []int64
 		missingSet := make(map[int64]struct{})
 		for _, t := range tagMap {
@@ -793,7 +794,7 @@ func sortedInt64Keys[T any](m map[int64]T) []int64 {
 	for k := range m {
 		keys = append(keys, k)
 	}
-	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	slices.Sort(keys)
 	return keys
 }
 

@@ -59,7 +59,7 @@ func TestSyncBuiltinsInsertOnly(t *testing.T) {
 
 	// 用户/插件语义行：改 builtin 行的 label 与 origin（模拟低优先级来源先写/用户改文案）
 	if err := repo.GORM().Model(entity.NewTagNamespace()).Where("value = ?", "character").
-		Updates(map[string]interface{}{"label": "角色（改）", "origin": constant.ORIGIN_USER}).Error; err != nil {
+		Updates(map[string]any{"label": "角色（改）", "origin": constant.ORIGIN_USER}).Error; err != nil {
 		t.Fatalf("改写既有行失败: %v", err)
 	}
 	// 插件来源自定义值（内置集外）

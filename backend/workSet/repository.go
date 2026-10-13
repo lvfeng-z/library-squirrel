@@ -133,7 +133,7 @@ func (r *WorkSetRepository) ClearDeletedFlag(ctx context.Context, id int64) erro
 func (r *WorkSetRepository) ListDeletedBefore(ctx context.Context, expireBefore int64) ([]*domain.WorkSet, error) {
 	return r.List(ctx, &database.QueryOption{
 		Conditions: []clause.Expression{
-			clause.Expr{SQL: "deleted_at > 0 AND deleted_at < ?", Vars: []interface{}{expireBefore}},
+			clause.Expr{SQL: "deleted_at > 0 AND deleted_at < ?", Vars: []any{expireBefore}},
 		},
 		IncludeDeleted: true,
 	})

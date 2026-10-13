@@ -19,10 +19,8 @@ func TestDialCoordinatorConcurrencyCap(t *testing.T) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	active, maxActive := 0, 0
-	for i := 0; i < total; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range total {
+		wg.Go(func() {
 			if err := c.AcquireSlot(ctx); err != nil {
 				t.Errorf("AcquireSlot: %v", err)
 				return
@@ -38,7 +36,7 @@ func TestDialCoordinatorConcurrencyCap(t *testing.T) {
 			active--
 			mu.Unlock()
 			c.ReleaseSlot()
-		}()
+		})
 	}
 	wg.Wait()
 	if maxActive > maxConcurrent {
@@ -83,7 +81,7 @@ func TestDialCoordinatorSlotBlockAndRelease(t *testing.T) {
 func TestDialCoordinatorRateLimit(t *testing.T) {
 	c := NewDialCoordinator(0, 3)
 	ctx := context.Background()
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if err := c.TakeDial(ctx); err != nil {
 			t.Fatalf("TakeDial #%d: %v", i+1, err)
 		}
@@ -163,12 +161,12 @@ func TestDialCoordinatorCtxCancel(t *testing.T) {
 // 仍能取满 maxConcurrent 槽且超额者照常阻塞。
 func TestDialCoordinatorReleaseSlotIdempotent(t *testing.T) {
 	c := NewDialCoordinator(2, 0)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		c.ReleaseSlot() // 不应阻塞、不应产生令牌
 	}
 
 	ctx := context.Background()
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if err := c.AcquireSlot(ctx); err != nil {
 			t.Fatalf("AcquireSlot #%d: %v", i+1, err)
 		}

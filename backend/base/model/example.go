@@ -2,9 +2,9 @@ package model
 
 // Condition 查询条件
 type Condition struct {
-	Field string      `json:"field"` // 字段名
-	Op    string      `json:"op"`    // 操作符: =, !=, >, <, >=, <=, LIKE, IN, IS_NULL, IS_NOT_NULL, BETWEEN
-	Value interface{} `json:"value"` // 值
+	Field string `json:"field"` // 字段名
+	Op    string `json:"op"`    // 操作符: =, !=, >, <, >=, <=, LIKE, IN, IS_NULL, IS_NOT_NULL, BETWEEN
+	Value any    `json:"value"` // 值
 }
 
 // OrderField 排序字段
@@ -28,13 +28,13 @@ func NewExample() *Example {
 }
 
 // WithCondition 添加AND条件
-func (e *Example) WithCondition(field, op string, value interface{}) *Example {
+func (e *Example) WithCondition(field, op string, value any) *Example {
 	e.Where = append(e.Where, Condition{Field: field, Op: op, Value: value})
 	return e
 }
 
 // WithOrCondition 添加OR条件
-func (e *Example) WithOrCondition(field, op string, value interface{}) *Example {
+func (e *Example) WithOrCondition(field, op string, value any) *Example {
 	e.Or = append(e.Or, Condition{Field: field, Op: op, Value: value})
 	return e
 }

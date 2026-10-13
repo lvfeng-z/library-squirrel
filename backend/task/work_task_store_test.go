@@ -70,7 +70,7 @@ func (s *testWorkTaskStore) ListByIds(ctx context.Context, ids []int64) (map[int
 	if len(ids) == 0 {
 		return result, nil
 	}
-	vals := make([]interface{}, len(ids))
+	vals := make([]any, len(ids))
 	for i, id := range ids {
 		vals[i] = id
 	}

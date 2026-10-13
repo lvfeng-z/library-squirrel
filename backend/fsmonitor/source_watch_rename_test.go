@@ -1,8 +1,8 @@
 package fsmonitor
 
 import (
-	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,15 +30,14 @@ func TestFsnotifySource_ExcludedSubtreeNoWatchHandle(t *testing.T) {
 	}
 	defer src.Stop()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	events, _, err := src.Start(ctx)
 	if err != nil {
 		t.Fatalf("Start 失败: %v", err)
 	}
 
 	// ① 作用域创建序列循环（staging.materializeScope 同构）：rename 不得因 watch 句柄竞态失败
-	for i := 0; i < 300; i++ {
+	for i := range 300 {
 		tempDir, err := os.MkdirTemp(ownerRoot, ".tmp-*")
 		if err != nil {
 			t.Fatalf("iter %d MkdirTemp 失败: %v", i, err)
@@ -58,9 +57,7 @@ func TestFsnotifySource_ExcludedSubtreeNoWatchHandle(t *testing.T) {
 	// ② 排除子树内零 watch（初始 walk 与动态补挂两来源一并覆盖）
 	src.mu.Lock()
 	watches := make(map[string]bool, len(src.watches))
-	for path, watched := range src.watches {
-		watches[path] = watched
-	}
+	maps.Copy(watches, src.watches)
 	src.mu.Unlock()
 	if !watches[filepath.Clean(workDir)] {
 		t.Fatal("workDir 根目录应有 watch（排除只应作用于暂存子树）")

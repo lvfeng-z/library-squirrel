@@ -77,7 +77,7 @@ func (e *ErrNoColumnTag) Error() string {
 func GetColumnName[T any](fieldName string) (string, error) {
 	var t T
 	typ := reflect.TypeOf(t)
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 
@@ -100,10 +100,10 @@ func GetColumnName[T any](fieldName string) (string, error) {
 	}
 
 	// 解析 gorm 标签，格式如 "column:site_tag_name;uniqueIndex:..."
-	for _, part := range strings.Split(tag, ";") {
+	for part := range strings.SplitSeq(tag, ";") {
 		part = strings.TrimSpace(part)
-		if strings.HasPrefix(part, "column:") {
-			return strings.TrimPrefix(part, "column:"), nil
+		if after, ok := strings.CutPrefix(part, "column:"); ok {
+			return after, nil
 		}
 	}
 
@@ -374,6 +374,6 @@ func (r *BaseRepository[T]) Transaction(ctx context.Context, fn func(tx *gorm.DB
 }
 
 // ExecRawSQL 执行原生 SQL（仅用于复杂查询）
-func (r *BaseRepository[T]) ExecRawSQL(ctx context.Context, query string, args ...interface{}) *gorm.DB {
+func (r *BaseRepository[T]) ExecRawSQL(ctx context.Context, query string, args ...any) *gorm.DB {
 	return r.getDb(ctx).WithContext(ctx).Raw(query, args...)
 }

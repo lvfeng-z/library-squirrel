@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 
 	"github.com/library-squirrel/backend/base/model/dto"
@@ -141,12 +142,7 @@ func (f *siteAuthorFetcher) fetchCandidates(siteKey string) []authorFetchCandida
 
 // siteDeclared 站点键是否在条目声明的站点键清单内
 func siteDeclared(declared []string, siteKey string) bool {
-	for _, key := range declared {
-		if key == siteKey {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(declared, siteKey)
 }
 
 // siteAuthorFetchAdapter 站点作者拉取的 route 接入：发现候选、按显选键给候选排序、

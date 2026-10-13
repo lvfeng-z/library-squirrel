@@ -34,10 +34,7 @@ func newHeadSampleWriter() *headSampleWriter {
 // Write 采样写入（只吸收头部窗口内的字节，永远报告全部字节已写）。
 func (s *headSampleWriter) Write(p []byte) (int, error) {
 	if s.remaining > 0 {
-		n := int64(len(p))
-		if n > s.remaining {
-			n = s.remaining
-		}
+		n := min(int64(len(p)), s.remaining)
 		if _, err := s.sum.Write(p[:n]); err != nil {
 			return 0, err
 		}

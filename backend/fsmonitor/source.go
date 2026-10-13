@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -207,12 +208,7 @@ func (s *fsnotifySource) addWatchRecursive(root string) error {
 // isExcludedDir 判断绝对路径是否命中排除清单（清单成员本身即子树根，命中即整棵免挂）。
 func (s *fsnotifySource) isExcludedDir(absPath string) bool {
 	cleaned := filepath.Clean(absPath)
-	for _, dir := range s.excludeDirs {
-		if cleaned == dir {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(s.excludeDirs, cleaned)
 }
 
 // isDirAtCreate Create 事件到达时判断是否目录(文件刚创建，stat 可能有 race，失败按文件处理)。

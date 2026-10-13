@@ -66,7 +66,7 @@ func normalizeProxyServer(server string) string {
 	}
 	if strings.Contains(server, "=") {
 		var picked string
-		for _, part := range strings.Split(server, ";") {
+		for part := range strings.SplitSeq(server, ";") {
 			kv := strings.SplitN(part, "=", 2)
 			if len(kv) != 2 {
 				continue

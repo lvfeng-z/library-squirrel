@@ -45,7 +45,7 @@ func TestPageBackupsReferencedFilterAndMarking(t *testing.T) {
 	}
 
 	// 有主过滤：仅两行有主
-	referencedOnly, err := svc.PageBackups(ctx, 1, 10, boolPtr(true))
+	referencedOnly, err := svc.PageBackups(ctx, 1, 10, new(true))
 	if err != nil {
 		t.Fatalf("查询有主失败: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestPageBackupsReferencedFilterAndMarking(t *testing.T) {
 	}
 
 	// 无主过滤：仅一行
-	orphanOnly, err := svc.PageBackups(ctx, 1, 10, boolPtr(false))
+	orphanOnly, err := svc.PageBackups(ctx, 1, 10, new(false))
 	if err != nil {
 		t.Fatalf("查询无主失败: %v", err)
 	}
@@ -76,14 +76,14 @@ func TestPageBackupsReferencedFilterNoReferences(t *testing.T) {
 
 	orphan := makeBackup(t, backupSvc, db, workDir, 0)
 
-	referencedOnly, err := svc.PageBackups(ctx, 1, 10, boolPtr(true))
+	referencedOnly, err := svc.PageBackups(ctx, 1, 10, new(true))
 	if err != nil {
 		t.Fatalf("查询有主失败: %v", err)
 	}
 	if referencedOnly.DataCount != 0 || len(referencedOnly.Data) != 0 {
 		t.Fatalf("零引用时有主过滤应恒空，实际 %d 行", referencedOnly.DataCount)
 	}
-	orphanOnly, err := svc.PageBackups(ctx, 1, 10, boolPtr(false))
+	orphanOnly, err := svc.PageBackups(ctx, 1, 10, new(false))
 	if err != nil {
 		t.Fatalf("查询无主失败: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestPageBackupsReferencerFailureFuse(t *testing.T) {
 	if _, err := svc.PageBackups(ctx, 1, 10, nil); err == nil {
 		t.Fatalf("存在引用集查询失败方时查询应报错")
 	}
-	if _, err := svc.PageBackups(ctx, 1, 10, boolPtr(false)); err == nil {
+	if _, err := svc.PageBackups(ctx, 1, 10, new(false)); err == nil {
 		t.Fatalf("存在引用集查询失败方时无主过滤应报错")
 	}
 }
@@ -290,4 +290,6 @@ func TestRunOnceMutualExclusion(t *testing.T) {
 }
 
 // boolPtr bool 指针便捷构造（引用态过滤参数 nil=全部 的非 nil 分支）
-func boolPtr(v bool) *bool { return &v }
+//
+//go:fix inline
+func boolPtr(v bool) *bool { return new(v) }

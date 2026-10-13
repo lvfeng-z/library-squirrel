@@ -8,7 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -86,7 +86,7 @@ func (f *fakeTaskManagerControl) GetTaskSnapshot() *model.ApiResponse[*taskManag
 	for id := range f.waitingForInput {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	slices.Sort(ids)
 	tasks := make([]*taskManager.TaskSnapshotItem, 0, len(ids))
 	for _, id := range ids {
 		tasks = append(tasks, &taskManager.TaskSnapshotItem{
@@ -601,7 +601,7 @@ func TestOpRecordRotationAndCursor(t *testing.T) {
 	svc := NewOpRecordService(repo)
 
 	// 容量轨：3 行裁到最新 1 行（裁最旧 2 行）
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if err := svc.Record(ctx, fmt.Sprintf("op.%d", i), "{}", true, "", 1); err != nil {
 			t.Fatalf("写入记录失败: %v", err)
 		}
@@ -647,7 +647,7 @@ func TestOpRecordRotationAndCursor(t *testing.T) {
 	}
 
 	// 设置页分页：最新在前
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if err := svc.Record(ctx, fmt.Sprintf("op.tail.%d", i), "{}", true, "", 1); err != nil {
 			t.Fatalf("写入记录失败: %v", err)
 		}

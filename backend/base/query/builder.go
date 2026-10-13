@@ -111,9 +111,9 @@ func (b *QueryBuilder) convertCondition(c Condition) (clause.Expression, error) 
 	case OpIn:
 		return clause.IN{Column: col, Values: toValues(c.Value)}, nil
 	case OpIsNull:
-		return clause.Expr{SQL: "? IS NULL", Vars: []interface{}{col}}, nil
+		return clause.Expr{SQL: "? IS NULL", Vars: []any{col}}, nil
 	case OpIsNotNull:
-		return clause.Expr{SQL: "? IS NOT NULL", Vars: []interface{}{col}}, nil
+		return clause.Expr{SQL: "? IS NOT NULL", Vars: []any{col}}, nil
 	default:
 		return nil, fmt.Errorf("unsupported operator: %s", c.Operator)
 	}
@@ -130,10 +130,10 @@ func (b *QueryBuilder) buildLike(c Condition, col clause.Column) (clause.Express
 
 // toValues 将 interface{} 转换为 []interface{}
 // 用于处理 IN 操作符的值
-func toValues(v interface{}) []interface{} {
-	if vals, ok := v.([]interface{}); ok {
+func toValues(v any) []any {
+	if vals, ok := v.([]any); ok {
 		return vals
 	}
 	// 简单处理：如果不是切片，转为单元素切片
-	return []interface{}{v}
+	return []any{v}
 }

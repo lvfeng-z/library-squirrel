@@ -27,8 +27,7 @@ func TestFsnotifySource_CreateRemove(t *testing.T) {
 	}
 	defer src.Stop()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	events, errs, err := src.Start(ctx)
 	if err != nil {
 		t.Fatalf("Start 失败: %v", err)
@@ -74,8 +73,7 @@ func TestFsnotifySource_DynamicSubDir(t *testing.T) {
 	}
 	defer src.Stop()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	events, _, err := src.Start(ctx)
 	if err != nil {
 		t.Fatalf("Start 失败: %v", err)
@@ -113,7 +111,7 @@ func TestFsnotifySource_ConcurrentWritesNoDeadlock(t *testing.T) {
 	if err := os.Mkdir(hotDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 500; i++ {
+	for i := range 500 {
 		if err := os.MkdirAll(filepath.Join(workDir, fmt.Sprintf("d%03d", i), "leaf"), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -121,9 +119,7 @@ func TestFsnotifySource_ConcurrentWritesNoDeadlock(t *testing.T) {
 
 	stopWrite := make(chan struct{})
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for i := 0; ; i++ {
 			select {
 			case <-stopWrite:
@@ -132,7 +128,7 @@ func TestFsnotifySource_ConcurrentWritesNoDeadlock(t *testing.T) {
 			}
 			_ = os.WriteFile(filepath.Join(hotDir, fmt.Sprintf("w%05d", i)), []byte("x"), 0o644)
 		}
-	}()
+	})
 	defer func() {
 		close(stopWrite)
 		wg.Wait()

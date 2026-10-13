@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/library-squirrel/backend/export"
 	"github.com/library-squirrel/backend/resource"
@@ -49,7 +50,7 @@ func (p *ReplacePlanner) applyContentMatches(ctx context.Context, manifest *expo
 	for i := range manifest.Files {
 		entryByStoreID[manifest.Files[i].StoreID] = &manifest.Files[i]
 	}
-	for i := len(*targets) - 1; i >= 0; i-- {
+	for i := range slices.Backward(*targets) {
 		t := (*targets)[i]
 		if _, ok := plan.ConfirmedWorks[t.manifestID]; !ok {
 			continue // 裁决跳过作品已入 SkipWorks，不参与内容判定

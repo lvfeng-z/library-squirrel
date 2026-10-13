@@ -54,7 +54,7 @@ func TestPlanNamesDeterminism(t *testing.T) {
 		return &Manifest{
 			Meta: Meta{ExportedAt: exportedAt},
 			Works: []WorkRecord{
-				{ID: 1, SiteWorkName: strp("作品"), SiteWorkID: strp("w1"),
+				{ID: 1, SiteWorkName: new("作品"), SiteWorkID: new("w1"),
 					Resources: []ResourceRecord{
 						{ID: 10, Stores: []StoreMount{
 							{StoreType: "image", StoreSeq: 0, StoreID: 100},
@@ -64,7 +64,7 @@ func TestPlanNamesDeterminism(t *testing.T) {
 							{StoreType: "document", StoreSeq: 0, StoreID: 102},
 						}},
 					}},
-				{ID: 2, SiteWorkName: strp("作品"), SiteWorkID: strp("w2"),
+				{ID: 2, SiteWorkName: new("作品"), SiteWorkID: new("w2"),
 					Resources: []ResourceRecord{
 						{ID: 20, Stores: []StoreMount{
 							{StoreType: "image", StoreSeq: 0, StoreID: 200},
@@ -97,9 +97,9 @@ func TestPlanNamesTemplateRender(t *testing.T) {
 	uploadAt := int64(1779542400000)
 	m := &Manifest{
 		Meta:         Meta{ExportedAt: exportedAt},
-		LocalAuthors: []AuthorRecord{{ID: 7, Name: strp("本地作者")}},
+		LocalAuthors: []AuthorRecord{{ID: 7, Name: new("本地作者")}},
 		Works: []WorkRecord{
-			{ID: 1, SiteWorkName: strp("作品A"), SiteWorkID: strp("w-100"),
+			{ID: 1, SiteWorkName: new("作品A"), SiteWorkID: new("w-100"),
 				SiteUploadTime: &uploadAt,
 				AuthorLinks:    []AuthorLink{{AuthorType: 0, AuthorID: 7}}, // 0=local
 				Resources: []ResourceRecord{
@@ -115,7 +115,7 @@ func TestPlanNamesTemplateRender(t *testing.T) {
 	m2 := &Manifest{
 		Meta: Meta{ExportedAt: exportedAt},
 		Works: []WorkRecord{
-			{ID: 1, SiteWorkName: strp("A"), Resources: []ResourceRecord{
+			{ID: 1, SiteWorkName: new("A"), Resources: []ResourceRecord{
 				{ID: 10, Stores: []StoreMount{{StoreType: "image", StoreSeq: 0, StoreID: 100}}},
 			}},
 		},
@@ -131,7 +131,7 @@ func TestPlanNamesTemplateRender(t *testing.T) {
 func TestPlanNamesEmptyRenderFallback(t *testing.T) {
 	m := &Manifest{
 		Works: []WorkRecord{
-			{ID: 1, SiteWorkName: strp("A"),
+			{ID: 1, SiteWorkName: new("A"),
 				Resources: []ResourceRecord{
 					{ID: 10, Stores: []StoreMount{
 						// 原名净化为空（全点串）→ 兜底 <目录名>_<role>_<seq>
@@ -156,7 +156,7 @@ func TestPlanNamesEmptyRenderFallback(t *testing.T) {
 func TestPlanNamesFileConflictChain(t *testing.T) {
 	m := &Manifest{
 		Works: []WorkRecord{
-			{ID: 1, SiteWorkName: strp("A"), SiteWorkID: strp("w-1"),
+			{ID: 1, SiteWorkName: new("A"), SiteWorkID: new("w-1"),
 				Resources: []ResourceRecord{
 					{ID: 10, Stores: []StoreMount{
 						{StoreType: "image", StoreSeq: 0, StoreID: 100},
@@ -183,15 +183,15 @@ func TestPlanNamesFileConflictChain(t *testing.T) {
 func TestPlanNamesCrossWorkRenderedConflict(t *testing.T) {
 	m := &Manifest{
 		Works: []WorkRecord{
-			{ID: 1, SiteWorkName: strp("同题"), SiteWorkID: strp("w-1"),
+			{ID: 1, SiteWorkName: new("同题"), SiteWorkID: new("w-1"),
 				Resources: []ResourceRecord{
 					{ID: 10, Stores: []StoreMount{{StoreType: "image", StoreSeq: 0, StoreID: 100}}},
 				}},
-			{ID: 2, SiteWorkName: strp("同题"), SiteWorkID: strp("w-2"),
+			{ID: 2, SiteWorkName: new("同题"), SiteWorkID: new("w-2"),
 				Resources: []ResourceRecord{
 					{ID: 20, Stores: []StoreMount{{StoreType: "image", StoreSeq: 0, StoreID: 200}}},
 				}},
-			{ID: 3, SiteWorkName: strp("同题"), SiteWorkID: strp("w-3"),
+			{ID: 3, SiteWorkName: new("同题"), SiteWorkID: new("w-3"),
 				Resources: []ResourceRecord{
 					{ID: 30, Stores: []StoreMount{{StoreType: "image", StoreSeq: 0, StoreID: 300}}},
 				}},
@@ -213,11 +213,11 @@ func TestPlanNamesCrossWorkRenderedConflict(t *testing.T) {
 func TestPlanNamesConflictSiteWorkIDEmpty(t *testing.T) {
 	m := &Manifest{
 		Works: []WorkRecord{
-			{ID: 1, SiteWorkName: strp("X"),
+			{ID: 1, SiteWorkName: new("X"),
 				Resources: []ResourceRecord{
 					{ID: 10, Stores: []StoreMount{{StoreType: "image", StoreSeq: 0, StoreID: 100}}},
 				}},
-			{ID: 2, SiteWorkName: strp("X"),
+			{ID: 2, SiteWorkName: new("X"),
 				Resources: []ResourceRecord{
 					{ID: 20, Stores: []StoreMount{{StoreType: "image", StoreSeq: 0, StoreID: 200}}},
 				}},
@@ -237,9 +237,9 @@ func TestPlanNamesConflictSiteWorkIDEmpty(t *testing.T) {
 func TestPlanNamesEmptyFallback(t *testing.T) {
 	m := &Manifest{
 		Works: []WorkRecord{
-			{ID: 1, SiteWorkName: strp(""), SiteWorkID: strp("w-1")}, // 名空 → 站点ID
-			{ID: 2, SiteWorkName: strp(""), SiteWorkID: strp("")},    // 双空 → work_2
-			{ID: 3, SiteWorkName: strp("w-1"), SiteWorkID: strp("")}, // 名与作品1 目录冲突 → w-1_2
+			{ID: 1, SiteWorkName: new(""), SiteWorkID: new("w-1")}, // 名空 → 站点ID
+			{ID: 2, SiteWorkName: new(""), SiteWorkID: new("")},    // 双空 → work_2
+			{ID: 3, SiteWorkName: new("w-1"), SiteWorkID: new("")}, // 名与作品1 目录冲突 → w-1_2
 		},
 		Files: []FileEntry{
 			{StoreID: 100, StorePath: "store/work/a/x.jpg"},

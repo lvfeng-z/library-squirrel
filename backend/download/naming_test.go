@@ -19,7 +19,9 @@ import (
 )
 
 // pathTestStrPtr 测试辅助:返回字符串指针
-func pathTestStrPtr(s string) *string { return &s }
+//
+//go:fix inline
+func pathTestStrPtr(s string) *string { return new(s) }
 
 // pathTestNullStr 测试辅助:可空字符串
 func pathTestNullStr(s string) sql.NullString { return sql.NullString{String: s, Valid: true} }

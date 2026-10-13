@@ -111,7 +111,7 @@ func establishDataDir(dir, source string) (string, error) {
 // 「--data-dir=VALUE」两种形态，取首个匹配。found=true 表示参数出现（即使值为
 // 空——空值会因非绝对路径在 establishDataDir 被拒绝，早失败优于静默忽略）。
 func findDataDirArg(args []string) (value string, found bool) {
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		a := args[i]
 		if a == dataDirFlag {
 			if i+1 < len(args) {
@@ -119,8 +119,8 @@ func findDataDirArg(args []string) (value string, found bool) {
 			}
 			return "", true
 		}
-		if strings.HasPrefix(a, dataDirFlag+"=") {
-			return strings.TrimPrefix(a, dataDirFlag+"="), true
+		if after, ok := strings.CutPrefix(a, dataDirFlag+"="); ok {
+			return after, true
 		}
 	}
 	return "", false

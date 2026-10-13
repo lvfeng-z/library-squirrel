@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	domain "github.com/library-squirrel/backend/base/model/dto"
@@ -155,12 +156,7 @@ func referencedContains(ctx context.Context, t *testing.T, svc *Service, id int6
 	if err != nil {
 		t.Fatalf("查询引用集失败: %v", err)
 	}
-	for _, v := range ids {
-		if v == id {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ids, id)
 }
 
 // TestUninstallClearsBackup 卸载清备份：行标记已卸载且清空引用、备份被消费式删除、引用集收缩

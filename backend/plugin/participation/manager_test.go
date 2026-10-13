@@ -435,7 +435,7 @@ func TestSnapshotReplaceIdempotent(t *testing.T) {
 		t.Fatalf("订阅晚于首评，前置通知数应为 0")
 	}
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		fx.manager.TriggerEvaluation("com.test.idempotent")
 		fx.manager.waitIdle(t, "com.test.idempotent", nil)
 	}

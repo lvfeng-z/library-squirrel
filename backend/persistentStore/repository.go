@@ -127,14 +127,14 @@ func (r *PersistentStoreRepository) RestoreByIds(ctx context.Context, ids []int6
 		Unscoped().
 		Model(new(domain.PersistentStore)).
 		Where("id IN ?", ids).
-		Updates(map[string]interface{}{"deleted_at": 0, "backup_id": nil}).Error
+		Updates(map[string]any{"deleted_at": 0, "backup_id": nil}).Error
 }
 
 // SoftDeleteWithBackup 软删记录并写入备份清单行引用（单条 UPDATE 同生共死：
 // 文件移动入 backup/ 成功后调用，backup_id 与 deleted_at 原子落盘；backupId<=0 表无备份的软删，
 // 行内引用写 NULL）。dbFromCtx 模式：置换/替换链编排方可能包事务，可安全用于事务内
 func (r *PersistentStoreRepository) SoftDeleteWithBackup(ctx context.Context, id int64, backupId int64) error {
-	backupRef := interface{}(backupId)
+	backupRef := any(backupId)
 	if backupId <= 0 {
 		backupRef = nil
 	}
@@ -142,7 +142,7 @@ func (r *PersistentStoreRepository) SoftDeleteWithBackup(ctx context.Context, id
 		Unscoped().
 		Model(new(domain.PersistentStore)).
 		Where("id = ? AND deleted_at = 0", id).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"deleted_at": util.GetCurrentTimestamp(),
 			"backup_id":  backupRef,
 		}).Error

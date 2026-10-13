@@ -68,13 +68,13 @@ func (r *PluginRepository) ListReferencedBackupIds(ctx context.Context) ([]int64
 // 结构体 Updates 跳过 NULL 列）。backup_id IS 条件为 null-safe 并发守卫：读取后引用被
 // 重装/换版并发改写时 0 行受影响，返回 ErrPluginStateChanged 由调用方引导重试
 func (r *PluginRepository) MarkUninstalledAndClearBackup(ctx context.Context, publicId string, expectedBackupId int64) error {
-	var expected interface{}
+	var expected any
 	if expectedBackupId > 0 {
 		expected = expectedBackupId
 	}
 	result := r.GORM().WithContext(ctx).Model(&domain.Plugin{}).
 		Where("public_id = ? AND backup_id IS ?", publicId, expected).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"uninstalled": true,
 			"backup_id":   nil,
 		})

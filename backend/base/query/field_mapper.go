@@ -13,9 +13,9 @@ type FieldMapper struct {
 }
 
 // NewFieldMapper 创建字段映射器
-func NewFieldMapper(model interface{}) *FieldMapper {
+func NewFieldMapper(model any) *FieldMapper {
 	t := reflect.TypeOf(model)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	return &FieldMapper{structType: t}
@@ -40,8 +40,8 @@ func (m *FieldMapper) GetColumnName(fieldName string) (string, bool) {
 // fn 接收 (字段名, query列名, 是否为数据库字段)
 // 如果 fn 返回 false，停止遍历
 func (m *FieldMapper) IterateFields(fn func(fieldName, columnName string, isDbField bool) bool) {
-	for i := 0; i < m.structType.NumField(); i++ {
-		field := m.structType.Field(i)
+	for field := range m.structType.Fields() {
+		field := field
 		fieldName := field.Name
 		colName := field.Tag.Get("query")
 		isDbField := colName != ""
@@ -60,11 +60,11 @@ type FieldInfo struct {
 }
 
 // CollectDbFields 收集所有数据库字段的查询信息
-func (m *FieldMapper) CollectDbFields(dto interface{}) ([]FieldInfo, error) {
+func (m *FieldMapper) CollectDbFields(dto any) ([]FieldInfo, error) {
 	var fields []FieldInfo
 
 	v := reflect.ValueOf(dto)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 	if v.Kind() != reflect.Struct {

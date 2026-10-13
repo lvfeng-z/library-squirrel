@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"maps"
 	"sync"
 	"testing"
 	"time"
@@ -37,9 +38,7 @@ func (r *fakeBuiltinRepo) SetTaskTreeStatus(ctx context.Context, taskIds []int64
 func (r *fakeBuiltinRepo) BatchSetStatus(ctx context.Context, statuses map[int64]task.StatusUpdate) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for id, u := range statuses {
-		r.statuses[id] = u
-	}
+	maps.Copy(r.statuses, statuses)
 	return nil
 }
 

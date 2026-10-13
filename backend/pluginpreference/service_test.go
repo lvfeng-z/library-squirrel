@@ -40,7 +40,7 @@ func plantPluginRow(t *testing.T, repo *PluginPreferenceRepository, publicId, na
 }
 
 // TestGetMissReturnsNilNil 无记录读取返回 (nil, nil) 不报错——无记录是合法状态
-//（用户已删除或从未写入），调用方据此回落重新发起问答
+// （用户已删除或从未写入），调用方据此回落重新发起问答
 func TestGetMissReturnsNilNil(t *testing.T) {
 	svc, _, repo := newTestServices(t)
 	pluginID := plantPluginRow(t, repo, "com.example.miss", "未写插件")
@@ -138,7 +138,7 @@ func TestSetNewAndWholeValueOverwrite(t *testing.T) {
 }
 
 // TestListKeysScopedToPlugin 列键限本插件域：他插件同键不可见；同键跨插件共存可达
-//（复合唯一键含 plugin_id，不同插件同键各自成行）
+// （复合唯一键含 plugin_id，不同插件同键各自成行）
 func TestListKeysScopedToPlugin(t *testing.T) {
 	svc, _, repo := newTestServices(t)
 	ctx := context.Background()
@@ -236,12 +236,12 @@ func TestSetRejectsUnknownPlugin(t *testing.T) {
 // 删除类方法——「忘掉」是用户权利，删除能力只住 ManagementService（经管理面 Handler
 // 触达）。后续给 Service 增删类方法的改动会被本断言拦下
 func TestRuntimeServiceExposesNoDelete(t *testing.T) {
-	typ := reflect.TypeOf(&Service{})
+	typ := reflect.TypeFor[*Service]()
 	if typ.NumMethod() == 0 {
 		t.Fatal("运行时服务应暴露读写列方法，实际无方法")
 	}
-	for i := 0; i < typ.NumMethod(); i++ {
-		name := typ.Method(i).Name
+	for method := range typ.Methods() {
+		name := method.Name
 		lower := strings.ToLower(name)
 		for _, banned := range []string{"delete", "forget", "remove", "clear", "drop", "erase"} {
 			if strings.Contains(lower, banned) {

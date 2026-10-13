@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"github.com/library-squirrel/backend/base/logger"
@@ -99,10 +100,8 @@ func actionAllowed(key string, action RepairAction) bool {
 		if p.Key != key {
 			continue
 		}
-		for _, opt := range p.Options {
-			if opt == action {
-				return true
-			}
+		if slices.Contains(p.Options, action) {
+			return true
 		}
 	}
 	return false

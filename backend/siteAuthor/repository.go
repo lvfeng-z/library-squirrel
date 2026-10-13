@@ -173,7 +173,7 @@ func (r *SiteAuthorRepository) ListFetchTargetsByIds(ctx context.Context, ids []
 func (r *SiteAuthorRepository) UpdateAvatarStoreId(ctx context.Context, siteAuthorId int64, storeId sql.NullInt64) error {
 	return r.dbFromCtx(ctx).WithContext(ctx).Model(new(entity.SiteAuthor)).
 		Where("id = ?", siteAuthorId).
-		Updates(map[string]interface{}{"avatar_store_id": storeId, "update_time": util.GetCurrentTimestamp()}).Error
+		Updates(map[string]any{"avatar_store_id": storeId, "update_time": util.GetCurrentTimestamp()}).Error
 }
 
 // ListRankedSiteAuthorWithWorkIdByWorkIds 查询多个作品的站点作者列表
@@ -183,7 +183,7 @@ func (r *SiteAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx conte
 	}
 
 	placeholders := make([]string, len(workIds))
-	args := make([]interface{}, len(workIds))
+	args := make([]any, len(workIds))
 	for i, id := range workIds {
 		placeholders[i] = "?"
 		args[i] = id
@@ -218,14 +218,14 @@ func (r *SiteAuthorRepository) UpdateBindLocalAuthor(ctx context.Context, localA
 	}
 
 	placeholders := make([]string, len(siteAuthorIds))
-	args := make([]interface{}, len(siteAuthorIds))
+	args := make([]any, len(siteAuthorIds))
 	for i, id := range siteAuthorIds {
 		placeholders[i] = "?"
 		args[i] = id
 	}
 
 	query := fmt.Sprintf(`UPDATE site_author SET local_author_id = ?, update_time = ? WHERE id IN (%s)`, strings.Join(placeholders, ","))
-	args = append([]interface{}{localAuthorId, util.GetCurrentTimestamp()}, args...)
+	args = append([]any{localAuthorId, util.GetCurrentTimestamp()}, args...)
 
 	result := r.dbFromCtx(ctx).WithContext(ctx).Exec(query, args...)
 	if result.Error != nil {
@@ -250,7 +250,7 @@ func (r *SiteAuthorRepository) UpdateLastUseByIds(ctx context.Context, ids []int
 	}
 	return r.dbFromCtx(ctx).WithContext(ctx).Model(new(entity.SiteAuthor)).
 		Where("id IN ?", ids).
-		Updates(map[string]interface{}{"last_use": lastUse, "update_time": util.GetCurrentTimestamp()}).Error
+		Updates(map[string]any{"last_use": lastUse, "update_time": util.GetCurrentTimestamp()}).Error
 }
 
 // GetBySiteAndSiteAuthorID 根据站点ID和站点作者ID查询

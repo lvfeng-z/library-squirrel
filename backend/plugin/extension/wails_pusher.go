@@ -72,12 +72,12 @@ func (p *WailsFrontendExtensionPusher) PushBatchUnregister(items []FrontendExten
 // FrontendExtensionEventData 前端扩展事件数据（注册/注销/批量注销共用信封：
 // pluginPublicId 与 frontendExtensionId 分列，frontendExtensionId 一律为 manifest 声明的裸 extensionId）
 type FrontendExtensionEventData struct {
-	Event          string      `json:"event"`
-	PluginPublicID string      `json:"pluginPublicId,omitempty"`
-	ID             string      `json:"frontendExtensionId,omitempty"`
-	Kind           string      `json:"kind,omitempty"`
-	Data           interface{} `json:"data,omitempty"`
-	Items          interface{} `json:"items,omitempty"`
+	Event          string `json:"event"`
+	PluginPublicID string `json:"pluginPublicId,omitempty"`
+	ID             string `json:"frontendExtensionId,omitempty"`
+	Kind           string `json:"kind,omitempty"`
+	Data           any    `json:"data,omitempty"`
+	Items          any    `json:"items,omitempty"`
 }
 
 // FrontendExtensionUnregisterItem 批量注销项（frontendExtensionId 为 manifest 声明的裸 extensionId，

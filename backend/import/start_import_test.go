@@ -270,7 +270,7 @@ func TestStartImportRejectsInvalidPackage(t *testing.T) {
 		ctl := &fakeImportTaskControl{}
 		manifest, _ := buildFixture()
 		seed := manifest.Works[0]
-		for i := 0; i < importBuildTreeMaxWorks; i++ {
+		for range importBuildTreeMaxWorks {
 			manifest.Works = append(manifest.Works, seed)
 		}
 		zipPath, _ := buildStartImportZip(t, manifest)

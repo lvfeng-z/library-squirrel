@@ -258,9 +258,9 @@ func (r *LocalTagRepository) QuerySelectItemPage(ctx context.Context, opt *datab
 func (r *LocalTagRepository) QueryPageByWorkId(ctx context.Context, opt *database.PageOption, workId int64, boundOnWorkId *bool) (*model.Page[entity.LocalTag], error) {
 	// 构建 EXISTS / NOT EXISTS 子查询
 	if boundOnWorkId != nil && *boundOnWorkId {
-		opt.Conditions = append(opt.Conditions, clause.Expr{SQL: "EXISTS (SELECT 1 FROM re_work_tag WHERE work_id = ? AND local_tag_id = local_tag.id)", Vars: []interface{}{workId}})
+		opt.Conditions = append(opt.Conditions, clause.Expr{SQL: "EXISTS (SELECT 1 FROM re_work_tag WHERE work_id = ? AND local_tag_id = local_tag.id)", Vars: []any{workId}})
 	} else if boundOnWorkId != nil && !*boundOnWorkId {
-		opt.Conditions = append(opt.Conditions, clause.Expr{SQL: "NOT EXISTS (SELECT 1 FROM re_work_tag WHERE work_id = ? AND local_tag_id = local_tag.id)", Vars: []interface{}{workId}})
+		opt.Conditions = append(opt.Conditions, clause.Expr{SQL: "NOT EXISTS (SELECT 1 FROM re_work_tag WHERE work_id = ? AND local_tag_id = local_tag.id)", Vars: []any{workId}})
 	}
 
 	return r.BaseRepository.Page(ctx, opt)

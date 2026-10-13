@@ -201,7 +201,7 @@ func (r *ReWorkAuthorRepository) ListLocalAuthorsByWorkIds(ctx context.Context, 
 	}
 
 	placeholders := make([]string, len(workIds))
-	args := make([]interface{}, len(workIds))
+	args := make([]any, len(workIds))
 	for i, id := range workIds {
 		placeholders[i] = "?"
 		args[i] = id
@@ -243,7 +243,7 @@ func (r *ReWorkAuthorRepository) ListSiteAuthorsByWorkIds(ctx context.Context, w
 	}
 
 	placeholders := make([]string, len(workIds))
-	args := make([]interface{}, len(workIds))
+	args := make([]any, len(workIds))
 	for i, id := range workIds {
 		placeholders[i] = "?"
 		args[i] = id
@@ -286,7 +286,7 @@ func (r *ReWorkAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx co
 	}
 
 	placeholders := make([]string, len(workIds))
-	args := make([]interface{}, len(workIds))
+	args := make([]any, len(workIds))
 	for i, id := range workIds {
 		placeholders[i] = "?"
 		args[i] = id
@@ -320,7 +320,7 @@ func (r *ReWorkAuthorRepository) ListRankedSiteAuthorWithWorkIdByWorkIds(ctx con
 	}
 
 	placeholders := make([]string, len(workIds))
-	args := make([]interface{}, len(workIds))
+	args := make([]any, len(workIds))
 	for i, id := range workIds {
 		placeholders[i] = "?"
 		args[i] = id

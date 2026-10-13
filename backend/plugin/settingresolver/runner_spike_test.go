@@ -83,11 +83,11 @@ func TestSpikeFreshRuntimePrecompiledEval(t *testing.T) {
 	}
 	t.Logf("脚本编译耗时 %v（安装期一次性成本）", compileElapsed)
 
-	input := map[string]interface{}{
-		"settings": map[string]interface{}{"highQuality": false, "sensitive": true},
+	input := map[string]any{
+		"settings": map[string]any{"highQuality": false, "sensitive": true},
 	}
 
-	evalOnce := func() map[string]interface{} {
+	evalOnce := func() map[string]any {
 		vm := goja.New()
 		if err := vm.Set("input", input); err != nil {
 			t.Fatalf("注入求值输入失败：%v", err)
@@ -96,7 +96,7 @@ func TestSpikeFreshRuntimePrecompiledEval(t *testing.T) {
 		if err != nil {
 			t.Fatalf("预编译 Program 求值失败：%v", err)
 		}
-		out, ok := v.Export().(map[string]interface{})
+		out, ok := v.Export().(map[string]any)
 		if !ok {
 			t.Fatalf("求值结果不是对象：%T", v.Export())
 		}
@@ -104,13 +104,13 @@ func TestSpikeFreshRuntimePrecompiledEval(t *testing.T) {
 	}
 
 	// 预热若干轮，排除首轮的分配器与运行时缓存抖动
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		evalOnce()
 	}
 
 	const rounds = 100
 	start := time.Now()
-	for i := 0; i < rounds; i++ {
+	for range rounds {
 		evalOnce()
 	}
 	avg := time.Since(start) / rounds
@@ -119,14 +119,14 @@ func TestSpikeFreshRuntimePrecompiledEval(t *testing.T) {
 	if got := fmt.Sprint(first["version"]); got != "1" {
 		t.Fatalf("求值结果 version = %s，期望 1", got)
 	}
-	entries, ok := first["entries"].([]interface{})
+	entries, ok := first["entries"].([]any)
 	if !ok {
 		t.Fatalf("求值结果 entries 不是数组：%T", first["entries"])
 	}
 	if len(entries) != 2 {
 		t.Fatalf("求值结果条目数 = %d，期望 2（两条关闭意愿各产出一条）", len(entries))
 	}
-	if hd, ok := entries[0].(map[string]interface{}); !ok || fmt.Sprint(hd["active"]) != "false" {
+	if hd, ok := entries[0].(map[string]any); !ok || fmt.Sprint(hd["active"]) != "false" {
 		t.Fatalf("首条目应为 workFetch/hd 停用，实际 %+v", entries[0])
 	}
 
@@ -171,17 +171,17 @@ func TestSpikeES2015Syntax(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ES2015 语法脚本编译/运行失败：%v", err)
 	}
-	out, ok := v.Export().(map[string]interface{})
+	out, ok := v.Export().(map[string]any)
 	if !ok {
 		t.Fatalf("脚本结果不是对象：%T", v.Export())
 	}
 
 	expect := map[string]string{
-		"hd":         "true",                        // const 解构取值
-		"sensitive":  "false",                       // 解构默认值（源对象未提供该键）
-		"joined":     "a-b-c",                       // 展开运算符 + 数组拼接
-		"firstPart":  "a",                           // 数组解构
-		"rule":       "rule:x",                      // class 方法 + 模板串插值
+		"hd":        "true",   // const 解构取值
+		"sensitive": "false",  // 解构默认值（源对象未提供该键）
+		"joined":    "a-b-c",  // 展开运算符 + 数组拼接
+		"firstPart": "a",      // 数组解构
+		"rule":      "rule:x", // class 方法 + 模板串插值
 	}
 	for field, want := range expect {
 		if got := fmt.Sprint(out[field]); got != want {
@@ -189,15 +189,15 @@ func TestSpikeES2015Syntax(t *testing.T) {
 		}
 	}
 
-	entries, ok := out["entries"].([]interface{})
+	entries, ok := out["entries"].([]any)
 	if !ok {
 		t.Fatalf("entries 不是数组：%T", out["entries"])
 	}
 	if len(entries) != 2 {
 		t.Fatalf("箭头函数 + for-of 产出的条目数 = %d，期望 2", len(entries))
 	}
-	hd, _ := entries[0].(map[string]interface{})
-	nsfw, _ := entries[1].(map[string]interface{})
+	hd, _ := entries[0].(map[string]any)
+	nsfw, _ := entries[1].(map[string]any)
 	if fmt.Sprint(hd["id"]) != "hd" || fmt.Sprint(hd["active"]) != "true" {
 		t.Errorf("首条目应为 hd/参与，实际 %+v", hd)
 	}
@@ -236,7 +236,7 @@ probes;`)
 	if err != nil {
 		t.Fatalf("受限构造探针脚本运行失败：%v", err)
 	}
-	probes, ok := v.Export().(map[string]interface{})
+	probes, ok := v.Export().(map[string]any)
 	if !ok {
 		t.Fatalf("探针结果不是对象：%T", v.Export())
 	}
@@ -246,14 +246,14 @@ probes;`)
 			t.Errorf("受限探针 %s 不为 true，实际 %v（剥离未生效）", field, probes[field])
 		}
 	}
-	pure, ok := probes["pureEvalOk"].(map[string]interface{})
+	pure, ok := probes["pureEvalOk"].(map[string]any)
 	if !ok {
 		t.Fatalf("纯函数求值结果不是对象：%T", probes["pureEvalOk"])
 	}
 	if got := fmt.Sprint(pure["version"]); got != "1" {
 		t.Errorf("受限构造下纯函数 version = %s，期望 1", got)
 	}
-	entries, _ := pure["entries"].([]interface{})
+	entries, _ := pure["entries"].([]any)
 	if len(entries) != 1 {
 		t.Errorf("受限构造下纯函数条目数 = %d，期望 1", len(entries))
 	}
@@ -281,7 +281,7 @@ func TestSpikeScriptSizeBudget(t *testing.T) {
 	}
 
 	vm := goja.New()
-	if err := vm.Set("input", map[string]interface{}{"settings": map[string]interface{}{}}); err != nil {
+	if err := vm.Set("input", map[string]any{"settings": map[string]any{}}); err != nil {
 		t.Fatalf("注入求值输入失败：%v", err)
 	}
 	evalStart := time.Now()
@@ -290,7 +290,7 @@ func TestSpikeScriptSizeBudget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("64KB 级脚本首次求值失败：%v", err)
 	}
-	out, ok := v.Export().(map[string]interface{})
+	out, ok := v.Export().(map[string]any)
 	if !ok {
 		t.Fatalf("64KB 级脚本求值结果不是对象：%T", v.Export())
 	}

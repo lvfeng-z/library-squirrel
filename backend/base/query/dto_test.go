@@ -41,7 +41,7 @@ func TestCondition_UnmarshalJSON(t *testing.T) {
 			expected: Condition{
 				Field:    "id",
 				Operator: OpIn,
-				Value:    []interface{}{float64(1), float64(2), float64(3)},
+				Value:    []any{float64(1), float64(2), float64(3)},
 			},
 			wantErr: false,
 		},

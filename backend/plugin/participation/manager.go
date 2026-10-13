@@ -297,12 +297,12 @@ func (m *Manager) evaluateOnce(ctx context.Context, s *session) {
 
 // readEvalSettings 构造求值输入设置：声明键全集，KV 存储值（已解密）覆盖声明默认值，
 // KV 缺键回落默认值——与设置页读取同构。KV 中不在声明集内的残留键不进输入
-func (m *Manager) readEvalSettings(ctx context.Context, s *session) (map[string]interface{}, error) {
+func (m *Manager) readEvalSettings(ctx context.Context, s *session) (map[string]any, error) {
 	stored, err := m.settings.GetAllValues(ctx, s.pluginID)
 	if err != nil {
 		return nil, err
 	}
-	settings := make(map[string]interface{}, len(s.defaults))
+	settings := make(map[string]any, len(s.defaults))
 	for key, def := range s.defaults {
 		if v, ok := stored[key]; ok && v != nil {
 			settings[key] = v.Value
@@ -424,8 +424,7 @@ func entryEffective(key entryKey, overrides map[entryKey]settingresolver.Entry) 
 // classifyFailure 将求值错误归入失败分类：settingresolver 失败取其分类；上下文取消
 // 归 canceled；其余归 internal
 func classifyFailure(err error) evalFailure {
-	var evalErr *settingresolver.EvalError
-	if errors.As(err, &evalErr) {
+	if evalErr, ok := errors.AsType[*settingresolver.EvalError](err); ok {
 		return evalFailure{Kind: string(evalErr.Kind), Message: evalErr.Message}
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

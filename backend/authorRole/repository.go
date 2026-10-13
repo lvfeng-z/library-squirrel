@@ -60,7 +60,7 @@ func (r *AuthorRoleRepository) TouchBatch(ctx context.Context, ids []int64, orig
 		WithContext(ctx).
 		Model(new(entity2.AuthorRole)).
 		Where("id IN ?", ids).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"origin":      gorm.Expr("MAX(origin, ?)", origin),
 			"last_use":    lastUse,
 			"update_time": lastUse,

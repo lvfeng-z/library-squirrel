@@ -45,8 +45,8 @@ func (r *ResourceRepository) ListByWorkIds(ctx context.Context, workIds []int64)
 }
 
 // toInterfaceSlice converts int64 slice to interface{} slice
-func toInterfaceSlice(ids []int64) []interface{} {
-	result := make([]interface{}, len(ids))
+func toInterfaceSlice(ids []int64) []any {
+	result := make([]any, len(ids))
 	for i, id := range ids {
 		result[i] = id
 	}

@@ -81,13 +81,11 @@ func relayDialFailMessage(err error) (string, bool) {
 // 可重试中继 code 按瞬态处理；流内应用错误仅 internal（分享方 IO 瞬态）可重试，
 // not_found/missing/bad_request 属确定性拒绝，重试无意义。
 func isRelayRetryableErr(err error) bool {
-	var de *relayDialError
-	if errors.As(err, &de) {
+	if _, ok := errors.AsType[*relayDialError](err); ok {
 		_, terminal := relayDialFailMessage(err)
 		return !terminal
 	}
-	var ae *streamAppError
-	if errors.As(err, &ae) {
+	if ae, ok := errors.AsType[*streamAppError](err); ok {
 		return ae.code == streamErrInternal
 	}
 	return true

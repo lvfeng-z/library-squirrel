@@ -5,6 +5,7 @@ package fsmonitor
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sync"
@@ -34,9 +35,7 @@ func urec(frn, parentFRN uint64, reason uint32, isDir bool, name string) usnReco
 // newCache 构造预填目录映射的 frnPathCache（直接填 frnToRel，跳过 Build 的卷 IO）。
 func newCache(entries map[uint64]string) *frnPathCache {
 	c := newFrnPathCache("X:/wd")
-	for frn, rel := range entries {
-		c.frnToRel[frn] = rel
-	}
+	maps.Copy(c.frnToRel, entries)
 	return c
 }
 

@@ -37,7 +37,7 @@ func buildPackFixture(t *testing.T) (workDir string, model *ExportModel) {
 		SchemaVersion: SchemaVersion,
 		Meta:          Meta{ExportedAt: 1725000000000, AppVersion: "test"},
 		Works: []WorkRecord{
-			{ID: 1, SiteWorkName: strp("作品1"),
+			{ID: 1, SiteWorkName: new("作品1"),
 				Resources: []ResourceRecord{
 					{ID: 10, Stores: []StoreMount{
 						{StoreType: "image", StoreSeq: 0, StoreID: 100},
@@ -158,7 +158,7 @@ func TestPackContentFingerprintLargeFile(t *testing.T) {
 	model := NewExportModel(&Manifest{
 		SchemaVersion: SchemaVersion,
 		Meta:          Meta{ExportedAt: 1725000000000},
-		Works: []WorkRecord{{ID: 1, SiteWorkName: strp("B"), Resources: []ResourceRecord{
+		Works: []WorkRecord{{ID: 1, SiteWorkName: new("B"), Resources: []ResourceRecord{
 			{ID: 10, Stores: []StoreMount{{StoreType: "image", StoreSeq: 0, StoreID: 100}}},
 		}}},
 		Files: []FileEntry{{StoreID: 100, StorePath: "store/work/b/big.bin"}},
@@ -214,7 +214,7 @@ func TestPackMissingOnlyTotal(t *testing.T) {
 		SchemaVersion: SchemaVersion,
 		Meta:          Meta{ExportedAt: 1725000000000},
 		Works: []WorkRecord{
-			{ID: 1, SiteWorkName: strp("A"), Resources: []ResourceRecord{
+			{ID: 1, SiteWorkName: new("A"), Resources: []ResourceRecord{
 				{ID: 10, Stores: []StoreMount{{StoreType: "image", StoreSeq: 0, StoreID: 100}}},
 			}},
 		},

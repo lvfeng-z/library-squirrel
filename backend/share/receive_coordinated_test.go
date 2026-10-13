@@ -42,8 +42,8 @@ func buildTenWorkModel(t *testing.T, workDir string) (*export.ExportModel, map[s
 		contents[rel] = content
 		storeID := int64(1000 + i)
 		works = append(works, export.WorkRecord{
-			ID: int64(i), SiteID: i64Ptr(1), SiteWorkID: strPtr(fmt.Sprintf("w%02d", i)),
-			SiteWorkName: strPtr(fmt.Sprintf("并发作品%02d", i)),
+			ID: int64(i), SiteID: i64Ptr(1), SiteWorkID: new(fmt.Sprintf("w%02d", i)),
+			SiteWorkName: new(fmt.Sprintf("并发作品%02d", i)),
 			Resources: []export.ResourceRecord{{
 				ID: int64(2000 + i), ResourceType: "image",
 				Stores: []export.StoreMount{{StoreType: "image", Generation: "downloaded", StoreSeq: 1, StoreID: storeID}},
@@ -53,7 +53,7 @@ func buildTenWorkModel(t *testing.T, workDir string) (*export.ExportModel, map[s
 	}
 	manifest := &export.Manifest{
 		SchemaVersion: export.SchemaVersion,
-		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
+		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: new("测试站")}},
 		Works:         works,
 		Files:         files,
 	}

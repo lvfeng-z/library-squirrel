@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
 
 	"github.com/library-squirrel/backend/base/model"
 	"github.com/library-squirrel/backend/base/model/dto"
@@ -344,12 +345,7 @@ func (s *Service) QueryWithBaseTagPage(ctx context.Context, page *model.Page[dto
 
 // 辅助函数
 func contains(slice []int64, item int64) bool {
-	for _, v := range slice {
-		if v == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, item)
 }
 
 // 错误定义

@@ -1,5 +1,7 @@
 package util
 
+import "slices"
+
 // TreeBuilder 通过函数式提取器支持任意类型的树操作。
 // T 应为指针类型（如 *sdkdto.TaskTreeDTO），不要求实体实现特定接口，
 // 通过闭包提取 id/pid，实现对任意类型的零侵入适配。
@@ -128,8 +130,8 @@ func (b *TreeBuilder[T]) GetAncestors(roots []T, id int64, getChildren func(T) [
 	})
 
 	result := make([]T, 0, len(path))
-	for i := len(path) - 1; i >= 0; i-- {
-		if node, ok := nodeMap[path[i]]; ok {
+	for _, p := range slices.Backward(path) {
+		if node, ok := nodeMap[p]; ok {
 			result = append(result, node)
 		}
 	}

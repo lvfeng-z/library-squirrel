@@ -99,7 +99,7 @@ func newTestDB(t *testing.T) (*gorm.DB, string) {
 		if entry.Key == identity.Local.Key {
 			continue
 		}
-		var homepage interface{}
+		var homepage any
 		if entry.Homepage != "" {
 			homepage = entry.Homepage
 		}
@@ -125,8 +125,11 @@ func mapFileSource(files map[string]string) FileSource {
 	}
 }
 
-func strPtr(s string) *string   { return &s }
-func i64Ptr(i int64) *int64     { return &i }
+//go:fix inline
+func strPtr(s string) *string { return new(s) }
+
+//go:fix inline
+func i64Ptr(i int64) *int64     { return new(i) }
 func sha256Hex(s string) string { sum := sha256.Sum256([]byte(s)); return hex.EncodeToString(sum[:]) }
 
 // buildFixture 构造 fixture manifest 与包内文件：
@@ -145,56 +148,56 @@ func buildFixture() (*export.Manifest, map[string]string) {
 		SchemaVersion: export.SchemaVersion,
 		Meta:          export.Meta{AppVersion: "test", WorkCount: 1, FileCount: 3},
 		Sites: []export.SiteRecord{
-			{ID: 100, SiteKey: identity.Pixiv.Key, SiteName: strPtr("pixiv"), Homepage: strPtr("https://www.pixiv.net"), CreateTime: 111, UpdateTime: 112},
+			{ID: 100, SiteKey: identity.Pixiv.Key, SiteName: new("pixiv"), Homepage: new("https://www.pixiv.net"), CreateTime: 111, UpdateTime: 112},
 		},
 		LocalTags: []export.TagRecord{
-			{ID: 201, Name: strPtr("同人标签"), Description: strPtr("根标签"), CreateTime: 121, UpdateTime: 122},
-			{ID: 202, Name: strPtr("子标签"), BaseLocalTagID: i64Ptr(201), CreateTime: 123, UpdateTime: 124},
-			{ID: 203, Name: strPtr("同名标签"), CreateTime: 125, UpdateTime: 126},
+			{ID: 201, Name: new("同人标签"), Description: new("根标签"), CreateTime: 121, UpdateTime: 122},
+			{ID: 202, Name: new("子标签"), BaseLocalTagID: i64Ptr(201), CreateTime: 123, UpdateTime: 124},
+			{ID: 203, Name: new("同名标签"), CreateTime: 125, UpdateTime: 126},
 		},
 		SiteTags: []export.TagRecord{
-			{ID: 301, SiteID: i64Ptr(100), SiteTagID: strPtr("site-tag-x"), Name: strPtr("原站标签"),
+			{ID: 301, SiteID: i64Ptr(100), SiteTagID: new("site-tag-x"), Name: new("原站标签"),
 				LocalTagID: i64Ptr(201), CreateTime: 131, UpdateTime: 132},
 		},
 		LocalAuthors: []export.AuthorRecord{
-			{ID: 401, Name: strPtr("本地作者甲"), Introduce: strPtr("作者介绍"), CreateTime: 141, UpdateTime: 142},
+			{ID: 401, Name: new("本地作者甲"), Introduce: new("作者介绍"), CreateTime: 141, UpdateTime: 142},
 		},
 		SiteAuthors: []export.AuthorRecord{
-			{ID: 501, SiteID: i64Ptr(100), SiteAuthorID: strPtr("site-author-1"), Name: strPtr("站点作者甲"),
+			{ID: 501, SiteID: i64Ptr(100), SiteAuthorID: new("site-author-1"), Name: new("站点作者甲"),
 				LocalAuthorID: i64Ptr(401), CreateTime: 151, UpdateTime: 152},
 		},
 		WorkSets: []export.WorkSetRecord{
-			{ID: 601, SiteID: i64Ptr(100), SiteWorkSetID: strPtr("ws-parent"), SiteWorkSetName: strPtr("父集"), CreateTime: 161, UpdateTime: 162},
-			{ID: 602, SiteID: i64Ptr(100), SiteWorkSetID: strPtr("ws-child"), SiteWorkSetName: strPtr("子集"),
+			{ID: 601, SiteID: i64Ptr(100), SiteWorkSetID: new("ws-parent"), SiteWorkSetName: new("父集"), CreateTime: 161, UpdateTime: 162},
+			{ID: 602, SiteID: i64Ptr(100), SiteWorkSetID: new("ws-child"), SiteWorkSetName: new("子集"),
 				CoverWorkID: i64Ptr(701),
 				Parents:     []export.WorkSetParentEdge{{ParentWorkSetID: 601, SortOrder: i64Ptr(3), SiteSortOrder: i64Ptr(4)}},
 				CreateTime:  163, UpdateTime: 164},
 		},
 		Works: []export.WorkRecord{
 			{
-				ID: 701, SiteID: i64Ptr(100), SiteWorkID: strPtr("w-1"), SiteWorkName: strPtr("作品一"),
-				SiteWorkDescription: strPtr("站点侧描述"), NickName: strPtr("昵称一"), LocalAuthorID: i64Ptr(401),
+				ID: 701, SiteID: i64Ptr(100), SiteWorkID: new("w-1"), SiteWorkName: new("作品一"),
+				SiteWorkDescription: new("站点侧描述"), NickName: new("昵称一"), LocalAuthorID: i64Ptr(401),
 				CreateTime: 171, UpdateTime: 172,
 				Resources: []export.ResourceRecord{
-					{ID: 801, ResourceType: "image", SuggestName: strPtr("主体图"), ResourceComplete: i64Ptr(1),
+					{ID: 801, ResourceType: "image", SuggestName: new("主体图"), ResourceComplete: i64Ptr(1),
 						CreateTime: 181, UpdateTime: 182,
 						Stores: []export.StoreMount{
 							{StoreType: "image", Generation: "downloaded", StoreSeq: 0, StoreID: 901},
 							{StoreType: "thumbnail", Generation: "derived", StoreSeq: 0, StoreID: 902},
 						}},
-					{ID: 802, ResourceType: "document", SuggestName: strPtr("图文文档"), ResourceComplete: i64Ptr(1),
+					{ID: 802, ResourceType: "document", SuggestName: new("图文文档"), ResourceComplete: i64Ptr(1),
 						CreateTime: 183, UpdateTime: 184,
 						Stores: []export.StoreMount{
 							{StoreType: "document", Generation: "downloaded", StoreSeq: 0, StoreID: 903},
 						}},
 				},
 				TagLinks: []export.TagLink{
-					{TagType: constant.SITE, TagID: 301, Namespace: strPtr("character")},
+					{TagType: constant.SITE, TagID: 301, Namespace: new("character")},
 					{TagType: constant.LOCAL, TagID: 202},
 				},
 				AuthorLinks: []export.AuthorLink{
-					{AuthorType: constant.LOCAL, AuthorID: 401, RoleName: strPtr("作者"), SortOrder: i64Ptr(1)},
-					{AuthorType: constant.SITE, AuthorID: 501, RoleName: strPtr("原作者"), SortOrder: i64Ptr(2)},
+					{AuthorType: constant.LOCAL, AuthorID: 401, RoleName: new("作者"), SortOrder: i64Ptr(1)},
+					{AuthorType: constant.SITE, AuthorID: 501, RoleName: new("原作者"), SortOrder: i64Ptr(2)},
 				},
 				WorkSetLinks: []export.WorkSetLink{
 					{WorkSetID: 602, SortOrder: i64Ptr(5), SiteSortOrder: i64Ptr(6)},
@@ -486,7 +489,7 @@ func TestIngestSiteKeyFindOnly(t *testing.T) {
 	// 复用分支：本库预置 Local 键行（展示名与 manifest 声明不同），导入复用该行
 	manifest, files := buildFixture()
 	manifest.Sites[0].SiteKey = identity.Local.Key
-	manifest.Sites[0].SiteName = strPtr("本地站-改名后")
+	manifest.Sites[0].SiteName = new("本地站-改名后")
 	if _, err := ing.Ingest(ctx, manifest, mapFileSource(files), zipStagingFor(workDir), nil); err != nil {
 		t.Fatalf("导入失败: %v", err)
 	}
@@ -503,7 +506,7 @@ func TestIngestSiteKeyFindOnly(t *testing.T) {
 		t.Fatalf("删除 pixiv 站点行失败: %v", err)
 	}
 	manifest2, files2 := buildFixture()
-	manifest2.Works[0].SiteWorkID = strPtr("w-2")
+	manifest2.Works[0].SiteWorkID = new("w-2")
 	manifest2.WorkSets = nil
 	_, err := ing.Ingest(ctx, manifest2, mapFileSource(files2), zipStagingFor(workDir), nil)
 	if !errors.Is(err, ErrSiteRowMissing) {
@@ -646,50 +649,50 @@ func buildReplaceFixture() (*export.Manifest, map[string]string) {
 		SchemaVersion: export.SchemaVersion,
 		Meta:          export.Meta{AppVersion: "test", WorkCount: 1, FileCount: 1},
 		Sites: []export.SiteRecord{
-			{ID: 100, SiteKey: identity.Pixiv.Key, SiteName: strPtr("pixiv"), Homepage: strPtr("https://www.pixiv.net"), CreateTime: 111, UpdateTime: 112},
+			{ID: 100, SiteKey: identity.Pixiv.Key, SiteName: new("pixiv"), Homepage: new("https://www.pixiv.net"), CreateTime: 111, UpdateTime: 112},
 		},
 		LocalTags: []export.TagRecord{
-			{ID: 201, Name: strPtr("同人标签"), Description: strPtr("根标签"), CreateTime: 121, UpdateTime: 122},
-			{ID: 202, Name: strPtr("子标签"), BaseLocalTagID: i64Ptr(201), CreateTime: 123, UpdateTime: 124},
-			{ID: 204, Name: strPtr("新增标签"), CreateTime: 125, UpdateTime: 126},
+			{ID: 201, Name: new("同人标签"), Description: new("根标签"), CreateTime: 121, UpdateTime: 122},
+			{ID: 202, Name: new("子标签"), BaseLocalTagID: i64Ptr(201), CreateTime: 123, UpdateTime: 124},
+			{ID: 204, Name: new("新增标签"), CreateTime: 125, UpdateTime: 126},
 		},
 		SiteTags: []export.TagRecord{
-			{ID: 301, SiteID: i64Ptr(100), SiteTagID: strPtr("site-tag-x"), Name: strPtr("原站标签"),
+			{ID: 301, SiteID: i64Ptr(100), SiteTagID: new("site-tag-x"), Name: new("原站标签"),
 				LocalTagID: i64Ptr(201), CreateTime: 131, UpdateTime: 132},
 		},
 		LocalAuthors: []export.AuthorRecord{
-			{ID: 401, Name: strPtr("本地作者甲"), Introduce: strPtr("作者介绍"), CreateTime: 141, UpdateTime: 142},
+			{ID: 401, Name: new("本地作者甲"), Introduce: new("作者介绍"), CreateTime: 141, UpdateTime: 142},
 		},
 		SiteAuthors: []export.AuthorRecord{
-			{ID: 501, SiteID: i64Ptr(100), SiteAuthorID: strPtr("site-author-1"), Name: strPtr("站点作者甲"),
+			{ID: 501, SiteID: i64Ptr(100), SiteAuthorID: new("site-author-1"), Name: new("站点作者甲"),
 				LocalAuthorID: i64Ptr(401), CreateTime: 151, UpdateTime: 152},
 		},
 		WorkSets: []export.WorkSetRecord{
-			{ID: 601, SiteID: i64Ptr(100), SiteWorkSetID: strPtr("ws-parent"), SiteWorkSetName: strPtr("父集"), CreateTime: 161, UpdateTime: 162},
-			{ID: 602, SiteID: i64Ptr(100), SiteWorkSetID: strPtr("ws-child"), SiteWorkSetName: strPtr("子集"),
+			{ID: 601, SiteID: i64Ptr(100), SiteWorkSetID: new("ws-parent"), SiteWorkSetName: new("父集"), CreateTime: 161, UpdateTime: 162},
+			{ID: 602, SiteID: i64Ptr(100), SiteWorkSetID: new("ws-child"), SiteWorkSetName: new("子集"),
 				CoverWorkID: i64Ptr(701),
 				Parents:     []export.WorkSetParentEdge{{ParentWorkSetID: 601, SortOrder: i64Ptr(3), SiteSortOrder: i64Ptr(4)}},
 				CreateTime:  163, UpdateTime: 164},
 		},
 		Works: []export.WorkRecord{
 			{
-				ID: 701, SiteID: i64Ptr(100), SiteWorkID: strPtr("w-1"), SiteWorkName: strPtr("作品一·替换版"),
-				SiteWorkDescription: strPtr("站点侧描述·新版"), NickName: strPtr("昵称一·新版"), LocalAuthorID: i64Ptr(401),
+				ID: 701, SiteID: i64Ptr(100), SiteWorkID: new("w-1"), SiteWorkName: new("作品一·替换版"),
+				SiteWorkDescription: new("站点侧描述·新版"), NickName: new("昵称一·新版"), LocalAuthorID: i64Ptr(401),
 				CreateTime: 171, UpdateTime: 173,
 				Resources: []export.ResourceRecord{
-					{ID: 811, ResourceType: "image", SuggestName: strPtr("主体图·新版"), ResourceComplete: i64Ptr(1),
+					{ID: 811, ResourceType: "image", SuggestName: new("主体图·新版"), ResourceComplete: i64Ptr(1),
 						CreateTime: 181, UpdateTime: 183,
 						Stores: []export.StoreMount{
 							{StoreType: "image", Generation: "downloaded", StoreSeq: 0, StoreID: 911},
 						}},
 				},
 				TagLinks: []export.TagLink{
-					{TagType: constant.SITE, TagID: 301, Namespace: strPtr("character")},
+					{TagType: constant.SITE, TagID: 301, Namespace: new("character")},
 					{TagType: constant.LOCAL, TagID: 204},
 				},
 				AuthorLinks: []export.AuthorLink{
-					{AuthorType: constant.LOCAL, AuthorID: 401, RoleName: strPtr("作者"), SortOrder: i64Ptr(1)},
-					{AuthorType: constant.SITE, AuthorID: 501, RoleName: strPtr("原作者"), SortOrder: i64Ptr(2)},
+					{AuthorType: constant.LOCAL, AuthorID: 401, RoleName: new("作者"), SortOrder: i64Ptr(1)},
+					{AuthorType: constant.SITE, AuthorID: 501, RoleName: new("原作者"), SortOrder: i64Ptr(2)},
 				},
 				WorkSetLinks: []export.WorkSetLink{
 					{WorkSetID: 602, SortOrder: i64Ptr(5), SiteSortOrder: i64Ptr(6)},

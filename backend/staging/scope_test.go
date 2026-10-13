@@ -14,7 +14,7 @@ import (
 // 计数器或秒级时间键在同批快速铸造下会撞键，本用例同时排除这两类退化。
 func TestMintScopeKeyUnique(t *testing.T) {
 	seen := make(map[string]bool, 64)
-	for i := 0; i < 64; i++ {
+	for range 64 {
 		key, err := MintScopeKey()
 		if err != nil {
 			t.Fatalf("铸造作用域键失败: %v", err)

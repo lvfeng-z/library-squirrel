@@ -159,7 +159,7 @@ func (r *ReWorkWorkSetRepository) UpdateSortOrders(ctx context.Context, workSetI
 		Model(new(domain.ReWorkWorkSet)).
 		Where("work_set_id = ?", workSetId).
 		Where("work_id IN ?", getMapKeys(sortOrders)).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"sort_order":  gorm.Expr(buildCaseExpression(sortOrders)),
 			"update_time": util.GetCurrentTimestamp(),
 		}).Error
@@ -175,7 +175,7 @@ func (r *ReWorkWorkSetRepository) UpdateSiteSortOrders(ctx context.Context, work
 		Model(new(domain.ReWorkWorkSet)).
 		Where("work_set_id = ?", workSetId).
 		Where("work_id IN ?", getMapKeys(sortOrders)).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"site_sort_order": gorm.Expr(buildCaseExpression(sortOrders)),
 			"update_time":     util.GetCurrentTimestamp(),
 		}).Error

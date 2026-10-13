@@ -43,7 +43,7 @@ function resolve(input) {
 }
 `
 	runner := NewRunner()
-	in := Input{Settings: map[string]interface{}{"hd": false, "nsfw": true}}
+	in := Input{Settings: map[string]any{"hd": false, "nsfw": true}}
 
 	res, err := runner.Evaluate(context.Background(), script, in)
 	if err != nil {
@@ -193,16 +193,16 @@ func TestEvaluateRejectsOutOfBoundsEntry(t *testing.T) {
 func TestValidateOutputStructuralFailures(t *testing.T) {
 	cases := []struct {
 		name string
-		raw  interface{}
+		raw  any
 	}{
 		{"nil", nil},
 		{"字符串", "nope"},
-		{"无 version 字段", map[string]interface{}{"entries": []interface{}{}}},
-		{"version 非数值", map[string]interface{}{"version": "1", "entries": []interface{}{}}},
-		{"version 为 2", map[string]interface{}{"version": 2, "entries": []interface{}{}}},
-		{"version 浮点 1.5", map[string]interface{}{"version": 1.5, "entries": []interface{}{}}},
-		{"无 entries 字段", map[string]interface{}{"version": 1}},
-		{"entries 非数组", map[string]interface{}{"version": 1, "entries": map[string]interface{}{}}},
+		{"无 version 字段", map[string]any{"entries": []any{}}},
+		{"version 非数值", map[string]any{"version": "1", "entries": []any{}}},
+		{"version 为 2", map[string]any{"version": 2, "entries": []any{}}},
+		{"version 浮点 1.5", map[string]any{"version": 1.5, "entries": []any{}}},
+		{"无 entries 字段", map[string]any{"version": 1}},
+		{"entries 非数组", map[string]any{"version": 1, "entries": map[string]any{}}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -220,16 +220,16 @@ func TestValidateOutputStructuralFailures(t *testing.T) {
 // TestValidateOutputEntryLevelFailures 逐条核验条目级拒收的原因归类：
 // 非对象条目、point/id/active/reason 各字段缺失或形态错误。
 func TestValidateOutputEntryLevelFailures(t *testing.T) {
-	raw := map[string]interface{}{
+	raw := map[string]any{
 		"version": float64(1),
-		"entries": []interface{}{
+		"entries": []any{
 			"not an object",
-			map[string]interface{}{"id": "a", "active": true},                                    // 缺 point
-			map[string]interface{}{"point": "workFetch", "active": true},                         // 缺 id
-			map[string]interface{}{"point": "workFetch", "id": ""},                               // 空 id
-			map[string]interface{}{"point": "workFetch", "id": "a"},                              // 缺 active
-			map[string]interface{}{"point": "workFetch", "id": "a", "active": 1},                 // active 非布尔
-			map[string]interface{}{"point": "workFetch", "id": "a", "active": true, "reason": 5}, // reason 非字符串
+			map[string]any{"id": "a", "active": true},                                    // 缺 point
+			map[string]any{"point": "workFetch", "active": true},                         // 缺 id
+			map[string]any{"point": "workFetch", "id": ""},                               // 空 id
+			map[string]any{"point": "workFetch", "id": "a"},                              // 缺 active
+			map[string]any{"point": "workFetch", "id": "a", "active": 1},                 // active 非布尔
+			map[string]any{"point": "workFetch", "id": "a", "active": true, "reason": 5}, // reason 非字符串
 		},
 	}
 	res, err := ValidateOutput(raw)
@@ -284,7 +284,7 @@ function resolve(input) {
 }`
 	runner := NewRunner()
 	mkInput := func() Input {
-		return Input{Settings: map[string]interface{}{"hd": false, "inner": map[string]interface{}{"deep": 0}}}
+		return Input{Settings: map[string]any{"hd": false, "inner": map[string]any{"deep": 0}}}
 	}
 
 	for round := 1; round <= 2; round++ {
@@ -302,7 +302,7 @@ function resolve(input) {
 		if in.Settings["hd"] != false {
 			t.Fatalf("第 %d 轮脚本改写的设置值泄回调用方：%+v", round, in.Settings)
 		}
-		if innerDeep := in.Settings["inner"].(map[string]interface{})["deep"]; innerDeep != 0 {
+		if innerDeep := in.Settings["inner"].(map[string]any)["deep"]; innerDeep != 0 {
 			t.Fatalf("第 %d 轮脚本改写的嵌套值泄回调用方：%+v", round, in.Settings["inner"])
 		}
 	}

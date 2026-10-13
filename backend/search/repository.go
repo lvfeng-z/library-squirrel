@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	dto2 "github.com/library-squirrel/backend/base/model/dto"
@@ -28,7 +29,7 @@ func NewRepository(db *gorm.DB) *SearchRepository {
 func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, pageSize int, keyword string, types []dto2.SearchType) ([]*dto2.SelectItem, int64, error) {
 	var statements []string
 	var countStatements []string
-	var params []interface{}
+	var params []any
 
 	// 关键词模糊匹配
 	hasKeyword := keyword != ""
@@ -150,7 +151,7 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 
 		// 解析 extraData JSON
 		if extraData.Valid && extraData.String != "" {
-			var parsedExtra interface{}
+			var parsedExtra any
 			if err := json.Unmarshal([]byte(extraData.String), &parsedExtra); err == nil {
 				item.ExtraData = parsedExtra
 			}
@@ -158,7 +159,7 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 
 		// 设置 subLabels
 		if item.ExtraData != nil {
-			if extraMap, ok := item.ExtraData.(map[string]interface{}); ok {
+			if extraMap, ok := item.ExtraData.(map[string]any); ok {
 				subLabels := []string{}
 				if typeVal, ok := extraMap["type"].(float64); ok {
 					switch dto2.SearchType(typeVal) {
@@ -166,7 +167,7 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 						subLabels = append(subLabels, "tag", "local")
 					case dto2.SiteTag:
 						subLabels = append(subLabels, "tag")
-						if siteMap, ok := extraMap["site"].(map[string]interface{}); ok {
+						if siteMap, ok := extraMap["site"].(map[string]any); ok {
 							if siteName, ok := siteMap["siteName"].(string); ok && siteName != "" {
 								subLabels = append(subLabels, siteName)
 							} else {
@@ -177,7 +178,7 @@ func (r *SearchRepository) QuerySearchConditionPage(ctx context.Context, page, p
 						subLabels = append(subLabels, "author", "local")
 					case dto2.SiteAuthor:
 						subLabels = append(subLabels, "author")
-						if siteMap, ok := extraMap["site"].(map[string]interface{}); ok {
+						if siteMap, ok := extraMap["site"].(map[string]any); ok {
 							if siteName, ok := siteMap["siteName"].(string); ok && siteName != "" {
 								subLabels = append(subLabels, siteName)
 							} else {
@@ -229,27 +230,27 @@ func (r *SearchRepository) QueryWorkIdPage(ctx context.Context, page, pageSize i
 // namespaceCondition 构造 namespace 过滤片段。非空 namespace 返回 " AND rwt.namespace = ?" 与对应参数；
 // 空 namespace 返回空串（不限制 namespace）。namespace 列为 not null 空串形态（空串=无 ns），
 // 指定 namespace 时空串关联不命中，无 ns 关联须以「不设 ns 过滤」表达
-func namespaceCondition(namespace string) (string, []interface{}) {
+func namespaceCondition(namespace string) (string, []any) {
 	if namespace == "" {
 		return "", nil
 	}
-	return " AND rwt.namespace = ?", []interface{}{namespace}
+	return " AND rwt.namespace = ?", []any{namespace}
 }
 
 // buildWhereClause 根据搜索条件构建 WHERE 子句（别名 "t1"）
-func buildWhereClause(conditions []*dto2.SearchCondition) (string, []interface{}) {
+func buildWhereClause(conditions []*dto2.SearchCondition) (string, []any) {
 	return buildWhereClauseWithBaseline(conditions, "t1", "t1.deleted_at = 0")
 }
 
 // buildWhereClauseWithAlias 根据搜索条件构建 WHERE 子句（可配置表别名，软删基线=仅活行）
-func buildWhereClauseWithAlias(conditions []*dto2.SearchCondition, alias string) (string, []interface{}) {
+func buildWhereClauseWithAlias(conditions []*dto2.SearchCondition, alias string) (string, []any) {
 	return buildWhereClauseWithBaseline(conditions, alias, fmt.Sprintf("%s.deleted_at = 0", alias))
 }
 
 // buildWhereClauseWithBaseline 根据搜索条件构建 WHERE 子句（软删基线可配置：活行 "= 0" / 已删行 "> 0"）
-func buildWhereClauseWithBaseline(conditions []*dto2.SearchCondition, alias string, baseline string) (string, []interface{}) {
+func buildWhereClauseWithBaseline(conditions []*dto2.SearchCondition, alias string, baseline string) (string, []any) {
 	whereClauses := []string{baseline}
-	var params []interface{}
+	var params []any
 
 	for _, cond := range conditions {
 		if cond == nil {
@@ -394,7 +395,7 @@ func buildWhereClauseWithBaseline(conditions []*dto2.SearchCondition, alias stri
 }
 
 // getMediaExts 获取媒体类型对应的扩展名列表
-func getMediaExts(value interface{}) []string {
+func getMediaExts(value any) []string {
 	mediaType, ok := value.(float64)
 	if !ok {
 		return nil
@@ -417,7 +418,7 @@ func getMediaExts(value interface{}) []string {
 func (r *SearchRepository) QueryWorkSetPageByConditions(ctx context.Context, page, pageSize int, conditions []*dto2.SearchCondition) ([]*entity2.WorkSet, int64, error) {
 	// 恒基线：作品集软删行不入正常列表（原生 SQL 不受 GORM 软删 scope 保护）
 	clauses := []string{"work_set.deleted_at = 0"}
-	var params []interface{}
+	var params []any
 	if len(conditions) > 0 {
 		workWhere, workParams := buildWhereClauseWithAlias(conditions, "w")
 		clauses = append(clauses, fmt.Sprintf(
@@ -473,7 +474,7 @@ func (r *SearchRepository) QueryWorkSetPageByConditions(ctx context.Context, pag
 // buildRecycleStoreWhere 构建回收站文件条目查询的 WHERE 子句（列表与 TTL 圈定共用同一构建函数防谓词漂移）。
 // 基线两条：ps 已软删；挂载链不指向已软删作品（该形态聚合进回收站作品条目，提前清会破坏作品复原能力）。
 // 挂载链断（resource_store/resource/work 行不存在）与 work 存活的软删行均纳入——离链孤儿自愈落入文件条目
-func buildRecycleStoreWhere(query *dto2.RecycleStorePageQuery) (string, []interface{}) {
+func buildRecycleStoreWhere(query *dto2.RecycleStorePageQuery) (string, []any) {
 	clauses := []string{
 		"ps.deleted_at > 0",
 		`NOT EXISTS (SELECT 1 FROM resource_store rs
@@ -481,7 +482,7 @@ func buildRecycleStoreWhere(query *dto2.RecycleStorePageQuery) (string, []interf
 			JOIN work w ON r.work_id = w.id
 			WHERE rs.store_id = ps.id AND w.deleted_at > 0)`,
 	}
-	var params []interface{}
+	var params []any
 	if query != nil {
 		if query.FileName != "" {
 			clauses = append(clauses, "ps.file_name LIKE ?")
@@ -622,7 +623,7 @@ func (r *SearchRepository) queryStoreMountContext(ctx context.Context, storeIds 
 		return result
 	}
 	placeholders := make([]string, len(storeIds))
-	params := make([]interface{}, len(storeIds))
+	params := make([]any, len(storeIds))
 	for i, id := range storeIds {
 		placeholders[i] = "?"
 		params[i] = id
@@ -708,9 +709,9 @@ func nullStr(v sql.NullString) string {
 
 // buildRecycleWorkSetWhere 构建回收站作品集条目查询的 WHERE 子句。基线 = work_set 已软删行；
 // 活成员数子查询按 work 活行计数（已删成员不计）
-func buildRecycleWorkSetWhere(query *dto2.RecycleWorkSetPageQuery) (string, []interface{}) {
+func buildRecycleWorkSetWhere(query *dto2.RecycleWorkSetPageQuery) (string, []any) {
 	clauses := []string{"ws.deleted_at > 0"}
-	var params []interface{}
+	var params []any
 	if query != nil {
 		if query.Name != "" {
 			clauses = append(clauses, "(ws.site_work_set_name LIKE ? OR ws.nick_name LIKE ?)")
@@ -804,12 +805,7 @@ func (r *SearchRepository) QueryRecycleWorkSetPage(ctx context.Context, page, pa
 
 // containsType 检查类型切片是否包含指定类型
 func containsType(types []dto2.SearchType, target dto2.SearchType) bool {
-	for _, t := range types {
-		if t == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(types, target)
 }
 
 // QueryRecycleWorkPage 查询回收站作品分页（work 已删行，条件体系复用 buildWhereClauseWithBaseline，

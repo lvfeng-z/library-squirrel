@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -164,12 +165,7 @@ func matchOfficialDir(entries []config.OfficialPluginEntry, publicId, buildId, d
 
 // containsDigest 摘要集合包含判定
 func containsDigest(candidates []string, digest string) bool {
-	for _, c := range candidates {
-		if c == digest {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(candidates, digest)
 }
 
 // matchOfficial 判定安装包是否命中官方指纹名单（安装路径的官方身份唯一推导点入参）。

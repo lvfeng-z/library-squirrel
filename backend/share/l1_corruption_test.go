@@ -65,8 +65,8 @@ func buildNWorkModel(n int, size int64) func(t *testing.T, workDir string) (*exp
 			}
 			sourceHash[rel] = hex.EncodeToString(sum.Sum(nil))
 			works = append(works, export.WorkRecord{
-				ID: int64(i), SiteID: i64Ptr(1), SiteWorkID: strPtr(fmt.Sprintf("L1%04d", i)),
-				SiteWorkName: strPtr(fmt.Sprintf("作品%02d", i)),
+				ID: int64(i), SiteID: i64Ptr(1), SiteWorkID: new(fmt.Sprintf("L1%04d", i)),
+				SiteWorkName: new(fmt.Sprintf("作品%02d", i)),
 				Resources: []export.ResourceRecord{{ID: int64(1000 + i), ResourceType: "image",
 					Stores: []export.StoreMount{{StoreType: "image", Generation: "downloaded", StoreSeq: 1, StoreID: int64(100 + i)}}}},
 			})
@@ -74,7 +74,7 @@ func buildNWorkModel(n int, size int64) func(t *testing.T, workDir string) (*exp
 		}
 		manifest := &export.Manifest{
 			SchemaVersion: export.SchemaVersion,
-			Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
+			Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: new("测试站")}},
 			Works:         works,
 			Files:         files,
 		}
@@ -252,7 +252,7 @@ func (env *l1Env) runL1Concurrent(t *testing.T, firstWork, count, concurrent int
 	handles := make([]*fakeStrategyHandle, 0, count)
 	execs := make([]*ReceiveExecution, 0, count)
 	jobs := make([]*l1Job, 0, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		manifestID := int64(firstWork + i)
 		taskID := int64(700 + firstWork + i)
 		h, _, exec := env.buildL1HandleForWork(t, manifestID, taskID)

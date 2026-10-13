@@ -60,7 +60,7 @@ func (r *TagNamespaceRepository) TouchBatch(ctx context.Context, ids []int64, or
 		WithContext(ctx).
 		Model(new(entity2.TagNamespace)).
 		Where("id IN ?", ids).
-		Updates(map[string]interface{}{
+		Updates(map[string]any{
 			"origin":      gorm.Expr("MAX(origin, ?)", origin),
 			"last_use":    lastUse,
 			"update_time": lastUse,

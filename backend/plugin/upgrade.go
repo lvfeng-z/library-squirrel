@@ -264,10 +264,7 @@ func compareVersion(a, b string) int {
 		return 0
 	}
 	segsA, segsB := strings.Split(a, "."), strings.Split(b, ".")
-	n := len(segsA)
-	if len(segsB) > n {
-		n = len(segsB)
-	}
+	n := max(len(segsB), len(segsA))
 	for i := 0; i < n; i++ {
 		sa, sb := "", ""
 		if i < len(segsA) {

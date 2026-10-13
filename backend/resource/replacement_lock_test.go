@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	domain "github.com/library-squirrel/backend/base/model/entity"
@@ -38,13 +39,11 @@ func (lockTestAssocLister) ListByResourceIds(ctx context.Context, ids []int64) (
 type lockTestStoreRowReader struct{}
 
 func (lockTestStoreRowReader) ListByIdsIncludeDeleted(ctx context.Context, ids []int64) []*domain.PersistentStore {
-	for _, id := range ids {
-		if id == 900 {
-			row := domain.NewPersistentStore()
-			row.SetID(900)
-			row.CompletedAt = 1
-			return []*domain.PersistentStore{row}
-		}
+	if slices.Contains(ids, 900) {
+		row := domain.NewPersistentStore()
+		row.SetID(900)
+		row.CompletedAt = 1
+		return []*domain.PersistentStore{row}
 	}
 	return nil
 }

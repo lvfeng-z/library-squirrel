@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -218,9 +219,7 @@ type stubIngestSnapshot struct {
 
 func (s *stubStoreIngestor) snapshot() stubIngestSnapshot {
 	journals := make(map[int64]stubIngestJournal, len(s.journals))
-	for k, v := range s.journals {
-		journals[k] = v
-	}
+	maps.Copy(journals, s.journals)
 	commits := make([]stubCommitRecord, len(s.commits))
 	copy(commits, s.commits)
 	return stubIngestSnapshot{nextJournalId: s.nextJournalId, journals: journals, nextId: s.nextId, commits: commits}
@@ -352,8 +351,8 @@ func makeResumeWorkTask(taskId int64) *entity.WorkTask {
 // 仅保持插件执行器桩返回形态完整）
 func stagingWorkResp() *sdkdto.WorkResponse {
 	return &sdkdto.WorkResponse{
-		Work:         &sdkdto.WorkDTO{SiteWorkId: pathTestStrPtr("sw1"), SiteWorkName: pathTestStrPtr("name")},
-		LocalAuthors: []*sdkdto.LocalAuthorDTO{{AuthorName: pathTestStrPtr("author")}},
+		Work:         &sdkdto.WorkDTO{SiteWorkId: new("sw1"), SiteWorkName: new("name")},
+		LocalAuthors: []*sdkdto.LocalAuthorDTO{{AuthorName: new("author")}},
 	}
 }
 
@@ -376,7 +375,7 @@ func TestExecuteEntry_ResumeRequestedFlagAndStaging(t *testing.T) {
 		exec := &fakePluginExec{
 			resumeSpecs: []*sdkdto.StoreSpec{{
 				Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png",
-				Size: 10, Continuable: boolPtr(true),
+				Size: 10, Continuable: new(true),
 				ReadCloser: io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("b"), 6))),
 			}},
 			resumeResp: stagingWorkResp(),
@@ -459,7 +458,7 @@ func TestResumeFromStaging_PartialContinuesAndCommits(t *testing.T) {
 	exec := &fakePluginExec{
 		resumeSpecs: []*sdkdto.StoreSpec{{
 			Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png",
-			Size: 10, Continuable: boolPtr(true),
+			Size: 10, Continuable: new(true),
 			ReadCloser: io.NopCloser(bytes.NewReader(rest)),
 		}},
 		resumeResp:     stagingWorkResp(),
@@ -517,7 +516,7 @@ func TestResumeFromStaging_ResumeWriteOffsetPluginPriority(t *testing.T) {
 	exec := &fakePluginExec{
 		resumeSpecs: []*sdkdto.StoreSpec{{
 			Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png",
-			Size: 8, Continuable: boolPtr(true), ResumeWriteOffset: &off,
+			Size: 8, Continuable: new(true), ResumeWriteOffset: &off,
 			ReadCloser: io.NopCloser(bytes.NewReader([]byte("bbbbbb"))),
 		}},
 		resumeResp: stagingWorkResp(),
@@ -550,7 +549,7 @@ func TestResumeFromStaging_CompleteInStagingInstantCommit(t *testing.T) {
 	exec := &fakePluginExec{
 		resumeSpecs: []*sdkdto.StoreSpec{{
 			Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png",
-			Size: 10, Continuable: boolPtr(true),
+			Size: 10, Continuable: new(true),
 			ReadCloser: io.NopCloser(bytes.NewReader(nil)), // 立即 EOF（如 416 转译形态）
 		}},
 		resumeResp: stagingWorkResp(),
@@ -583,7 +582,7 @@ func TestCommitAbortThenResumeInstantCommit(t *testing.T) {
 	exec := &fakePluginExec{
 		startSpecs: []*sdkdto.StoreSpec{
 			{Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png",
-				Size: 10, Continuable: boolPtr(true),
+				Size: 10, Continuable: new(true),
 				ReadCloser: io.NopCloser(bytes.NewReader(payload))},
 			{Role: entity.StoreTypeThumbnail, Generation: entity.GenerationDerived, Format: "jpg",
 				ReadCloser: io.NopCloser(bytes.NewReader([]byte("t")))},
@@ -631,7 +630,7 @@ func TestCommitAbortThenResumeInstantCommit(t *testing.T) {
 	exec2 := &fakePluginExec{
 		resumeSpecs: []*sdkdto.StoreSpec{{
 			Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png",
-			Size: 10, Continuable: boolPtr(true),
+			Size: 10, Continuable: new(true),
 			ReadCloser: io.NopCloser(bytes.NewReader(nil)), // 立即 EOF——写满轨无字节可续
 		}},
 		resumeResp: stagingWorkResp(),
@@ -672,7 +671,7 @@ func TestResumeFromStaging_StaleStagingRebuilds(t *testing.T) {
 	exec := &fakePluginExec{
 		resumeSpecs: []*sdkdto.StoreSpec{{
 			Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png",
-			Size: 10, Continuable: boolPtr(true),
+			Size: 10, Continuable: new(true),
 			ReadCloser: io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("y"), 10))),
 		}},
 		resumeResp: stagingWorkResp(),
@@ -704,7 +703,7 @@ func TestResumeFromStaging_UncoveredRegenerates(t *testing.T) {
 	exec := &fakePluginExec{
 		resumeSpecs: []*sdkdto.StoreSpec{{
 			Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png",
-			Size: 6, Continuable: boolPtr(true),
+			Size: 6, Continuable: new(true),
 			ReadCloser: io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("b"), 2))),
 		}},
 		resumeResp: stagingWorkResp(),
@@ -853,7 +852,7 @@ func TestResumeFromStaging_FullTrackExtBackfilledFromStagingName(t *testing.T) {
 	exec := &fakePluginExec{
 		resumeSpecs: []*sdkdto.StoreSpec{{
 			Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "",
-			Size: 10, Continuable: boolPtr(true),
+			Size: 10, Continuable: new(true),
 			ReadCloser: io.NopCloser(bytes.NewReader(nil)), // 立即 EOF（写满轨无字节可续）
 		}},
 		resumeResp: stagingWorkResp(),
@@ -891,7 +890,7 @@ func TestResumeFromStaging_ClaimedTrackDiskExtWins(t *testing.T) {
 	exec := &fakePluginExec{
 		resumeSpecs: []*sdkdto.StoreSpec{{
 			Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png",
-			Size: 10, Continuable: boolPtr(true),
+			Size: 10, Continuable: new(true),
 			ReadCloser: io.NopCloser(bytes.NewReader(nil)),
 		}},
 		resumeResp: stagingWorkResp(),
@@ -925,7 +924,7 @@ func TestResumeFromStaging_ExtensionLessStagingConsistent(t *testing.T) {
 	exec := &fakePluginExec{
 		resumeSpecs: []*sdkdto.StoreSpec{{
 			Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: ".png",
-			Size: 8, Continuable: boolPtr(true),
+			Size: 8, Continuable: new(true),
 			ReadCloser: io.NopCloser(bytes.NewReader(nil)),
 		}},
 		resumeResp: stagingWorkResp(),
@@ -963,7 +962,7 @@ func TestResumeFromStaging_DuplicateKeyPrefersLarger(t *testing.T) {
 	exec := &fakePluginExec{
 		resumeSpecs: []*sdkdto.StoreSpec{{
 			Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "",
-			Size: 10, Continuable: boolPtr(true),
+			Size: 10, Continuable: new(true),
 			ReadCloser: io.NopCloser(bytes.NewReader(nil)),
 		}},
 		resumeResp: stagingWorkResp(),
@@ -1012,7 +1011,7 @@ func TestOpenStagingTracks_ResumeOpenFailureDegradesWithLog(t *testing.T) {
 	// staged 声称 image#0 已落盘 10 字节，但暂存目录无该文件（枚举与打开间文件消失等形态）
 	spec := &sdkdto.StoreSpec{
 		Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: ".jpg",
-		Size: 10, Continuable: boolPtr(true),
+		Size: 10, Continuable: new(true),
 		ReadCloser: io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("f"), 10))),
 	}
 	staged := map[storeIdentity]int64{{role: entity.StoreTypeImage, seq: 0}: 10}
@@ -1090,4 +1089,6 @@ func TestPairResumeSpecs(t *testing.T) {
 }
 
 // boolPtr 测试辅助
-func boolPtr(b bool) *bool { return &b }
+//
+//go:fix inline
+func boolPtr(b bool) *bool { return new(b) }

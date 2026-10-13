@@ -207,7 +207,7 @@ func TestListAllIds(t *testing.T) {
 		t.Skipf("环境无 CGO SQLite，跳过: %v", err)
 	}
 	repo := NewRepository(db, nil, nil)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		tk := entity.NewTask()
 		if err := db.Create(tk).Error; err != nil {
 			t.Fatalf("插任务失败: %v", err)

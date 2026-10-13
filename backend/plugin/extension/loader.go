@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -146,12 +147,7 @@ func (l *Loader) HasWorkFetchOption(pluginPublicId, extensionId, option string) 
 		if handler.ID != extensionId {
 			continue
 		}
-		for _, declared := range handler.Options {
-			if declared == option {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(handler.Options, option)
 	}
 	return false
 }

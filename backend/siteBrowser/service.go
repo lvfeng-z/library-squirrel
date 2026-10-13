@@ -53,10 +53,7 @@ func (s *Service) Page(page, pageSize int) *PageResult {
 		}
 	}
 
-	end := start + pageSize
-	if end > total {
-		end = total
-	}
+	end := min(start+pageSize, total)
 
 	// 构建分页数据
 	dtos := make([]*dto.SiteBrowserDTO, 0, end-start)

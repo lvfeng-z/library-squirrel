@@ -371,8 +371,8 @@ func (s *Service) GetByIds(ctx context.Context, ids []int64) ([]*domain.Persiste
 	}
 	opt := &database.QueryOption{
 		Conditions: []clause.Expression{
-			clause.IN{Column: "id", Values: func() []interface{} {
-				v := make([]interface{}, len(ids))
+			clause.IN{Column: "id", Values: func() []any {
+				v := make([]any, len(ids))
 				for i, id := range ids {
 					v[i] = id
 				}
@@ -531,7 +531,7 @@ func (s *Service) ListByIdsIncludeDeleted(ctx context.Context, ids []int64) []*d
 	if len(ids) == 0 {
 		return []*domain.PersistentStore{}
 	}
-	idVals := make([]interface{}, len(ids))
+	idVals := make([]any, len(ids))
 	for i, id := range ids {
 		idVals[i] = id
 	}

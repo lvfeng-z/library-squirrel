@@ -46,8 +46,11 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func strPtr(s string) *string { return &s }
-func i64Ptr(v int64) *int64   { return &v }
+//go:fix inline
+func strPtr(s string) *string { return new(s) }
+
+//go:fix inline
+func i64Ptr(v int64) *int64 { return new(v) }
 
 // buildTestModel 构造含 3 个文件条目（小文件/跨块大文件/缺失文件）的导出模型，源文件落临时工作目录
 func buildTestModel(t *testing.T, workDir string) (*export.ExportModel, map[string][]byte) {
@@ -78,9 +81,9 @@ func buildTestModel(t *testing.T, workDir string) (*export.ExportModel, map[stri
 	manifest := &export.Manifest{
 		SchemaVersion: export.SchemaVersion,
 		Meta:          export.Meta{ExportedAt: 1756000000000, AppVersion: "test"},
-		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
+		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: new("测试站")}},
 		Works: []export.WorkRecord{{
-			ID: 1, SiteID: i64Ptr(1), SiteWorkID: strPtr("1001"), SiteWorkName: strPtr("测试作品1001"),
+			ID: 1, SiteID: i64Ptr(1), SiteWorkID: new("1001"), SiteWorkName: new("测试作品1001"),
 			Resources: []export.ResourceRecord{{
 				ID: 11, ResourceType: "image",
 				Stores: []export.StoreMount{
@@ -280,11 +283,11 @@ func publishAndWait(t *testing.T, svc *Service, em *captureEmitter, opts SharePu
 // keyFromLink 从分享链接 fragment 解出密钥
 func keyFromLink(t *testing.T, link string) (key []byte, b64 string) {
 	t.Helper()
-	idx := strings.Index(link, "#k=")
-	if idx < 0 {
+	_, after, ok := strings.Cut(link, "#k=")
+	if !ok {
 		t.Fatalf("链接无密钥 fragment: %s", link)
 	}
-	b64 = link[idx+3:]
+	b64 = after
 	key, err := base64.RawURLEncoding.DecodeString(b64)
 	if err != nil {
 		t.Fatalf("fragment 非法: %v", err)
@@ -583,10 +586,7 @@ func TestManifestFileEntryFingerprintsFilled(t *testing.T) {
 		require.Len(t, parts, 2, "头部指纹格式应为 <size>:<hex>: %s", f.ContentFingerprint)
 		assert.Equal(t, strconv.FormatInt(int64(len(content)), 10), parts[0], "头部指纹 size 分量应等于文件字节数")
 
-		headLen := len(content)
-		if headLen > 64*1024 {
-			headLen = 64 * 1024
-		}
+		headLen := min(len(content), 64*1024)
 		headSum := sha256.Sum256(content[:headLen])
 		assert.Equal(t, hex.EncodeToString(headSum[:]), parts[1], "头部指纹哈希与源头部直算不一致")
 
@@ -1212,7 +1212,7 @@ func buildSelectionModel(t *testing.T, workDir string, fileWorkIDs, bareWorkIDs,
 	manifest := &export.Manifest{
 		SchemaVersion: export.SchemaVersion,
 		Meta:          export.Meta{ExportedAt: 1756000000000, AppVersion: "test"},
-		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
+		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: new("测试站")}},
 	}
 	for _, id := range fileWorkIDs {
 		rel := fmt.Sprintf("store/work/测试作者/pic_%03d.jpg", id)
@@ -1225,8 +1225,8 @@ func buildSelectionModel(t *testing.T, workDir string, fileWorkIDs, bareWorkIDs,
 		}
 		storeID := int64(1000 + id)
 		manifest.Works = append(manifest.Works, export.WorkRecord{
-			ID: id, SiteID: i64Ptr(1), SiteWorkID: strPtr(fmt.Sprintf("%d", id)),
-			SiteWorkName: strPtr(fmt.Sprintf("测试作品%d", id)),
+			ID: id, SiteID: i64Ptr(1), SiteWorkID: new(fmt.Sprintf("%d", id)),
+			SiteWorkName: new(fmt.Sprintf("测试作品%d", id)),
 			Resources: []export.ResourceRecord{{
 				ID:           10 * id,
 				ResourceType: "image",
@@ -1237,14 +1237,14 @@ func buildSelectionModel(t *testing.T, workDir string, fileWorkIDs, bareWorkIDs,
 	}
 	for _, id := range bareWorkIDs {
 		manifest.Works = append(manifest.Works, export.WorkRecord{
-			ID: id, SiteID: i64Ptr(1), SiteWorkID: strPtr(fmt.Sprintf("%d", id)),
-			SiteWorkName: strPtr(fmt.Sprintf("测试作品%d", id)),
+			ID: id, SiteID: i64Ptr(1), SiteWorkID: new(fmt.Sprintf("%d", id)),
+			SiteWorkName: new(fmt.Sprintf("测试作品%d", id)),
 		})
 	}
 	for _, id := range workSetIDs {
 		manifest.WorkSets = append(manifest.WorkSets, export.WorkSetRecord{
-			ID: id, SiteID: i64Ptr(1), SiteWorkSetID: strPtr(fmt.Sprintf("ws-%d", id)),
-			SiteWorkSetName: strPtr(fmt.Sprintf("测试作品集%d", id)),
+			ID: id, SiteID: i64Ptr(1), SiteWorkSetID: new(fmt.Sprintf("ws-%d", id)),
+			SiteWorkSetName: new(fmt.Sprintf("测试作品集%d", id)),
 		})
 	}
 	return export.NewExportModel(manifest)
@@ -1835,8 +1835,8 @@ func TestMetaPayloadWorksName(t *testing.T) {
 	model, _ := buildTestModel(t, workDir)
 	// 扩展清单：ID=2 仅 nick_name、ID=3 全空名——覆盖优先级回落与空名占位
 	model.Manifest.Works = append(model.Manifest.Works,
-		export.WorkRecord{ID: 2, SiteID: i64Ptr(1), SiteWorkID: strPtr("1002"), NickName: strPtr("昵称作品1002")},
-		export.WorkRecord{ID: 3, SiteID: i64Ptr(1), SiteWorkID: strPtr("1003")},
+		export.WorkRecord{ID: 2, SiteID: i64Ptr(1), SiteWorkID: new("1002"), NickName: new("昵称作品1002")},
+		export.WorkRecord{ID: 3, SiteID: i64Ptr(1), SiteWorkID: new("1003")},
 	)
 
 	em := newCaptureEmitter()
@@ -1877,7 +1877,7 @@ func TestMetaPayloadWorksName(t *testing.T) {
 	// ③ 空作品清单 register：worksName 键不出现（omitempty）
 	emptyModel := export.NewExportModel(&export.Manifest{
 		SchemaVersion: export.SchemaVersion,
-		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
+		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: new("测试站")}},
 		Works:         []export.WorkRecord{},
 	})
 	key, err := GenerateShareKey()
@@ -1920,8 +1920,8 @@ func TestMetaPayloadWorksNameSanitized(t *testing.T) {
 	// 追加：含换行/制表/回车控制字符的作品名 + 超长（>200 rune）作品名
 	long := strings.Repeat("长", 250)
 	model.Manifest.Works = append(model.Manifest.Works,
-		export.WorkRecord{ID: 2, SiteID: i64Ptr(1), SiteWorkID: strPtr("1002"), SiteWorkName: strPtr("作品\n带换行\t和制表\r控制")},
-		export.WorkRecord{ID: 3, SiteID: i64Ptr(1), SiteWorkID: strPtr("1003"), SiteWorkName: strPtr(long)},
+		export.WorkRecord{ID: 2, SiteID: i64Ptr(1), SiteWorkID: new("1002"), SiteWorkName: new("作品\n带换行\t和制表\r控制")},
+		export.WorkRecord{ID: 3, SiteID: i64Ptr(1), SiteWorkID: new("1003"), SiteWorkName: new(long)},
 	)
 
 	em := newCaptureEmitter()

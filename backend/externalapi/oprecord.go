@@ -149,11 +149,9 @@ func (r *opRecordRepository) RotateOldest(ctx context.Context, expiredBefore int
 // PageRecent 分页读取记录行（id 降序 = 最新调用在前）
 func (r *opRecordRepository) PageRecent(ctx context.Context, pageNumber, pageSize int) (*model.Page[entity.ExternalApiOpRecord], error) {
 	return r.Page(ctx, &database.PageOption{
-		QueryOption: database.QueryOption{
-			OrderBy: []clause.Expression{clause.OrderBy{
-				Columns: []clause.OrderByColumn{{Column: clause.Column{Name: "id"}, Desc: true}},
-			}},
-		},
+		OrderBy: []clause.Expression{clause.OrderBy{
+			Columns: []clause.OrderByColumn{{Column: clause.Column{Name: "id"}, Desc: true}},
+		}},
 		Page:     pageNumber,
 		PageSize: pageSize,
 	})

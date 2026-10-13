@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"github.com/library-squirrel/backend/base/logger"
@@ -164,8 +165,8 @@ func (m *lifecycleManager) activate(ctx context.Context, plugin *entity2.Plugin)
 
 	for _, p := range m.participants {
 		if err := p.Activate(ctx, plugin, manifest); err != nil {
-			for i := len(m.participants) - 1; i >= 0; i-- {
-				m.participants[i].OnStopped(ctx, publicId)
+			for _, v := range slices.Backward(m.participants) {
+				v.OnStopped(ctx, publicId)
 			}
 			delete(m.states, publicId)
 			m.lastActivateErr[publicId] = err
@@ -204,8 +205,8 @@ func (m *lifecycleManager) deactivate(ctx context.Context, publicId string, op P
 			}
 		}
 	}
-	for i := len(m.participants) - 1; i >= 0; i-- {
-		m.participants[i].OnStopped(ctx, publicId)
+	for _, v := range slices.Backward(m.participants) {
+		v.OnStopped(ctx, publicId)
 	}
 	delete(m.states, publicId)
 	return nil
@@ -222,8 +223,8 @@ func (m *lifecycleManager) notifyCrashed(ctx context.Context, publicId string) {
 		return
 	}
 	logger.Log.Warnf("插件进程崩溃，执行参与者痕迹清理: %s", publicId)
-	for i := len(m.participants) - 1; i >= 0; i-- {
-		m.participants[i].OnStopped(ctx, publicId)
+	for _, v := range slices.Backward(m.participants) {
+		v.OnStopped(ctx, publicId)
 	}
 	delete(m.states, publicId)
 }

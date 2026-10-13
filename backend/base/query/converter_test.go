@@ -9,7 +9,9 @@ import (
 )
 
 // ptr 返回值指针(测试构造 QueryAttribute[T] 字面量用;字段均为指针类型)
-func ptr[T any](v T) *T { return &v }
+//
+//go:fix inline
+func ptr[T any](v T) *T { return new(v) }
 
 // 测试用的 TaskQueryDTO(字段类型参照 task.TaskQueryDTO 的泛型用法)
 type testTaskQueryDTO struct {
@@ -30,9 +32,9 @@ func TestConverter_ToQueryOption_Basic(t *testing.T) {
 	conv := NewConverter(testTaskQueryDTO{})
 
 	dto := testTaskQueryDTO{
-		TaskName: QueryAttribute[string]{Value: ptr("test"), Operator: ptr(OpLike)},
-		SiteId:   QueryAttribute[int64]{Value: ptr(int64(123))},
-		Status:   QueryAttribute[int64]{Value: ptr(int64(1))},
+		TaskName: QueryAttribute[string]{Value: new("test"), Operator: new(OpLike)},
+		SiteId:   QueryAttribute[int64]{Value: new(int64(123))},
+		Status:   QueryAttribute[int64]{Value: new(int64(1))},
 	}
 
 	result, err := conv.ToQueryOption(dto, nil)
@@ -46,8 +48,8 @@ func TestConverter_ToQueryOption_IgnoreNonDbField(t *testing.T) {
 	conv := NewConverter(testTaskQueryDTO{})
 
 	dto := testTaskQueryDTO{
-		TaskName:   QueryAttribute[string]{Value: ptr("test")},
-		ExtraField: QueryAttribute[string]{Value: ptr("should be ignored")},
+		TaskName:   QueryAttribute[string]{Value: new("test")},
+		ExtraField: QueryAttribute[string]{Value: new("should be ignored")},
 	}
 
 	result, err := conv.ToQueryOption(dto, nil)
@@ -61,9 +63,9 @@ func TestConverter_ToQueryOption_WithOrder(t *testing.T) {
 	conv := NewConverter(testTaskQueryDTO{})
 
 	dto := testTaskQueryDTO{
-		TaskName:   QueryAttribute[string]{Value: ptr("test"), Operator: ptr(OpLike), Order: ptr(OrderAsc)},
-		Status:     QueryAttribute[int64]{Value: ptr(int64(1)), Order: ptr(OrderDesc)},
-		CreateTime: QueryAttribute[int64]{Order: ptr(OrderAsc)}, // 只有排序，没有值
+		TaskName:   QueryAttribute[string]{Value: new("test"), Operator: new(OpLike), Order: new(OrderAsc)},
+		Status:     QueryAttribute[int64]{Value: new(int64(1)), Order: new(OrderDesc)},
+		CreateTime: QueryAttribute[int64]{Order: new(OrderAsc)}, // 只有排序，没有值
 	}
 
 	result, err := conv.ToQueryOption(dto, nil)
@@ -79,7 +81,7 @@ func TestConverter_ToQueryOption_NilValueWithOrder(t *testing.T) {
 	conv := NewConverter(testTaskQueryDTO{})
 
 	dto := testTaskQueryDTO{
-		CreateTime: QueryAttribute[int64]{Order: ptr(OrderAsc)}, // 只有排序，没有值
+		CreateTime: QueryAttribute[int64]{Order: new(OrderAsc)}, // 只有排序，没有值
 	}
 
 	result, err := conv.ToQueryOption(dto, nil)
@@ -97,17 +99,17 @@ func TestConverter_ToQueryOption_AllOperators(t *testing.T) {
 		name string
 		attr QueryAttribute[any]
 	}{
-		{"eq", QueryAttribute[any]{Value: ptr(any(1)), Operator: ptr(OpEq)}},
-		{"ne", QueryAttribute[any]{Value: ptr(any(1)), Operator: ptr(OpNe)}},
-		{"gt", QueryAttribute[any]{Value: ptr(any(1)), Operator: ptr(OpGt)}},
-		{"gte", QueryAttribute[any]{Value: ptr(any(1)), Operator: ptr(OpGte)}},
-		{"lt", QueryAttribute[any]{Value: ptr(any(1)), Operator: ptr(OpLt)}},
-		{"lte", QueryAttribute[any]{Value: ptr(any(1)), Operator: ptr(OpLte)}},
-		{"like", QueryAttribute[any]{Value: ptr(any("test")), Operator: ptr(OpLike)}},
-		{"in", QueryAttribute[any]{Value: ptr(any([]interface{}{1, 2, 3})), Operator: ptr(OpIn)}},
-		{"is_null", QueryAttribute[any]{Operator: ptr(OpIsNull)}},
-		{"is_not_null", QueryAttribute[any]{Operator: ptr(OpIsNotNull)}},
-		{"default_eq", QueryAttribute[any]{Value: ptr(any(1))}}, // 默认 eq
+		{"eq", QueryAttribute[any]{Value: new(any(1)), Operator: new(OpEq)}},
+		{"ne", QueryAttribute[any]{Value: new(any(1)), Operator: new(OpNe)}},
+		{"gt", QueryAttribute[any]{Value: new(any(1)), Operator: new(OpGt)}},
+		{"gte", QueryAttribute[any]{Value: new(any(1)), Operator: new(OpGte)}},
+		{"lt", QueryAttribute[any]{Value: new(any(1)), Operator: new(OpLt)}},
+		{"lte", QueryAttribute[any]{Value: new(any(1)), Operator: new(OpLte)}},
+		{"like", QueryAttribute[any]{Value: new(any("test")), Operator: new(OpLike)}},
+		{"in", QueryAttribute[any]{Value: new(any([]any{1, 2, 3})), Operator: new(OpIn)}},
+		{"is_null", QueryAttribute[any]{Operator: new(OpIsNull)}},
+		{"is_not_null", QueryAttribute[any]{Operator: new(OpIsNotNull)}},
+		{"default_eq", QueryAttribute[any]{Value: new(any(1))}}, // 默认 eq
 	}
 
 	for _, tc := range testCases {
@@ -126,7 +128,7 @@ func TestConverter_ToPageOption(t *testing.T) {
 	conv := NewConverter(testTaskQueryDTO{})
 
 	dto := testTaskQueryDTO{
-		Status: QueryAttribute[int64]{Value: ptr(int64(1)), Order: ptr(OrderDesc)},
+		Status: QueryAttribute[int64]{Value: new(int64(1)), Order: new(OrderDesc)},
 	}
 
 	result, err := conv.ToPageOption(dto, 1, 10, nil)
@@ -177,9 +179,9 @@ func TestQueryAttribute_GetOperator(t *testing.T) {
 		attr     QueryAttribute[int]
 		expected Operator
 	}{
-		{"explicit_eq", QueryAttribute[int]{Value: ptr(1), Operator: ptr(OpEq)}, OpEq},
-		{"explicit_like", QueryAttribute[int]{Value: ptr(1), Operator: ptr(OpLike)}, OpLike},
-		{"empty", QueryAttribute[int]{Value: ptr(1)}, OpEq}, // 默认 eq
+		{"explicit_eq", QueryAttribute[int]{Value: new(1), Operator: new(OpEq)}, OpEq},
+		{"explicit_like", QueryAttribute[int]{Value: new(1), Operator: new(OpLike)}, OpLike},
+		{"empty", QueryAttribute[int]{Value: new(1)}, OpEq}, // 默认 eq
 	}
 
 	for _, tc := range testCases {
@@ -195,8 +197,8 @@ func TestQueryAttribute_HasOrder(t *testing.T) {
 		attr     QueryAttribute[int]
 		expected bool
 	}{
-		{"with_order", QueryAttribute[int]{Order: ptr(OrderAsc)}, true},
-		{"empty_order", QueryAttribute[int]{Value: ptr(1)}, false},
+		{"with_order", QueryAttribute[int]{Order: new(OrderAsc)}, true},
+		{"empty_order", QueryAttribute[int]{Value: new(1)}, false},
 	}
 
 	for _, tc := range testCases {

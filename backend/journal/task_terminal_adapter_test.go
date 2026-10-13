@@ -284,11 +284,11 @@ func TestTaskTerminalPusherConcurrentAccounting(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	for w := 0; w < workers; w++ {
+	for w := range workers {
 		wg.Add(1)
 		go func(w int) {
 			defer wg.Done()
-			for i := 0; i < perWorker; i++ {
+			for i := range perWorker {
 				// 终态与非终态交替：仅终态落账、非终态只走 Wails 一路
 				state := states[i%len(states)]
 				if i%2 == 1 {

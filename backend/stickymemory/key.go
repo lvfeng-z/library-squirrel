@@ -24,11 +24,11 @@ func CandidateFullKey(pluginPublicId, extensionId string) string {
 // 选中者（value）与候选名单条目时使用；输入须为 CandidateFullKey 产物（不含 NUL 时
 // 整串视为插件 ID、扩展点 ID 为空串）
 func SplitCandidateFullKey(fullKey string) (pluginPublicId, extensionId string) {
-	i := strings.Index(fullKey, candidateKeySeparator)
-	if i < 0 {
+	before, after, ok := strings.Cut(fullKey, candidateKeySeparator)
+	if !ok {
 		return fullKey, ""
 	}
-	return fullKey[:i], fullKey[i+len(candidateKeySeparator):]
+	return before, after
 }
 
 // BuildContextKey 记忆上下文键 = 站点域 + \x02 + join(按全键字典序排序的候选全键, \x01)。

@@ -347,7 +347,7 @@ func TestConcurrentAppendRace(t *testing.T) {
 		wg.Add(1)
 		go func(w int) {
 			defer wg.Done()
-			for i := 0; i < perWorker; i++ {
+			for i := range perWorker {
 				if err := svc.Append(ctx, entity.JournalDomainIngest, "ingestComplete", int64(w*1000+i), `{"title":"t"}`); err != nil {
 					errCh <- fmt.Errorf("worker %d: %w", w, err)
 				}

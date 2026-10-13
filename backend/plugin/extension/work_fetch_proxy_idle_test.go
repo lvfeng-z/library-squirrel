@@ -205,7 +205,7 @@ func TestPullReadCloserRead_WindowResetsPerRead(t *testing.T) {
 	}
 	reader := &pullReadCloser{session: session, role: "image"}
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		n, err := reader.Read(make([]byte, 8))
 		if err != nil {
 			t.Fatalf("第 %d 次 Read 不应超时（单次等待在窗口内）: %v", i+1, err)
@@ -246,7 +246,7 @@ func (c *heartbeatThenHangingClient) Create(ctx context.Context, _ *gen.CreateRe
 	beat := make(chan *gen.CreateChunk)
 	go func() {
 		defer close(beat)
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			time.Sleep(20 * time.Millisecond)
 			select {
 			case beat <- heartbeatChunk():

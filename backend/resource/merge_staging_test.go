@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -212,9 +213,7 @@ func (s *mergeStageIngestor) AbortIngest(ctx context.Context, ids []int64) error
 
 func (s *mergeStageIngestor) snapshot() mergeStageIngestSnapshot {
 	journals := make(map[int64]mergeStageJournal, len(s.journals))
-	for k, v := range s.journals {
-		journals[k] = v
-	}
+	maps.Copy(journals, s.journals)
 	commits := make([]mergeStageCommit, len(s.commits))
 	copy(commits, s.commits)
 	return mergeStageIngestSnapshot{nextJournalId: s.nextJournalId, journals: journals, commits: commits}

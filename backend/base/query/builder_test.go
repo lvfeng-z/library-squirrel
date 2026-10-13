@@ -123,7 +123,7 @@ func TestQueryBuilder_BuildWhere_AllOperators(t *testing.T) {
 	testCases := []struct {
 		name     string
 		operator Operator
-		value    interface{}
+		value    any
 	}{
 		{"eq", OpEq, 1},
 		{"ne", OpNe, 1},
@@ -132,7 +132,7 @@ func TestQueryBuilder_BuildWhere_AllOperators(t *testing.T) {
 		{"lt", OpLt, 10},
 		{"lte", OpLte, 10},
 		{"like", OpLike, "test"},
-		{"in", OpIn, []interface{}{1, 2, 3}},
+		{"in", OpIn, []any{1, 2, 3}},
 		{"is_null", OpIsNull, nil},
 		{"is_not_null", OpIsNotNull, nil},
 	}

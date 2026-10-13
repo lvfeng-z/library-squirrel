@@ -295,10 +295,8 @@ func TestIngestJournalConcurrentBothPaths(t *testing.T) {
 
 	const workers = 8
 	var wg sync.WaitGroup
-	for w := 0; w < workers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range workers {
+		wg.Go(func() {
 			if _, err := ingestDec.Ingest(context.Background(), nil, nil, nil, nil); err != nil {
 				t.Errorf("并发导入透传失败: %v", err)
 				return
@@ -306,7 +304,7 @@ func TestIngestJournalConcurrentBothPaths(t *testing.T) {
 			if _, err := saveDec.SaveWorkInfo(context.Background(), nil, nil, nil); err != nil {
 				t.Errorf("并发保存透传失败: %v", err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 

@@ -127,7 +127,7 @@ func TestSetSuppressEnabled(t *testing.T) {
 func TestConcurrent(t *testing.T) {
 	clearSuppress()
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		wg.Add(3)
 		go func() { defer wg.Done(); Suppress("store/work/a.jpg") }()
 		go func() { defer wg.Done(); Release("store/work/a.jpg") }()

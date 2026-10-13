@@ -44,7 +44,7 @@ func (r *LocalAuthorRepository) ListReWorkAuthor(ctx context.Context, workIds []
 	}
 
 	placeholders := make([]string, len(workIds))
-	args := make([]interface{}, len(workIds))
+	args := make([]any, len(workIds))
 	for i, id := range workIds {
 		placeholders[i] = "?"
 		args[i] = id
@@ -109,7 +109,7 @@ func (r *LocalAuthorRepository) ListRankedLocalAuthorWithWorkIdByWorkIds(ctx con
 	}
 
 	placeholders := make([]string, len(workIds))
-	args := make([]interface{}, len(workIds))
+	args := make([]any, len(workIds))
 	for i, id := range workIds {
 		placeholders[i] = "?"
 		args[i] = id
@@ -153,7 +153,7 @@ func (r *LocalAuthorRepository) PageByNameKeyword(ctx context.Context, nameKeywo
 func (r *LocalAuthorRepository) UpdateAvatarStoreId(ctx context.Context, localAuthorId int64, storeId sql.NullInt64) error {
 	return r.dbFromCtx(ctx).WithContext(ctx).Model(new(entity.LocalAuthor)).
 		Where("id = ?", localAuthorId).
-		Updates(map[string]interface{}{"avatar_store_id": storeId, "update_time": util.GetCurrentTimestamp()}).Error
+		Updates(map[string]any{"avatar_store_id": storeId, "update_time": util.GetCurrentTimestamp()}).Error
 }
 
 // ListSelectItems 查询选择项列表

@@ -80,7 +80,7 @@ func (r *WorkTaskRepository) ListByIds(ctx context.Context, ids []int64) (map[in
 	if len(ids) == 0 {
 		return result, nil
 	}
-	vals := make([]interface{}, len(ids))
+	vals := make([]any, len(ids))
 	for i, id := range ids {
 		vals[i] = id
 	}

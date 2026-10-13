@@ -242,8 +242,7 @@ func TestRouteNoCandidates(t *testing.T) {
 	if !errors.Is(err, ErrNoCandidates) {
 		t.Fatalf("零候选应返回 ErrNoCandidates，实际: %v", err)
 	}
-	var notApplicable *AllNotApplicableError
-	if errors.As(err, &notApplicable) {
+	if _, ok := errors.AsType[*AllNotApplicableError](err); ok {
 		t.Fatalf("零候选不应收口为全不适配: %v", err)
 	}
 	if len(a.invoked) != 0 {

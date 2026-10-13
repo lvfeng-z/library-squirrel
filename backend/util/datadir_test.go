@@ -219,7 +219,7 @@ func TestResolveDataDirIdempotentCreate(t *testing.T) {
 	if err := os.MkdirAll(want, 0755); err != nil {
 		t.Fatalf("预建目录失败: %v", err)
 	}
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		got, err := resolveDataDir([]string{"app.exe"})
 		resolveOK(t, got, err, want)
 	}

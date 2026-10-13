@@ -421,7 +421,7 @@ func TestExportSweepUnreachableTargetTolerated(t *testing.T) {
 		})
 	require.NoError(t, err)
 
-	for i := 0; i < 2; i++ { // 首次清扫 + 幂等复扫
+	for range 2 { // 首次清扫 + 幂等复扫
 		require.NoError(t, staging.SweepAtStartup(context.Background(), workDir, nil),
 			"目标盘不可达不应令清扫报错")
 	}

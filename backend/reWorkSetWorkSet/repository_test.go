@@ -1,7 +1,7 @@
 package reWorkSetWorkSet
 
 import (
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -21,7 +21,7 @@ func TestBuildParentCaseExpression(t *testing.T) {
 			}
 		}
 		// parentIds 须包含全部 key
-		sort.Slice(parentIds, func(i, j int) bool { return parentIds[i] < parentIds[j] })
+		slices.Sort(parentIds)
 		if !equalInt64(parentIds, []int64{1, 2, 3}) {
 			t.Errorf("parentIds = %v, want [1 2 3]", parentIds)
 		}

@@ -76,7 +76,7 @@ func TestQueryWithWorkTaskJoin(t *testing.T) {
 
 	// 领域列过滤：site_work_id 命中单行
 	got, err := svc.Page(ctx, &model.Page[entity.Task]{PageNumber: 1, PageSize: 10}, TaskQueryDTO{
-		SiteWorkID: query.QueryAttribute[string]{Value: strPtr("sw-a")},
+		SiteWorkID: query.QueryAttribute[string]{Value: new("sw-a")},
 	})
 	if err != nil {
 		t.Fatalf("领域列过滤分页失败: %v", err)
@@ -119,4 +119,5 @@ func TestQueryWithWorkTaskJoin(t *testing.T) {
 	}
 }
 
-func strPtr(s string) *string { return &s }
+//go:fix inline
+func strPtr(s string) *string { return new(s) }

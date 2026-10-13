@@ -311,7 +311,7 @@ func (s *Service) buildPageOptionCore(query TaskQueryDTO, page, pageSize int) (*
 		}
 
 		if len(matchingIDs) > 0 {
-			vals := make([]interface{}, len(matchingIDs))
+			vals := make([]any, len(matchingIDs))
 			for i, id := range matchingIDs {
 				vals[i] = id
 			}
@@ -329,7 +329,7 @@ func (s *Service) buildPageOptionCore(query TaskQueryDTO, page, pageSize int) (*
 	}
 
 	// 稳态：收集内存中状态不同的 ID（需排除，防止 DB 旧状态干扰）
-	var excludeIDs []interface{}
+	var excludeIDs []any
 	for id, state := range states {
 		if state != targetStatus {
 			excludeIDs = append(excludeIDs, id)
@@ -984,8 +984,7 @@ func (s *Service) createTaskByURL(ctx context.Context, url string, entry taskEnt
 
 	resp, err := route.Route(ctx, &taskRouteAdapter{service: s, url: url, candidates: candidates, chosen: choice})
 	if err != nil {
-		var failure *candidateFailure
-		if errors.As(err, &failure) {
+		if failure, ok := errors.AsType[*candidateFailure](err); ok {
 			return failure.resp, nil
 		}
 		logger.Log.Warnf("[CreateTaskByURL] 无候选可路由 url=%s: %v", url, err)

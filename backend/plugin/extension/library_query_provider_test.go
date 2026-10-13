@@ -128,7 +128,7 @@ func TestQueryWorksPaginationClamp(t *testing.T) {
 	p, db := newTestLibraryQuery(t, "")
 	ctx := context.Background()
 	s := seedSite(t, db, "pixiv")
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		seedWork(t, db, s.GetID(), string(rune('a'+i)), string(rune('A'+i)))
 	}
 

@@ -130,7 +130,7 @@ func TestConcurrent(t *testing.T) {
 	r := newReg()
 	ctx := context.Background()
 	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		wg.Add(4)
 		go func() { defer wg.Done(); r.Register(ctx, []int64{1, 2}, "sA") }()
 		go func() { defer wg.Done(); r.Register(ctx, []int64{2, 3}, "sB") }()

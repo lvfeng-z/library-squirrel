@@ -204,6 +204,6 @@ func (s *Settings) SetUpdateTime(time int64) {
 
 // SettingChange 设置变更项
 type SettingChange struct {
-	Path  string      `json:"path"`
-	Value interface{} `json:"value"`
+	Path  string `json:"path"`
+	Value any    `json:"value"`
 }

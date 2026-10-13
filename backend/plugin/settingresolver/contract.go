@@ -62,7 +62,7 @@ func (e *EvalError) Unwrap() error { return e.Err }
 
 // Input resolver 求值输入：该插件的全量设置快照，key 为设置键、value 为 JSON 形状的值。
 type Input struct {
-	Settings map[string]interface{}
+	Settings map[string]any
 }
 
 // Point 条目所属的派生面（契约词汇表中 point 字段的合法取值）。
@@ -109,8 +109,8 @@ type Result struct {
 
 // ValidateOutput 校验脚本返回值的输出形状：结构性不合法时返回 FailureInvalidOutput
 // 错误；条目级不合法仅拒收该条并记入 Rejected，不株连其余条目。
-func ValidateOutput(raw interface{}) (*Result, error) {
-	obj, ok := raw.(map[string]interface{})
+func ValidateOutput(raw any) (*Result, error) {
+	obj, ok := raw.(map[string]any)
 	if !ok {
 		return nil, &EvalError{
 			Kind:    FailureInvalidOutput,
@@ -123,7 +123,7 @@ func ValidateOutput(raw interface{}) (*Result, error) {
 			Message: fmt.Sprintf("version 字段不是 1（唯一受支持的契约版本），实际 %v", obj["version"]),
 		}
 	}
-	rawEntries, ok := obj["entries"].([]interface{})
+	rawEntries, ok := obj["entries"].([]any)
 	if !ok {
 		return nil, &EvalError{
 			Kind:    FailureInvalidOutput,
@@ -144,8 +144,8 @@ func ValidateOutput(raw interface{}) (*Result, error) {
 }
 
 // validateEntry 校验单条条目：返回解析出的条目；不合法时条目为 nil 并返回拒收原因。
-func validateEntry(raw interface{}) (*Entry, string) {
-	item, ok := raw.(map[string]interface{})
+func validateEntry(raw any) (*Entry, string) {
+	item, ok := raw.(map[string]any)
 	if !ok {
 		return nil, fmt.Sprintf("条目不是对象：%T", raw)
 	}
@@ -178,7 +178,7 @@ func validateEntry(raw interface{}) (*Entry, string) {
 }
 
 // versionIsOne 判断 version 字段是否为数值 1（引擎导出的数字可能是 int 或 float64）。
-func versionIsOne(v interface{}) bool {
+func versionIsOne(v any) bool {
 	switch n := v.(type) {
 	case int:
 		return n == 1

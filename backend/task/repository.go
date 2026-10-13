@@ -234,12 +234,12 @@ func (r *TaskRepository) BatchSetStatus(ctx context.Context, statuses map[int64]
 	}
 
 	ids := make([]int64, 0, len(statuses))
-	statusCases := ""
+	var statusCases strings.Builder
 	errMsgCases := ""
 	args := make([]any, 0, len(statuses)*4+len(statuses))
 	for id := range statuses {
 		ids = append(ids, id)
-		statusCases += "WHEN id = ? THEN ? "
+		statusCases.WriteString("WHEN id = ? THEN ? ")
 		errMsgCases += "WHEN id = ? THEN ? "
 	}
 	// status CASE 参数
@@ -255,7 +255,7 @@ func (r *TaskRepository) BatchSetStatus(ctx context.Context, statuses map[int64]
 		args = append(args, id)
 	}
 
-	statement := "UPDATE task SET status = CASE " + statusCases + "END, error_message = CASE " + errMsgCases + "END WHERE id IN (" + strings.Repeat("?,", len(ids)-1) + "?)"
+	statement := "UPDATE task SET status = CASE " + statusCases.String() + "END, error_message = CASE " + errMsgCases + "END WHERE id IN (" + strings.Repeat("?,", len(ids)-1) + "?)"
 	result := r.GORM().WithContext(ctx).Exec(statement, args...)
 
 	return result.Error

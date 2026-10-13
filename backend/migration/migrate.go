@@ -117,7 +117,7 @@ func AutoMigrate(db *gorm.DB) error {
 	}
 
 	// 定义所有需要迁移的模型(按依赖顺序排列)
-	models := []interface{}{
+	models := []any{
 		// 基础表(无外键依赖)
 		&entity2.Backup{},
 		entity2.NewLocalAuthor(),

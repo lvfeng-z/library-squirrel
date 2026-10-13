@@ -96,7 +96,7 @@ func ValidateResolverForInstall(manifest *dto.PluginManifest, scriptBytes []byte
 
 	declared := declaredEntries(manifest)
 	defaults := settingDefaults(manifest)
-	input := make(map[string]interface{}, len(defaults))
+	input := make(map[string]any, len(defaults))
 	for key, def := range defaults {
 		input[key] = def
 	}

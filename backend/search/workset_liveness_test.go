@@ -3,6 +3,7 @@ package search
 import (
 	"context"
 	"database/sql"
+	"slices"
 	"testing"
 
 	"github.com/library-squirrel/backend/base/model/dto"
@@ -112,10 +113,8 @@ func TestWorkSetConditionFiltersDeleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("查询失败: %v", err)
 	}
-	for _, id := range ids {
-		if id == f.w2 {
-			return // 已删集成员 w2 出现 = 活性过滤生效
-		}
+	if slices.Contains(ids, f.w2) {
+		return // 已删集成员 w2 出现 = 活性过滤生效
 	}
 	t.Fatal("已删作品集的成员应不被「不在集 X 中」条件排除，w2 未出现在结果")
 }

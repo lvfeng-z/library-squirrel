@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -705,9 +706,7 @@ func (ing *ingestor) ingestEntities(
 
 	// 作品：查重命中并入重映射（作品集封面解析需要），待建作品批量落库
 	workRemap := make(map[int64]int64, len(existingWorks)+len(toCreate))
-	for manifestID, localID := range existingWorks {
-		workRemap[manifestID] = localID
-	}
+	maps.Copy(workRemap, existingWorks)
 	if len(toCreate) > 0 {
 		workRows := make([]*entity.Work, 0, len(toCreate))
 		for _, w := range toCreate {

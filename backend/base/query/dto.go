@@ -30,9 +30,9 @@ const (
 
 // Condition 定义单个查询条件
 type Condition struct {
-	Field    string      `json:"field"`
-	Operator Operator    `json:"operator"`
-	Value    interface{} `json:"value"`
+	Field    string   `json:"field"`
+	Operator Operator `json:"operator"`
+	Value    any      `json:"value"`
 }
 
 // WhereDTO 用于 WHERE 子句的 DTO，支持嵌套的 AND/OR 逻辑组合
@@ -66,7 +66,7 @@ func (c *ConditionOrGroup) UnmarshalJSON(data []byte) error {
 	var cond Condition
 	if err := json.Unmarshal(data, &cond); err == nil {
 		// 检查是否有 type 和 conditions 字段（表明是嵌套的 WhereDTO）
-		var m map[string]interface{}
+		var m map[string]any
 		if err := json.Unmarshal(data, &m); err == nil {
 			if _, hasType := m["type"]; hasType {
 				if _, hasConditions := m["conditions"]; hasConditions {

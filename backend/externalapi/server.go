@@ -192,8 +192,7 @@ func (s *Server) handleOperation(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBodyBytes))
 	if err != nil {
-		var maxBytesErr *http.MaxBytesError
-		if errors.As(err, &maxBytesErr) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			writeJSON(w, http.StatusRequestEntityTooLarge, model.Error[any]("请求体超过大小上限"))
 			return
 		}

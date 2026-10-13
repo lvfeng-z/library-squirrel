@@ -103,7 +103,7 @@ func (r *WorkRepository) ClearLocalAuthorOnWorks(ctx context.Context, localAutho
 func (r *WorkRepository) ListDeletedBefore(ctx context.Context, expireBefore int64) ([]*domain.Work, error) {
 	return r.List(ctx, &database.QueryOption{
 		Conditions: []clause.Expression{
-			clause.Expr{SQL: "deleted_at > 0 AND deleted_at < ?", Vars: []interface{}{expireBefore}},
+			clause.Expr{SQL: "deleted_at > 0 AND deleted_at < ?", Vars: []any{expireBefore}},
 		},
 		IncludeDeleted: true,
 	})
@@ -122,10 +122,7 @@ func (r *WorkRepository) ListBySiteAndSiteWorkIDs(ctx context.Context, siteIds [
 	}
 	var all []*domain.Work
 	for start := 0; start < len(siteIds); start += batchSizeOfSiteWorkQuery {
-		end := start + batchSizeOfSiteWorkQuery
-		if end > len(siteIds) {
-			end = len(siteIds)
-		}
+		end := min(start+batchSizeOfSiteWorkQuery, len(siteIds))
 		conds := make([]clause.Expression, 0, end-start)
 		for i := start; i < end; i++ {
 			conds = append(conds, clause.And(
@@ -170,7 +167,7 @@ func (r *WorkRepository) PageByFilter(ctx context.Context, filter *WorkQueryFilt
 		conds = append(conds, clause.Expr{
 			SQL: `(EXISTS (SELECT 1 FROM re_work_author rwa JOIN local_author la ON rwa.local_author_id = la.id WHERE rwa.work_id = work.id AND la.author_name LIKE ?)
 				OR EXISTS (SELECT 1 FROM re_work_author rwa JOIN site_author sa ON rwa.site_author_id = sa.id WHERE rwa.work_id = work.id AND sa.author_name LIKE ?))`,
-			Vars: []interface{}{authorLike, authorLike},
+			Vars: []any{authorLike, authorLike},
 		})
 	}
 	if filter.TagKeyword != "" {
@@ -178,7 +175,7 @@ func (r *WorkRepository) PageByFilter(ctx context.Context, filter *WorkQueryFilt
 		conds = append(conds, clause.Expr{
 			SQL: `(EXISTS (SELECT 1 FROM re_work_tag rwt JOIN local_tag lt ON rwt.local_tag_id = lt.id WHERE rwt.work_id = work.id AND lt.local_tag_name LIKE ?)
 				OR EXISTS (SELECT 1 FROM re_work_tag rwt JOIN site_tag st ON rwt.site_tag_id = st.id WHERE rwt.work_id = work.id AND st.site_tag_name LIKE ?))`,
-			Vars: []interface{}{tagLike, tagLike},
+			Vars: []any{tagLike, tagLike},
 		})
 	}
 	if filter.CreateTimeStart > 0 {
@@ -188,14 +185,12 @@ func (r *WorkRepository) PageByFilter(ctx context.Context, filter *WorkQueryFilt
 		conds = append(conds, clause.Lte{Column: "create_time", Value: filter.CreateTimeEnd})
 	}
 	return r.Page(ctx, &database.PageOption{
-		QueryOption: database.QueryOption{
-			Conditions: conds,
-			OrderBy: []clause.Expression{
-				clause.OrderBy{Columns: []clause.OrderByColumn{
-					{Column: clause.Column{Name: "create_time"}, Desc: true},
-					{Column: clause.Column{Name: "id"}, Desc: true},
-				}},
-			},
+		Conditions: conds,
+		OrderBy: []clause.Expression{
+			clause.OrderBy{Columns: []clause.OrderByColumn{
+				{Column: clause.Column{Name: "create_time"}, Desc: true},
+				{Column: clause.Column{Name: "id"}, Desc: true},
+			}},
 		},
 		Page:     page,
 		PageSize: pageSize,
@@ -203,8 +198,8 @@ func (r *WorkRepository) PageByFilter(ctx context.Context, filter *WorkQueryFilt
 }
 
 // toInterfaceSlice converts int64 slice to interface{} slice
-func toInterfaceSlice(ids []int64) []interface{} {
-	result := make([]interface{}, len(ids))
+func toInterfaceSlice(ids []int64) []any {
+	result := make([]any, len(ids))
 	for i, id := range ids {
 		result[i] = id
 	}

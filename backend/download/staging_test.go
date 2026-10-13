@@ -287,7 +287,7 @@ func TestCommitAndFinish_RenamesCreatesRowsAndFinishes(t *testing.T) {
 
 	specs := []*sdkdto.StoreSpec{
 		{Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png", Size: 3,
-			Continuable: boolPtr(true),
+			Continuable: new(true),
 			ReadCloser:  io.NopCloser(bytes.NewReader([]byte("abc")))},
 		{Role: entity.StoreTypeThumbnail, Generation: entity.GenerationDerived, Format: "jpg", Size: 0,
 			ReadCloser: io.NopCloser(bytes.NewReader([]byte("t")))},
@@ -446,7 +446,7 @@ func TestCommitTxFailureAbortsByDeclaredAction(t *testing.T) {
 
 	specs := []*sdkdto.StoreSpec{
 		{Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png", Size: 3,
-			Continuable: boolPtr(true),
+			Continuable: new(true),
 			ReadCloser:  io.NopCloser(bytes.NewReader([]byte("abc")))},
 		{Role: entity.StoreTypeThumbnail, Generation: entity.GenerationDerived, Format: "jpg", Size: 0,
 			ReadCloser: io.NopCloser(bytes.NewReader([]byte("t")))},
@@ -763,7 +763,7 @@ func TestReplaceMatrix_FailureDuringCommit(t *testing.T) {
 	sess.pluginExec = &fakePluginExec{
 		startSpecs: []*sdkdto.StoreSpec{
 			{Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png", Size: 3,
-				Continuable: boolPtr(true),
+				Continuable: new(true),
 				ReadCloser:  io.NopCloser(bytes.NewReader([]byte("new")))},
 			{Role: entity.StoreTypeThumbnail, Generation: entity.GenerationDerived, Format: "jpg", Size: 0,
 				ReadCloser: io.NopCloser(bytes.NewReader([]byte("t")))},

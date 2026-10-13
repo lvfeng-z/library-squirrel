@@ -9,6 +9,7 @@ package download
 import (
 	"errors"
 	"fmt"
+	"maps"
 
 	"github.com/library-squirrel/backend/base/logger"
 	"github.com/library-squirrel/backend/base/model/dto"
@@ -146,9 +147,7 @@ func (sess *execSession) resumeFromPersistedState() comboResult {
 			return comboFinished
 		}
 		reSeq := pairRegenSpecs(uncovered, rs)
-		for spec, seq := range reSeq {
-			seqBySpec[spec] = seq
-		}
+		maps.Copy(seqBySpec, reSeq)
 		regenSpecs = rs
 	}
 	specs = append(specs, regenSpecs...)

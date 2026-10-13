@@ -136,7 +136,7 @@ func (r *SiteTagRepository) ListBySiteTagIds(ctx context.Context, siteTagIds []i
 	}
 
 	placeholders := make([]string, len(siteTagIds))
-	args := make([]interface{}, len(siteTagIds))
+	args := make([]any, len(siteTagIds))
 	for i, id := range siteTagIds {
 		placeholders[i] = "?"
 		args[i] = id
@@ -160,14 +160,14 @@ func (r *SiteTagRepository) UpdateBindLocalTag(ctx context.Context, localTagId *
 	}
 
 	placeholders := make([]string, len(siteTagIds))
-	args := make([]interface{}, len(siteTagIds))
+	args := make([]any, len(siteTagIds))
 	for i, id := range siteTagIds {
 		placeholders[i] = "?"
 		args[i] = id
 	}
 
 	query := fmt.Sprintf(`UPDATE site_tag SET local_tag_id = ? WHERE id IN (%s)`, strings.Join(placeholders, ","))
-	args = append([]interface{}{localTagId}, args...)
+	args = append([]any{localTagId}, args...)
 
 	result := r.dbFromCtx(ctx).WithContext(ctx).Exec(query, args...)
 	if result.Error != nil {

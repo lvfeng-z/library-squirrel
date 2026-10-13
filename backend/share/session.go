@@ -25,6 +25,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -130,8 +132,7 @@ func dialRelayEndpoint(ep relayEndpoint) (net.Conn, error) {
 		Config:    &tls.Config{ServerName: host},
 	}).Dial("tcp", ep.Addr)
 	if err != nil {
-		var certErr *tls.CertificateVerificationError
-		if errors.As(err, &certErr) {
+		if _, ok := errors.AsType[*tls.CertificateVerificationError](err); ok {
 			return nil, fmt.Errorf("中继 TLS 证书校验失败（证书不受信任或与中继地址不匹配）: %w", err)
 		}
 		return nil, err
@@ -291,13 +292,7 @@ func newShareSession(cfg sessionConfig) (*shareSession, error) {
 		for r := range w.Resources {
 			for _, mount := range w.Resources[r].Stores {
 				ids := s.storeWorkIndex[mount.StoreID]
-				dup := false
-				for _, id := range ids {
-					if id == w.ID {
-						dup = true
-						break
-					}
-				}
+				dup := slices.Contains(ids, w.ID)
 				if !dup {
 					s.storeWorkIndex[mount.StoreID] = append(ids, w.ID)
 				}
@@ -431,11 +426,12 @@ func (s *shareSession) metaSource() string {
 	if len(names) == 0 {
 		return "本地资源库"
 	}
-	src := names[0]
+	var src strings.Builder
+	src.WriteString(names[0])
 	for _, n := range names[1:] {
-		src += "/" + n
+		src.WriteString("/" + n)
 	}
-	return export.SanitizeMetaText(src, 100)
+	return export.SanitizeMetaText(src.String(), 100)
 }
 
 // metaWorksName 落地页作品名列表：按 manifest.Works 顺序取净化后作品名（与收件侧子任务命名一致；

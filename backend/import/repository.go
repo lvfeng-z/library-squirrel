@@ -252,10 +252,7 @@ func createBatchPreservingTimestamps[T model.Entity](ctx context.Context, db *go
 		return nil
 	}
 	for start := 0; start < len(rows); start += batchCreateChunk {
-		end := start + batchCreateChunk
-		if end > len(rows) {
-			end = len(rows)
-		}
+		end := min(start+batchCreateChunk, len(rows))
 		chunk := rows[start:end]
 		if err := db.WithContext(ctx).Create(&chunk).Error; err != nil {
 			return err

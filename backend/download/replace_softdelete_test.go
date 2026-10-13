@@ -261,7 +261,7 @@ func TestSoftDeleteReplacedStoresDispatchesByCompletion(t *testing.T) {
 		makeReplaceStoreRow(800, 1, 0, 0, "store/work/a/已完成.png"),    // → 备份软删
 		makeReplaceStoreRow(801, 0, 0, 0, "store/work/a/未完成.png"),    // → 废弃软删
 		makeReplaceStoreRow(802, 1, 1000, 99, "store/work/a/残留.png"), // 死行跳过
-		makeReplaceStoreRow(803, 1, 0, 0, "store/thumb/t.png"),           // 角色外不动
+		makeReplaceStoreRow(803, 1, 0, 0, "store/thumb/t.png"),       // 角色外不动
 	}
 
 	if err := sess.softDeleteReplacedStores(); err != nil {
@@ -414,7 +414,7 @@ func TestResumeCommitRegistersNoRollbackLedger(t *testing.T) {
 	exec := &fakePluginExec{
 		resumeSpecs: []*sdkdto.StoreSpec{{
 			Role: entity.StoreTypeImage, Generation: entity.GenerationDownloaded, Format: "png",
-			Size: 10, Continuable: boolPtr(true),
+			Size: 10, Continuable: new(true),
 			ReadCloser: io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("b"), 6))),
 		}},
 		resumeResp: &sdkdto.WorkResponse{},

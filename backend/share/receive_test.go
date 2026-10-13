@@ -386,12 +386,12 @@ func buildTwoWorkModel(t *testing.T, workDir string) (*export.ExportModel, map[s
 	}
 	manifest := &export.Manifest{
 		SchemaVersion: export.SchemaVersion,
-		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
+		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: new("测试站")}},
 		Works: []export.WorkRecord{
-			{ID: 1, SiteID: i64Ptr(1), SiteWorkID: strPtr("1001"), SiteWorkName: strPtr("作品A"),
+			{ID: 1, SiteID: i64Ptr(1), SiteWorkID: new("1001"), SiteWorkName: new("作品A"),
 				Resources: []export.ResourceRecord{{ID: 11, ResourceType: "image",
 					Stores: []export.StoreMount{{StoreType: "image", Generation: "downloaded", StoreSeq: 1, StoreID: 101}}}}},
-			{ID: 2, SiteID: i64Ptr(1), SiteWorkID: strPtr("1002"), SiteWorkName: strPtr("作品B"),
+			{ID: 2, SiteID: i64Ptr(1), SiteWorkID: new("1002"), SiteWorkName: new("作品B"),
 				Resources: []export.ResourceRecord{{ID: 12, ResourceType: "image",
 					Stores: []export.StoreMount{{StoreType: "image", Generation: "downloaded", StoreSeq: 1, StoreID: 201}}}}},
 		},
@@ -426,9 +426,9 @@ func buildAllPresentModel(t *testing.T, workDir string) (*export.ExportModel, ma
 	}
 	manifest := &export.Manifest{
 		SchemaVersion: export.SchemaVersion,
-		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
+		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: new("测试站")}},
 		Works: []export.WorkRecord{{
-			ID: 1, SiteID: i64Ptr(1), SiteWorkID: strPtr("1001"), SiteWorkName: strPtr("测试作品1001"),
+			ID: 1, SiteID: i64Ptr(1), SiteWorkID: new("1001"), SiteWorkName: new("测试作品1001"),
 			Resources: []export.ResourceRecord{{
 				ID: 11, ResourceType: "image",
 				Stores: []export.StoreMount{
@@ -463,9 +463,9 @@ func buildBigFileModel(t *testing.T, workDir string) (*export.ExportModel, map[s
 	}
 	manifest := &export.Manifest{
 		SchemaVersion: export.SchemaVersion,
-		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: strPtr("测试站")}},
+		Sites:         []export.SiteRecord{{ID: 1, SiteKey: identity.Pixiv.Key, SiteName: new("测试站")}},
 		Works: []export.WorkRecord{{
-			ID: 1, SiteID: i64Ptr(1), SiteWorkID: strPtr("1001"), SiteWorkName: strPtr("测试作品1001"),
+			ID: 1, SiteID: i64Ptr(1), SiteWorkID: new("1001"), SiteWorkName: new("测试作品1001"),
 			Resources: []export.ResourceRecord{{
 				ID: 11, ResourceType: "image",
 				Stores: []export.StoreMount{{StoreType: "image", Generation: "downloaded", StoreSeq: 1, StoreID: 101}},

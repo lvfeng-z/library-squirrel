@@ -161,11 +161,11 @@ func (p *ffmpegProgressParser) parse(line string) {
 // parseDurationLine 从 ffmpeg banner 行（形如 "  Duration: 00:01:23.45, ..."）提取时长秒数。
 func parseDurationLine(line string) (float64, bool) {
 	const prefix = "Duration:"
-	idx := strings.Index(line, prefix)
-	if idx < 0 {
+	_, after, ok := strings.Cut(line, prefix)
+	if !ok {
 		return 0, false
 	}
-	rest := strings.TrimSpace(line[idx+len(prefix):])
+	rest := strings.TrimSpace(after)
 	if comma := strings.IndexByte(rest, ','); comma >= 0 {
 		rest = rest[:comma]
 	}

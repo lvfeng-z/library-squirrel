@@ -16,7 +16,7 @@ type Converter struct {
 }
 
 // NewConverter 创建转换器
-func NewConverter(model interface{}) *Converter {
+func NewConverter(model any) *Converter {
 	return &Converter{
 		mapper: NewFieldMapper(model),
 	}
@@ -24,7 +24,7 @@ func NewConverter(model interface{}) *Converter {
 
 // ToQueryOption 将 DTO 转换为 QueryOption
 // 只处理数据库字段，非数据库字段会被跳过
-func (c *Converter) ToQueryOption(dto interface{}, tableAlias *string) (*database.QueryOption, error) {
+func (c *Converter) ToQueryOption(dto any, tableAlias *string) (*database.QueryOption, error) {
 	fields, err := c.mapper.CollectDbFields(dto)
 	if err != nil {
 		return nil, err
@@ -131,19 +131,17 @@ func (c *Converter) ToQueryOption(dto interface{}, tableAlias *string) (*databas
 }
 
 // ToPageOption 将 DTO 转换为 PageOption
-func (c *Converter) ToPageOption(dto interface{}, page, pageSize int, alias *string) (*database.PageOption, error) {
+func (c *Converter) ToPageOption(dto any, page, pageSize int, alias *string) (*database.PageOption, error) {
 	queryOpt, err := c.ToQueryOption(dto, alias)
 	if err != nil {
 		return nil, err
 	}
 
 	return &database.PageOption{
-		QueryOption: database.QueryOption{
-			Conditions: queryOpt.Conditions,
-			OrderBy:    queryOpt.OrderBy,
-		},
-		Page:     page,
-		PageSize: pageSize,
+		Conditions: queryOpt.Conditions,
+		OrderBy:    queryOpt.OrderBy,
+		Page:       page,
+		PageSize:   pageSize,
 	}, nil
 }
 
@@ -174,9 +172,9 @@ func (c *Converter) buildCondition(cond Condition, alias *string) (clause.Expres
 	case OpIn:
 		return clause.IN{Column: col, Values: toInterfaceSlice(cond.Value)}, nil
 	case OpIsNull:
-		return clause.Expr{SQL: "? IS NULL", Vars: []interface{}{col}}, nil
+		return clause.Expr{SQL: "? IS NULL", Vars: []any{col}}, nil
 	case OpIsNotNull:
-		return clause.Expr{SQL: "? IS NOT NULL", Vars: []interface{}{col}}, nil
+		return clause.Expr{SQL: "? IS NOT NULL", Vars: []any{col}}, nil
 	default:
 		return nil, nil
 	}
@@ -192,9 +190,9 @@ func (c *Converter) buildLike(cond Condition, col clause.Column) (clause.Express
 }
 
 // toInterfaceSlice 将值转换为 []interface{}
-func toInterfaceSlice(v interface{}) []interface{} {
-	if vals, ok := v.([]interface{}); ok {
+func toInterfaceSlice(v any) []any {
+	if vals, ok := v.([]any); ok {
 		return vals
 	}
-	return []interface{}{v}
+	return []any{v}
 }

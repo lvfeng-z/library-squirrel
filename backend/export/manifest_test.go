@@ -27,23 +27,23 @@ func TestManifestRoundTrip(t *testing.T) {
 			FileCount:        1,
 		},
 		Sites: []SiteRecord{
-			{ID: 10, SiteKey: "pixiv", SiteName: strp("pixiv"), Homepage: strp("https://pixiv.net"), CreateTime: 1, UpdateTime: 2},
+			{ID: 10, SiteKey: "pixiv", SiteName: new("pixiv"), Homepage: new("https://pixiv.net"), CreateTime: 1, UpdateTime: 2},
 		},
 		LocalAuthors: []AuthorRecord{
-			{ID: 20, Name: strp("画师"), Introduce: strp("简介"), LastUse: int64p(100), CreateTime: 1, UpdateTime: 2},
+			{ID: 20, Name: new("画师"), Introduce: new("简介"), LastUse: int64p(100), CreateTime: 1, UpdateTime: 2},
 		},
 		SiteAuthors: []AuthorRecord{
-			{ID: 30, Name: strp("站画师"), SiteID: int64p(10), SiteAuthorID: strp("sa-1"), FixedAuthorName: strp("固定名"), Homepage: strp("https://x.com"), LocalAuthorID: int64p(20), CreateTime: 1, UpdateTime: 2},
+			{ID: 30, Name: new("站画师"), SiteID: int64p(10), SiteAuthorID: new("sa-1"), FixedAuthorName: new("固定名"), Homepage: new("https://x.com"), LocalAuthorID: int64p(20), CreateTime: 1, UpdateTime: 2},
 		},
 		LocalTags: []TagRecord{
-			{ID: 40, Name: strp("R-18"), BaseLocalTagID: int64p(41), Description: strp("成人"), LastUse: int64p(200), CreateTime: 1, UpdateTime: 2},
+			{ID: 40, Name: new("R-18"), BaseLocalTagID: int64p(41), Description: new("成人"), LastUse: int64p(200), CreateTime: 1, UpdateTime: 2},
 		},
 		SiteTags: []TagRecord{
-			{ID: 50, Name: strp("女仆"), SiteID: int64p(10), SiteTagID: &siteTagID, LocalTagID: int64p(40), CreateTime: 1, UpdateTime: 2},
+			{ID: 50, Name: new("女仆"), SiteID: int64p(10), SiteTagID: &siteTagID, LocalTagID: int64p(40), CreateTime: 1, UpdateTime: 2},
 		},
 		WorkSets: []WorkSetRecord{
 			{
-				ID: 60, SiteID: int64p(10), SiteWorkSetName: strp("收藏夹"), SiteAuthorID: strp("sa-1"),
+				ID: 60, SiteID: int64p(10), SiteWorkSetName: new("收藏夹"), SiteAuthorID: new("sa-1"),
 				CoverWorkID: int64p(70), CreateTime: 1, UpdateTime: 2,
 				Parents: []WorkSetParentEdge{
 					{ParentWorkSetID: 61, SortOrder: int64p(3), SiteSortOrder: int64p(1)},
@@ -52,12 +52,12 @@ func TestManifestRoundTrip(t *testing.T) {
 		},
 		Works: []WorkRecord{
 			{
-				ID: 70, SiteID: int64p(10), SiteWorkID: &siteWorkID, SiteWorkName: strp("作品名"),
-				SiteAuthorID: strp("sa-1"), LocalAuthorID: int64p(20), LastView: int64p(300),
+				ID: 70, SiteID: int64p(10), SiteWorkID: &siteWorkID, SiteWorkName: new("作品名"),
+				SiteAuthorID: new("sa-1"), LocalAuthorID: int64p(20), LastView: int64p(300),
 				CreateTime: 1, UpdateTime: 2,
 				Resources: []ResourceRecord{
 					{
-						ID: 80, TaskID: int64p(90), SuggestName: strp("p1"), ResourceComplete: int64p(1),
+						ID: 80, TaskID: int64p(90), SuggestName: new("p1"), ResourceComplete: int64p(1),
 						ResourceType: "image", CreateTime: 1, UpdateTime: 2,
 						Stores: []StoreMount{
 							{StoreType: "image", Generation: "downloaded", StoreSeq: 0, StoreID: 100},
@@ -65,10 +65,10 @@ func TestManifestRoundTrip(t *testing.T) {
 					},
 				},
 				TagLinks: []TagLink{
-					{TagType: 1, TagID: 50, Namespace: strp("character")},
+					{TagType: 1, TagID: 50, Namespace: new("character")},
 				},
 				AuthorLinks: []AuthorLink{
-					{AuthorType: 1, AuthorID: 30, RoleName: strp("artist"), SortOrder: int64p(0)},
+					{AuthorType: 1, AuthorID: 30, RoleName: new("artist"), SortOrder: int64p(0)},
 				},
 				WorkSetLinks: []WorkSetLink{
 					{WorkSetID: 60, SortOrder: int64p(2), SiteSortOrder: int64p(0)},
@@ -114,6 +114,8 @@ func TestManifestEmptyPointerRoundTrip(t *testing.T) {
 	assert.Equal(t, m, back)
 }
 
-func strp(s string) *string { return &s }
+//go:fix inline
+func strp(s string) *string { return new(s) }
 
-func int64p(i int64) *int64 { return &i }
+//go:fix inline
+func int64p(i int64) *int64 { return new(i) }

@@ -1464,7 +1464,7 @@ func TestCreateTaskByURL_ProgrammaticEntryUsesFullKeyOrder(t *testing.T) {
 		}}, listenerSvc)
 
 	const rounds = 8
-	for i := 0; i < rounds; i++ {
+	for i := range rounds {
 		resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
 		if err != nil {
 			t.Fatalf("第 %d 次 CreateTaskByURL 返回错误: %v", i, err)

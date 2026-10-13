@@ -214,15 +214,13 @@ func reportReceiveError(h taskManager.StrategyHandle, ctx context.Context, err e
 
 // receiveUserMessage 错误 → 用户可读文案（中继拨号分类/流内错误/截断/透传）
 func receiveUserMessage(err error) string {
-	var de *relayDialError
-	if errors.As(err, &de) {
+	if de, ok := errors.AsType[*relayDialError](err); ok {
 		if msg, _ := relayDialFailMessage(err); msg != "" {
 			return msg
 		}
 		return de.Error()
 	}
-	var ae *streamAppError
-	if errors.As(err, &ae) {
+	if ae, ok := errors.AsType[*streamAppError](err); ok {
 		switch ae.code {
 		case streamErrNotFound:
 			return "分享方数据与清单不一致，无法完成拉取"
@@ -528,7 +526,7 @@ func safeEntryPath(p string) bool {
 	if p == "" || strings.HasPrefix(p, "/") || strings.Contains(p, "\\") {
 		return false
 	}
-	for _, seg := range strings.Split(p, "/") {
+	for seg := range strings.SplitSeq(p, "/") {
 		if seg == "" || seg == "." || seg == ".." {
 			return false
 		}

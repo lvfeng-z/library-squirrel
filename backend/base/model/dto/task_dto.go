@@ -33,7 +33,7 @@ func AssembleTaskDTO(task *entity2.Task, workTask *entity2.WorkTask, shareTask *
 	// involvedRoles:创建期声明的涉及板块(universe),逗号分隔→切片;NULL/空=nil(前端走兜底集)
 	var involvedRoles []string
 	if workTask.InvolvedRoles.Valid && workTask.InvolvedRoles.String != "" {
-		for _, p := range strings.Split(workTask.InvolvedRoles.String, ",") {
+		for p := range strings.SplitSeq(workTask.InvolvedRoles.String, ",") {
 			if r := strings.TrimSpace(p); r != "" {
 				involvedRoles = append(involvedRoles, r)
 			}

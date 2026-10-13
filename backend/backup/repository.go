@@ -118,11 +118,9 @@ func (r *BackupRepository) PageBackups(ctx context.Context, pageNumber, pageSize
 		conds = append(conds, clause.Not(clause.IN{Column: clause.PrimaryColumn, Values: toAnySlice(excludeIDs[start:end])}))
 	}
 	opt := &database.PageOption{
-		QueryOption: database.QueryOption{
-			Conditions: conds,
-			OrderBy: []clause.Expression{
-				clause.OrderBy{Columns: []clause.OrderByColumn{{Column: clause.Column{Name: "create_time"}, Desc: true}}},
-			},
+		Conditions: conds,
+		OrderBy: []clause.Expression{
+			clause.OrderBy{Columns: []clause.OrderByColumn{{Column: clause.Column{Name: "create_time"}, Desc: true}}},
 		},
 		Page:     pageNumber,
 		PageSize: pageSize,

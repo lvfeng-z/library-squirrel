@@ -3,6 +3,7 @@ package work
 import (
 	"context"
 	"database/sql"
+	"maps"
 	"os"
 	"testing"
 
@@ -54,9 +55,7 @@ func (f *fakeWorkSetRelationWriter) SaveRelation(_ context.Context, rel *entity2
 
 func (f *fakeWorkSetRelationWriter) UpdateSiteSortOrdersForChild(_ context.Context, childWorkSetId int64, parentOrders map[int64]int) error {
 	cp := make(map[int64]int, len(parentOrders))
-	for k, v := range parentOrders {
-		cp[k] = v
-	}
+	maps.Copy(cp, parentOrders)
 	f.updatedOrders = append(f.updatedOrders, fakeUpdatedOrder{childWorkSetId: childWorkSetId, parentOrders: cp})
 	return nil
 }
