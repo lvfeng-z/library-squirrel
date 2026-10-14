@@ -44,14 +44,14 @@ func TestValidateContractVersion(t *testing.T) {
 	}
 }
 
-// TestContractVersionBaseline 契约版本双点基线锚定：SDK 当前版本 17（本地导入作者关联级
-// 角色声明面——LocalAuthorDTO 加可选 RoleName 字段，作品声明携带本地作者时随条目声明
-// 关联级 role，落点为作品-作者关联行、不写作者实体；加字段向前兼容，作为本地导入解析
-// 新能力标识升版），主程序最低支持版本 12（扩展点正名的破坏性分界——本地导入 role
-// 声明不升 min：契约 12 插件在新宿主照常运行），任一侧升版须同步更新本基线
+// TestContractVersionBaseline 契约版本双点基线锚定：SDK 当前版本 18（Create 流意图信号
+// 收尾——CreateChunk 增 CreateIntent 块〔枚举两态：转入解析/已取消 + 提示文案〕，插件经
+// Create 流显式声明零任务的成功收尾，宿主消费为成功零任务 + Msg=文案；加块向前兼容，
+// 作为意图信号新能力标识升版），主程序最低支持版本 12（扩展点正名的破坏性分界——
+// 意图信号不升 min：契约 12 插件在新宿主照常运行），任一侧升版须同步更新本基线
 func TestContractVersionBaseline(t *testing.T) {
-	if pluginsdktransport.ContractVersion != 17 {
-		t.Errorf("SDK 当前契约版本 = %d, 期望 17", pluginsdktransport.ContractVersion)
+	if pluginsdktransport.ContractVersion != 18 {
+		t.Errorf("SDK 当前契约版本 = %d, 期望 18", pluginsdktransport.ContractVersion)
 	}
 	if minSupportedContractVersion != 12 {
 		t.Errorf("最低支持契约版本 = %d, 期望 12", minSupportedContractVersion)

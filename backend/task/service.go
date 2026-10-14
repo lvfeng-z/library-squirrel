@@ -925,9 +925,9 @@ func (c taskChoice) hasSelection() bool {
 
 // CreateTaskByURL 根据传入的url创建任务（程序化入口：宿主 CreateTask、插件经宿主建任务）。
 // 通过 URL 监听器发现能处理此 URL 的扩展点候选（粒度 = 插件 × extensionId），按候选全键字典序
-// 逐个尝试，调用插件的 create 方法创建任务。任一候选出现失败信号（处理器不可用/插件错误返回/零任务）
-// 即终止并返回原因提示，不再尝试后续候选；监听器缺插件 PublicID 属注册数据缺陷而非插件运行结果，
-// 跳过后仍继续。
+// 逐个尝试，调用插件的 create 方法创建任务。任一候选出现失败信号（处理器不可用/插件错误返回/
+// 零任务且未声明意图信号）即终止并返回原因提示，不再尝试后续候选；监听器缺插件 PublicID 属
+// 注册数据缺陷而非插件运行结果，跳过后仍继续。
 func (s *Service) CreateTaskByURL(ctx context.Context, url string) (*CreateTaskByURLResponse, error) {
 	return s.createTaskByURL(ctx, url, taskEntryProgrammatic, taskChoice{})
 }
@@ -1133,7 +1133,8 @@ func (a *taskRouteAdapter) Describe(c *pluginTaskUrlListener.PluginWithExtension
 }
 
 // Invoke 取候选的作品拉取并消费其返回：流与数组两路径统一落库，产出任务的候选即路由终点。
-// 处理器不可用、传输层错误、消费失败与零任务均为真失败，响应文案经 candidateFailure 原样交回调用方。
+// 处理器不可用、传输层错误、消费失败与零任务（未声明意图信号时）均为真失败，响应文案经
+// candidateFailure 原样交回调用方；零任务而结果携带意图信号（转入解析/已取消）为成功收尾。
 func (a *taskRouteAdapter) Invoke(ctx context.Context, c *pluginTaskUrlListener.PluginWithExtension) (*CreateTaskByURLResponse, route.Outcome, error) {
 	pluginPublicId := c.PublicID.String
 	pluginName := listenerPluginName(c)
@@ -1183,8 +1184,9 @@ func (a *taskRouteAdapter) Invoke(ctx context.Context, c *pluginTaskUrlListener.
 		}
 	}
 
-	// reason（插件声明的业务原因）须在流消费完毕（channel close）之后读取
+	// reason（插件声明的业务原因）与意图信号均须在流消费完毕（channel close）之后读取
 	reason := result.Reason()
+	intentKind, intentMsg := result.Intent()
 
 	if count > 0 {
 		// 有任务落库即成功；失败数为落库维度、插件报告的原因为业务维度，分层表述
@@ -1196,6 +1198,12 @@ func (a *taskRouteAdapter) Invoke(ctx context.Context, c *pluginTaskUrlListener.
 			}
 		}
 		return &CreateTaskByURLResponse{Succeed: true, AddedQuantity: count, Msg: msg}, route.Succeeded, nil
+	}
+
+	// 意图信号收尾（转入解析/已取消）：插件经 Create 流显式声明「本次零任务且非失败」
+	//（如本地导入确认后转入解析视图、用户取消），响应成功零任务 + 插件文案
+	if intentKind != sdkdto.CreateIntentNone {
+		return &CreateTaskByURLResponse{Succeed: true, AddedQuantity: 0, Msg: intentMsg}, route.Succeeded, nil
 	}
 
 	if reason != "" {

@@ -5,6 +5,7 @@ import (
 	"io"
 	"testing"
 
+	pluginsdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"github.com/lvfeng-z/library-squirrel-sdk/gen"
 	transport "github.com/lvfeng-z/library-squirrel-sdk/transport"
 	"google.golang.org/grpc"
@@ -273,5 +274,78 @@ func TestProxyCreate_StreamToleratesInterleavedHeartbeat(t *testing.T) {
 	}
 	if len(ids) != 2 || ids[0] != "w-1" || ids[1] != "w-2" {
 		t.Fatalf("期望 2 个任务按序流经 channel，得到 %v", ids)
+	}
+}
+
+// intentChunk 构造意图信号块（转入解析/已取消两态 + 文案）。
+func intentChunk(kind gen.CreateIntentKind, message string) *gen.CreateChunk {
+	return &gen.CreateChunk{Payload: &gen.CreateChunk_Intent{
+		Intent: &gen.CreateIntent{Kind: kind, Message: message},
+	}}
+}
+
+// TestProxyCreate_BatchTrailingIntent 批量模式末尾意图块：代理解析为零任务批量结果并承载
+// 意图（kind 与文案透传），reason 保持空。
+func TestProxyCreate_BatchTrailingIntent(t *testing.T) {
+	proxy := newCreateProxy(
+		&gen.CreateChunk{Payload: &gen.CreateChunk_Mode{Mode: &gen.CreateMode{IsStream: false}}},
+		intentChunk(gen.CreateIntentKind_CREATE_INTENT_KIND_TO_PARSE, "已转入解析工作台"),
+	)
+
+	result, err := proxy.Create("http://x")
+	if err != nil {
+		t.Fatalf("Create 返回错误: %v", err)
+	}
+	if result.IsStream() {
+		t.Fatal("期望批量模式，得到流式")
+	}
+	if got := len(result.Array()); got != 0 {
+		t.Fatalf("期望零任务，得到 %d 个", got)
+	}
+	if kind, msg := result.Intent(); kind != pluginsdkdto.CreateIntentToParse || msg != "已转入解析工作台" {
+		t.Fatalf("期望意图 (ToParse, %q) 透传，得到 (%d, %q)", "已转入解析工作台", kind, msg)
+	}
+	if got := result.Reason(); got != "" {
+		t.Fatalf("意图收尾不应携带 reason，得到 %q", got)
+	}
+}
+
+// TestProxyCreate_StreamTrailingIntent 流式模式末尾意图块：channel 以零任务收尾关闭，
+// 意图在 channel close 后可读（happens-before 由 close 建立）；已取消态经同一路径。
+func TestProxyCreate_StreamTrailingIntent(t *testing.T) {
+	proxy := newCreateProxy(
+		&gen.CreateChunk{Payload: &gen.CreateChunk_Mode{Mode: &gen.CreateMode{IsStream: true}}},
+		intentChunk(gen.CreateIntentKind_CREATE_INTENT_KIND_CANCELLED, "已取消本次导入"),
+	)
+
+	result, err := proxy.Create("http://x")
+	if err != nil {
+		t.Fatalf("Create 返回错误: %v", err)
+	}
+	if !result.IsStream() {
+		t.Fatal("期望流式模式，得到批量")
+	}
+	var n int
+	for range result.Stream() {
+		n++
+	}
+	if n != 0 {
+		t.Fatalf("期望零任务流经 channel，得到 %d 个", n)
+	}
+	if kind, msg := result.Intent(); kind != pluginsdkdto.CreateIntentCancelled || msg != "已取消本次导入" {
+		t.Fatalf("期望意图 (Cancelled, %q) 在流消费完毕后可读，得到 (%d, %q)", "已取消本次导入", kind, msg)
+	}
+}
+
+// TestProxyCreate_IntentKindInvalid 意图块 kind 非法（UNSPECIFIED/未知值，意图块只承载
+// 两态）：按协议错误拒绝，不落成截断结果。
+func TestProxyCreate_IntentKindInvalid(t *testing.T) {
+	proxy := newCreateProxy(
+		&gen.CreateChunk{Payload: &gen.CreateChunk_Mode{Mode: &gen.CreateMode{IsStream: false}}},
+		intentChunk(gen.CreateIntentKind_CREATE_INTENT_KIND_UNSPECIFIED, "文案"),
+	)
+
+	if _, err := proxy.Create("http://x"); err == nil {
+		t.Fatal("非法意图 kind 应按协议错误返回，得到 nil")
 	}
 }

@@ -1101,6 +1101,66 @@ func TestCreateTaskByURL_FallbackWhenNoTasksNoReason(t *testing.T) {
 	}
 }
 
+// TestCreateTaskByURL_IntentToParseSucceeds 意图信号（转入解析）收尾 → 成功零任务，
+// Msg=插件文案，零落库。
+func TestCreateTaskByURL_IntentToParseSucceeds(t *testing.T) {
+	handler := &fakePluginWorkFetcher{create: func(string) (*sdkdto.TaskCreateResult, error) {
+		result := sdkdto.BatchResult(nil)
+		result.SetIntent(sdkdto.CreateIntentToParse, "已转入解析工作台")
+		return result, nil
+	}}
+	svc, repo := newCreateByURLService(t,
+		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{"pub-a/ext-a": handler}},
+		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
+
+	resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
+	if err != nil {
+		t.Fatalf("CreateTaskByURL 返回错误: %v", err)
+	}
+	if !resp.Succeed {
+		t.Fatalf("意图信号（转入解析）收尾应标记成功，Msg=%q", resp.Msg)
+	}
+	if resp.AddedQuantity != 0 {
+		t.Fatalf("意图信号（转入解析）收尾应零任务，得到 %d", resp.AddedQuantity)
+	}
+	if want := "已转入解析工作台"; resp.Msg != want {
+		t.Fatalf("期望 Msg 为插件文案 %q，得到 %q", want, resp.Msg)
+	}
+	if got := len(repo.tasks); got != 0 {
+		t.Fatalf("意图信号（转入解析）收尾应零落库，得到 %d 条任务行", got)
+	}
+}
+
+// TestCreateTaskByURL_IntentCancelledSucceeds 意图信号（已取消）收尾 → 成功零任务，
+// Msg=插件文案，零落库。
+func TestCreateTaskByURL_IntentCancelledSucceeds(t *testing.T) {
+	handler := &fakePluginWorkFetcher{create: func(string) (*sdkdto.TaskCreateResult, error) {
+		result := sdkdto.BatchResult(nil)
+		result.SetIntent(sdkdto.CreateIntentCancelled, "已取消本次导入")
+		return result, nil
+	}}
+	svc, repo := newCreateByURLService(t,
+		&fakeWorkFetchGetter{handlers: map[string]sdkdto.WorkFetcher{"pub-a/ext-a": handler}},
+		newURLListenerService(namedListener("pub-a", "插件A", "ext-a")))
+
+	resp, err := svc.CreateTaskByURL(context.Background(), "http://x/1")
+	if err != nil {
+		t.Fatalf("CreateTaskByURL 返回错误: %v", err)
+	}
+	if !resp.Succeed {
+		t.Fatalf("意图信号（已取消）收尾应标记成功，Msg=%q", resp.Msg)
+	}
+	if resp.AddedQuantity != 0 {
+		t.Fatalf("意图信号（已取消）收尾应零任务，得到 %d", resp.AddedQuantity)
+	}
+	if want := "已取消本次导入"; resp.Msg != want {
+		t.Fatalf("期望 Msg 为插件文案 %q，得到 %q", want, resp.Msg)
+	}
+	if got := len(repo.tasks); got != 0 {
+		t.Fatalf("意图信号（已取消）收尾应零落库，得到 %d 条任务行", got)
+	}
+}
+
 // TestCreateTaskByURL_HandlerUnavailableStopsPolling 处理器不可用 → 终止并提示，不轮询后续监听器。
 func TestCreateTaskByURL_HandlerUnavailableStopsPolling(t *testing.T) {
 	viable := viableHandler()

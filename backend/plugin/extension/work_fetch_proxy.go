@@ -94,10 +94,24 @@ func (p *WorkFetchProxy) CreateWithContext(ctx context.Context, url string) (*pl
 		return result, nil
 	}
 
+	// intent 块（转入解析/已取消）承载零任务的成功收尾声明，同为流的最后一块；作为首块
+	// 到达时与 error 块同形处理：零任务批量结果携带意图
+	if intent := chunk.GetIntent(); intent != nil {
+		kind, kindErr := createIntentKindFromProto(intent.GetKind())
+		if kindErr != nil {
+			cancel()
+			return nil, kindErr
+		}
+		cancel()
+		result := pluginsdkdto.BatchResult(nil)
+		result.SetIntent(kind, intent.GetMessage())
+		return result, nil
+	}
+
 	modeChunk := chunk.GetMode()
 	if modeChunk == nil {
 		cancel()
-		return nil, fmt.Errorf("first CreateChunk must contain CreateMode or Error")
+		return nil, fmt.Errorf("first CreateChunk must contain CreateMode, Error or Intent")
 	}
 
 	if modeChunk.IsStream {
@@ -119,6 +133,19 @@ func (p *WorkFetchProxy) CreateWithContext(ctx context.Context, url string) (*pl
 					result.SetReason(reason)
 					return
 				}
+				// intent 块（转入解析/已取消）同为流最后一块：记录零任务成功收尾意图后结束
+				// 接收。SetIntent 与 close(ch) 同 goroutine 顺序执行，消费侧在 range 退出后
+				// 读 Intent() 依赖此顺序；块 kind 非法（意图块只承载两态）时把违规记进
+				// reason，经既有零任务失败路径透出
+				if intent := c.GetIntent(); intent != nil {
+					kind, kindErr := createIntentKindFromProto(intent.GetKind())
+					if kindErr != nil {
+						result.SetReason(kindErr.Error())
+						return
+					}
+					result.SetIntent(kind, intent.GetMessage())
+					return
+				}
 				taskProto := c.GetTask()
 				if taskProto != nil {
 					// 消费方停止读取（channel 缓冲占满）时，流 ctx 取消可解除发送阻塞令泵退出
@@ -133,13 +160,26 @@ func (p *WorkFetchProxy) CreateWithContext(ctx context.Context, url string) (*pl
 		return result, nil
 	}
 
-	// 批量模式：收集所有 task 块，末尾 error 块（如有）承载插件声明的业务原因。
-	// io.EOF 为正常收尾；其他 Recv 错误属 gRPC 层故障（进程崩溃/连接中断），原样返回
+	// 批量模式：收集所有 task 块，末尾收尾块（如有）承载插件声明的业务原因（error 块）或
+	// 零任务成功收尾意图（intent 块）。io.EOF 为正常收尾；其他 Recv 错误属 gRPC 层故障
+	//（进程崩溃/连接中断），原样返回
 	var responses []*pluginsdkdto.TaskCreateResponse
 	var reason string
+	var intentKind pluginsdkdto.CreateIntentKind
+	var intentMessage string
 	for {
 		if r := chunk.GetError(); r != "" {
 			reason = r
+			break
+		}
+		if intent := chunk.GetIntent(); intent != nil {
+			kind, kindErr := createIntentKindFromProto(intent.GetKind())
+			if kindErr != nil {
+				cancel()
+				return nil, kindErr
+			}
+			intentKind = kind
+			intentMessage = intent.GetMessage()
 			break
 		}
 		taskProto := chunk.GetTask()
@@ -157,7 +197,9 @@ func (p *WorkFetchProxy) CreateWithContext(ctx context.Context, url string) (*pl
 	}
 	cancel()
 	result := pluginsdkdto.BatchResult(responses)
-	if reason != "" {
+	if intentKind != pluginsdkdto.CreateIntentNone {
+		result.SetIntent(intentKind, intentMessage)
+	} else if reason != "" {
 		result.SetReason(reason)
 	}
 	return result, nil
@@ -550,6 +592,19 @@ func (r *pullReadCloser) Close() error {
 }
 
 // ========== Proto 转换函数（proxy 专用）==========
+
+// createIntentKindFromProto 意图信号枚举 proto → DTO：意图块只承载两态（转入解析/已取消），
+// UNSPECIFIED 与未知值为非法意图块，按协议错误拒绝
+func createIntentKindFromProto(kind gen.CreateIntentKind) (pluginsdkdto.CreateIntentKind, error) {
+	switch kind {
+	case gen.CreateIntentKind_CREATE_INTENT_KIND_TO_PARSE:
+		return pluginsdkdto.CreateIntentToParse, nil
+	case gen.CreateIntentKind_CREATE_INTENT_KIND_CANCELLED:
+		return pluginsdkdto.CreateIntentCancelled, nil
+	default:
+		return pluginsdkdto.CreateIntentNone, fmt.Errorf("意图块 kind 非法: %d", kind)
+	}
+}
 
 func taskToProto(t *pluginsdkdto.TaskDTO) *gen.Task {
 	if t == nil {
