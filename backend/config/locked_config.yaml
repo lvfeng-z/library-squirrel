@@ -155,6 +155,9 @@ officialPlugins:
     buildId: 5376da9-dirty
     contentDigest: 9c322824d54097a74c687b55fe08ca257270760d919b654fa390a17a16c724bb
   - publicId: com.lvfeng.localImport
+    buildId: 7b53614-dirty
+    contentDigest: 7a804ff1b427a08c066794dff471724f0e9a85b816c3c764ac28e4b3807a920d
+  - publicId: com.lvfeng.localImport
     buildId: 85325ad
     contentDigest: 266e07fe5628b51701d456ca39d5d08ddd587ad63c24425be82f9f963c997ddf
   - publicId: com.lvfeng.localImport
