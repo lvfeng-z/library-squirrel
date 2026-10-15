@@ -10,7 +10,8 @@ import { isBlank } from '@renderer/utils/StringUtil.ts'
 export interface MenuSlotItem {
   slotId: string
   index: string
-  // 内置菜单为 Element Plus 图标组件对象，插件菜单为图片 URL 字符串
+  // 内置菜单为 Element Plus 图标组件对象；插件菜单为图片 URL 字符串，
+  // 或 ep: 宿主图标名引用（摄入层 resolvePluginIcon 已解析为组件）
   icon?: Component | string
   label: string
   order?: number

@@ -162,7 +162,7 @@ type MyWorkFetcher struct{}
 | `view` | `{contentType, source, title?, props?}` | 新增独立路由页面 |
 | `replaceView` | `{contentType, source, target, props?}` | 替换主程序已有页面（target = 路由 name） |
 | `dialog` | `{contentType, source, props?}` | 弹窗（模态层） |
-| `menu` | `{icon?, viewId?, children?}` | 菜单项（点击跳转关联的 view slot；children 递归） |
+| `menu` | `{icon?, viewId?, children?}` | 菜单项（点击跳转关联的 view slot；children 递归）。icon 两形态：插件内图片相对路径（自动转完整 URL）或宿主图标名引用 `ep:<Name>`（见下「宿主图标名引用」） |
 | `siteBrowserList` | `{icon?, extensionId}` | 站点浏览器入口卡片（extensionId 必须等于某 siteBrowsers 的 id） |
 | `resourceViewer` | `{contentType, source, resourceType, props?}` | 资源渲染器（Handler 被动响应型；resourceType = 资源类型查找键，渲染器接收 `{context: render.Context}` props——独立于主程序展示 DTO 的断链契约，见「资源渲染器契约」） |
 
@@ -176,6 +176,10 @@ type MyWorkFetcher struct{}
 | `html` | `{html}` | HTML 文件 |
 
 > source 中的相对路径（`code` 类型除外）由后端自动转为 `http://wails.localhost:{port}/plugin/{author}/{id}/{cacheKey}/...` 完整 URL（cacheKey 为缓存键 = plugin.json `buildId`，未打标包回落 version）。
+
+**宿主图标名引用（menu 的 icon）：**
+
+`icon` 除插件内图片相对路径外，可写 `"ep:<图标名>"` 引用宿主内置的 Element Plus 图标——矢量渲染、随主题色与字号缩放，与内置菜单同构，无须打包图片资产。可用名以宿主注册表为准（`frontend/src/utils/PluginIcon.ts`）：`MessageBox`、`HomeFilled`、`Discount`、`User`、`Star`、`List`、`Link`、`Share`、`TakeawayBox`、`Setting`、`Guide`、`Coordinate`、`Delete`、`FolderChecked`、`Brush`。未命中的名字按图片路径兜底（加载失败显示兜底图标）并有控制台告警。仅 `menu` 支持（含 children 子项）；`siteBrowserList` 的 icon 仍为图片相对路径。
 
 ### settings 用户设置声明（清单根级）
 
@@ -1167,7 +1171,7 @@ http://wails.localhost:{backend-port}/plugin/{publicId}/{cacheKey}/{relativePath
 
 - `publicId` 即插件 `id`（反向域名，URL 中占一段）。
 - `cacheKey` 为缓存键 = plugin.json `buildId`（构建身份标识，构建时由 build.ps1 以 `git describe` 注入；未打标包回落 `version`）。构建变化必换 URL/ETag，长缓存随之失效。
-- 后端在注册前端扩展时自动把 `source`/`icon` 的相对路径转为上述完整 URL，前端组件直接用。
+- 后端在注册前端扩展时自动把 `source`/`icon` 的相对路径转为上述完整 URL，前端组件直接用（menu 的 `icon` 例外支持 `ep:<Name>` 宿主图标名引用，原样透传由前端解析——见「前端扩展」节）。
 - 插件代码内可用 `ctx.GetPluginRoot(false)` 获取插件根目录绝对路径。
 
 ### 可访问范围（插件目录即静态站点根）

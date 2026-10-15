@@ -4,6 +4,7 @@ import { useHandlerRegistryStore } from '@renderer/store/HandlerRegistryStore'
 import type { EmbedSlot, DialogSlot, ReplaceViewSlot, ViewSlot } from '@renderer/model/slot'
 import type { ResourceViewerHandler } from '@renderer/model/handler/ResourceViewerHandler'
 import { isNullish } from '@renderer/utils/CommonUtil.ts'
+import { resolvePluginIcon } from '@renderer/utils/PluginIcon.ts'
 import { parse } from '@vue/compiler-sfc'
 import { compile, defineComponent, h } from 'vue'
 import * as Vue from 'vue'
@@ -122,7 +123,8 @@ function convertToReplaceViewSlot(config: FrontendExtensionResponse): ReplaceVie
 
 /**
  * 转换菜单插槽配置。viewId 在此解析为可直接跳转的路由名：
- * 插件菜单指向同插件的 view，view 声明的是裸 extensionId，与同插件 publicId 拼复合路由名
+ * 插件菜单指向同插件的 view，view 声明的是裸 extensionId，与同插件 publicId 拼复合路由名。
+ * icon 在此解析声明形态：ep: 宿主图标名引用 → 注册表组件；其余（图片完整 URL）原样透传
  */
 function convertToMenuSlot(config: FrontendExtensionResponse): MenuSlotItem {
   const resolveViewRouteName = (viewId: string | undefined, pluginPublicId: string): string | undefined =>
@@ -135,7 +137,7 @@ function convertToMenuSlot(config: FrontendExtensionResponse): MenuSlotItem {
       slotId: compositeSlotId(child.pluginPublicId, child.frontendExtensionId),
       index: compositeSlotId(child.pluginPublicId, child.frontendExtensionId),
       label: child.name,
-      icon: child.icon,
+      icon: resolvePluginIcon(child.icon),
       order: child.order ?? 100,
       viewId: resolveViewRouteName(child.viewId, child.pluginPublicId),
       children: convertChildren(child.children)
@@ -146,7 +148,7 @@ function convertToMenuSlot(config: FrontendExtensionResponse): MenuSlotItem {
     slotId: compositeSlotId(config.pluginPublicId, config.frontendExtensionId),
     index: compositeSlotId(config.pluginPublicId, config.frontendExtensionId),
     label: config.name,
-    icon: config.icon,
+    icon: resolvePluginIcon(config.icon),
     order: config.order ?? 100,
     viewId: resolveViewRouteName(config.viewId, config.pluginPublicId),
     children: convertChildren(config.children)

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -524,7 +525,12 @@ func parseFrontendExtensionContent(fe dto.FrontendExtensionDeclaration, cfg *bas
 		cfg.ViewId = c.ViewId
 		cfg.Children = convertFrontendExtensionChildren(c.Children, cfg.Metadata.PluginID, publicId, cacheKey)
 		if c.Icon != "" {
-			cfg.Icon = resolveIconURL(c.Icon, publicId, cacheKey)
+			if strings.HasPrefix(c.Icon, hostIconRefPrefix) {
+				// 宿主图标名引用（ep:<Name>）：原样透传，前端摄入层按名解析为 Element Plus 图标组件
+				cfg.Icon = c.Icon
+			} else {
+				cfg.Icon = resolveIconURL(c.Icon, publicId, cacheKey)
+			}
 		}
 
 	case base.FrontendExtensionKindSiteBrowserList:
@@ -629,6 +635,10 @@ func resolveSourceURLs(source json.RawMessage, contentType, publicId, cacheKey s
 	}
 	return result
 }
+
+// hostIconRefPrefix 宿主图标名引用前缀（menu content.icon 的另一种声明形态）：
+// "ep:<Name>" 原样透传给前端，由前端摄入层解析为宿主注册表内的 Element Plus 图标组件
+const hostIconRefPrefix = "ep:"
 
 // resolveIconURL 将图标相对路径转换为完整 URL
 func resolveIconURL(iconPath, publicId, cacheKey string) string {

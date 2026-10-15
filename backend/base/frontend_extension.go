@@ -51,7 +51,7 @@ type FrontendExtensionConfig struct {
 	// view: 设置页弹窗呈现标记——清单 settingsPresent=dialog 且 settingsPage 指向本条目时置位。
 	// 置位的 view 条目经注册事件携带标记下行，前端只入扩展注册表、不注册路由（宿主壳弹窗呈现）
 	SettingsDialog bool
-	Icon         string                      // 图标（解析后的完整 URL）
+	Icon         string                      // 图标（图片=解析后的完整 URL；menu 可为 ep: 宿主图标名引用，原样透传由前端解析）
 	Order        int                         // 排序
 	Position     string                      // embed: 主程序具名插槽位标识（如 work.toolbar）
 	Target       string                      // replaceView: 主程序路由 name（覆盖目标）
