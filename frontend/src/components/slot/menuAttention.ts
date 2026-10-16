@@ -52,7 +52,8 @@ function findItemByViewId<T extends AttentionMenuItem>(items: T[], viewId: strin
     if (item.viewId === viewId) return item
     if (item.children?.length) {
       const matched = findItemByViewId(item.children, viewId)
-      if (matched) return matched
+      // children 在接口上声明为非泛型基型，递归返回值经此收窄回 T：命中项必取自入参数组，运行期即为 T
+      if (matched) return matched as T
     }
   }
   return undefined

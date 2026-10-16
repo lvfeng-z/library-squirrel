@@ -26,6 +26,7 @@ import { setRouterInstance } from './store/SlotRegistryStore.ts'
 import { useTourCenterStore } from '@renderer/store/UseTourCenterStore.ts'
 import { useThemeStore } from '@renderer/store/UseThemeStore.ts'
 import { useViewCloseButtonStore } from '@renderer/store/UseViewCloseButtonStore.ts'
+import { useMenuOrderStore } from '@renderer/store/UseMenuOrderStore.ts'
 import { registerBuiltinTours } from '@renderer/tour/definitions'
 import lodash from 'lodash'
 import * as apis from './apis/http'
@@ -136,5 +137,8 @@ void themeStore.load()
 
 // 加载视图关闭按钮开关（默认关；控制应用外壳左上角非主页视图的关闭按钮是否显示）
 void useViewCloseButtonStore().load()
+
+// 加载侧边栏菜单用户自定义顺序（空=未自定义，按条目静态 order 渲染）
+void useMenuOrderStore().load()
 
 iniListener()

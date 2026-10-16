@@ -19,6 +19,7 @@ import type { ExternalApiStatus } from '@bindings/github.com/library-squirrel/ba
 import { emptySettings } from '@renderer/model/util/Settings.js'
 import { useThemeStore } from '@renderer/store/UseThemeStore.ts'
 import { useViewCloseButtonStore } from '@renderer/store/UseViewCloseButtonStore.ts'
+import { useMenuOrderStore } from '@renderer/store/UseMenuOrderStore.ts'
 import { useWorkdirStatusStore } from '@renderer/store/UseWorkdirStatusStore.ts'
 import { isBlank, isNotBlank } from '@renderer/utils/StringUtil.ts'
 import type { ThemeId } from '@renderer/theme/themes'
@@ -68,6 +69,8 @@ let oldSettings: Settings = emptySettings // 原设置
 const themeStore = useThemeStore()
 // 视图关闭按钮开关（与主题同模式：即时生效并持久化，绑定 store 而非表单对象，保存其他设置时不产出该键的变更路径）
 const viewCloseButtonStore = useViewCloseButtonStore()
+// 菜单顺序（与主题同模式：侧边栏拖拽排序即时生效并由 store 持久化，不在设置编辑面内）
+const menuOrderStore = useMenuOrderStore()
 // 自动修复策略 schema（可选项由后端 apply 能力约束，前端不写死）
 const policySchema = ref<AutoRepairPolicyDTO[]>([])
 // 有选择空间的策略组合（options 多于一项）才渲染下拉；Delete 单选项与 Untracked 不可配置不渲染
@@ -87,6 +90,15 @@ async function handleSelectTheme(id: ThemeId) {
 // 切换视图关闭按钮开关：更新状态并由 store 持久化
 async function handleToggleViewCloseButton(v: string | number | boolean) {
   await viewCloseButtonStore.setEnabled(Boolean(v))
+}
+// 恢复默认菜单顺序：清空用户手动排序快照并由 store 提交空值（失败仅提示；本地序已回静态序，会话内保留）
+async function handleResetMenuOrder() {
+  try {
+    await menuOrderStore.reset()
+    ElMessage.success('菜单顺序已恢复默认')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '恢复默认菜单顺序失败')
+  }
 }
 // 深链协议注册状态（便携版运行时自注册视图；安装版由安装/卸载器管理 HKLM 键）
 const protocolStatus = ref<ShareProtocolRegStatus | null>(null)
@@ -528,9 +540,10 @@ async function resetSettings() {
   if (confirm) {
     const response = await apis.settingsResetSettings()
     await loadSettings()
-    // 设置重置后同步主题与视图关闭按钮状态（appearance 组回到默认）
+    // 设置重置后同步主题、视图关闭按钮与菜单顺序状态（appearance 组回到默认）
     await themeStore.load()
     await viewCloseButtonStore.load()
+    await menuOrderStore.load()
     if (ApiUtil.check(response)) {
       const succeed = ApiUtil.data<boolean>(response)
       if (succeed) {
@@ -1155,6 +1168,19 @@ function insertFormatToken(element: ResFileNameFormatEnum, isDialog: boolean) {
                       @change="handleToggleViewCloseButton"
                     />
                   </div>
+                </div>
+                <div class="settings-item">
+                  <div class="settings-item-header">
+                    <span class="settings-item-title">菜单顺序</span>
+                    <span class="settings-item-desc">侧边菜单在展开态可拖拽一级条目调整顺序</span>
+                  </div>
+                  <el-button
+                    type="danger"
+                    class="tone-fail"
+                    @click="handleResetMenuOrder"
+                  >
+                    恢复默认菜单顺序
+                  </el-button>
                 </div>
               </div>
               <div id="downloadSettings">

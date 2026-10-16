@@ -24,7 +24,8 @@ export const emptySettings: Settings = {
   appearance: {
     theme: 'default-light',
     multiSelectEnabled: false,
-    viewCloseButtonEnabled: false
+    viewCloseButtonEnabled: false,
+    menuOrder: []
   },
   mergeSettings: {
     strategy: 'keep'

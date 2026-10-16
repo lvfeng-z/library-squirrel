@@ -24,6 +24,11 @@ export class AppearanceSettings {
      */
     "viewCloseButtonEnabled": boolean;
 
+    /**
+     * 侧边栏一级菜单的 slotId 有序表（全量快照，只记顺序不记条目内容；空=用户未自定义，按静态序渲染）
+     */
+    "menuOrder": string[];
+
     /** Creates a new AppearanceSettings instance. */
     constructor($$source: Partial<AppearanceSettings> = {}) {
         if (!("theme" in $$source)) {
@@ -35,6 +40,9 @@ export class AppearanceSettings {
         if (!("viewCloseButtonEnabled" in $$source)) {
             this["viewCloseButtonEnabled"] = false;
         }
+        if (!("menuOrder" in $$source)) {
+            this["menuOrder"] = [];
+        }
 
         Object.assign(this, $$source);
     }
@@ -43,7 +51,11 @@ export class AppearanceSettings {
      * Creates a new AppearanceSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): AppearanceSettings {
+        const $$createField3_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("menuOrder" in $$parsedSource) {
+            $$parsedSource["menuOrder"] = $$createField3_0($$parsedSource["menuOrder"]);
+        }
         return new AppearanceSettings($$parsedSource as Partial<AppearanceSettings>);
     }
 }
@@ -270,7 +282,7 @@ export class FsmonitorSettings {
      * Creates a new FsmonitorSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): FsmonitorSettings {
-        const $$createField3_0 = $$createType0;
+        const $$createField3_0 = $$createType1;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("autoRepairPolicies" in $$parsedSource) {
             $$parsedSource["autoRepairPolicies"] = $$createField3_0($$parsedSource["autoRepairPolicies"]);
@@ -496,18 +508,18 @@ export class Settings {
      * Creates a new Settings instance from a string or object.
      */
     static createFrom($$source: any = {}): Settings {
-        const $$createField1_0 = $$createType1;
-        const $$createField2_0 = $$createType2;
-        const $$createField3_0 = $$createType3;
-        const $$createField4_0 = $$createType4;
-        const $$createField5_0 = $$createType5;
-        const $$createField6_0 = $$createType6;
-        const $$createField7_0 = $$createType7;
-        const $$createField8_0 = $$createType8;
-        const $$createField9_0 = $$createType9;
-        const $$createField10_0 = $$createType10;
-        const $$createField11_0 = $$createType11;
-        const $$createField12_0 = $$createType12;
+        const $$createField1_0 = $$createType2;
+        const $$createField2_0 = $$createType3;
+        const $$createField3_0 = $$createType4;
+        const $$createField4_0 = $$createType5;
+        const $$createField5_0 = $$createType6;
+        const $$createField6_0 = $$createType7;
+        const $$createField7_0 = $$createType8;
+        const $$createField8_0 = $$createType9;
+        const $$createField9_0 = $$createType10;
+        const $$createField10_0 = $$createType11;
+        const $$createField11_0 = $$createType12;
+        const $$createField12_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("importSettings" in $$parsedSource) {
             $$parsedSource["importSettings"] = $$createField1_0($$parsedSource["importSettings"]);
@@ -602,7 +614,7 @@ export class TourSettings {
      * Creates a new TourSettings instance from a string or object.
      */
     static createFrom($$source: any = {}): TourSettings {
-        const $$createField0_0 = $$createType13;
+        const $$createField0_0 = $$createType14;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("completed" in $$parsedSource) {
             $$parsedSource["completed"] = $$createField0_0($$parsedSource["completed"]);
@@ -612,17 +624,18 @@ export class TourSettings {
 }
 
 // Private type creation functions
-const $$createType0 = $Create.Map($Create.Any, $Create.Any);
-const $$createType1 = ImportSettings.createFrom;
-const $$createType2 = PluginSettings.createFrom;
-const $$createType3 = TourSettings.createFrom;
-const $$createType4 = RecycleBinSettings.createFrom;
-const $$createType5 = AppearanceSettings.createFrom;
-const $$createType6 = MergeSettings.createFrom;
-const $$createType7 = FsmonitorSettings.createFrom;
-const $$createType8 = BackupGovernanceSettings.createFrom;
-const $$createType9 = ExportSettings.createFrom;
-const $$createType10 = ShareSettings.createFrom;
-const $$createType11 = AuthorSettings.createFrom;
-const $$createType12 = ExternalApiSettings.createFrom;
-const $$createType13 = $Create.Map($Create.Any, $Create.Any);
+const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = $Create.Map($Create.Any, $Create.Any);
+const $$createType2 = ImportSettings.createFrom;
+const $$createType3 = PluginSettings.createFrom;
+const $$createType4 = TourSettings.createFrom;
+const $$createType5 = RecycleBinSettings.createFrom;
+const $$createType6 = AppearanceSettings.createFrom;
+const $$createType7 = MergeSettings.createFrom;
+const $$createType8 = FsmonitorSettings.createFrom;
+const $$createType9 = BackupGovernanceSettings.createFrom;
+const $$createType10 = ExportSettings.createFrom;
+const $$createType11 = ShareSettings.createFrom;
+const $$createType12 = AuthorSettings.createFrom;
+const $$createType13 = ExternalApiSettings.createFrom;
+const $$createType14 = $Create.Map($Create.Any, $Create.Any);

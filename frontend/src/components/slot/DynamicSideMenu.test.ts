@@ -151,7 +151,7 @@ beforeEach(() => {
   // rAF 替身落到宏任务队列：jsdom 环境的 requestAnimationFrame 可用性不作假设，统一走 setTimeout
   vi.stubGlobal(
     'requestAnimationFrame',
-    (callback: FrameRequestCallback): number => setTimeout(() => callback(0), 0)
+    (callback: FrameRequestCallback): ReturnType<typeof setTimeout> => setTimeout(() => callback(0), 0)
   )
 })
 
