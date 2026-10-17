@@ -67,10 +67,12 @@ type MemoryStateProvider interface {
 	GetTaskStates() map[int64]int
 }
 
-// isTransientStatus 判断状态是否为瞬态（不会出现在数据库中）
+// isTransientStatus 判断状态是否为瞬态（不会出现在数据库中）。
+// Created 不在其列：任务行建立即落 Created，未调度的任务不在内存、以 DB 行为权威状态
+// （运行中任务 DB 行恒 Created，内存异态由稳态分支的排除条件消化）
 func isTransientStatus(status int) bool {
 	switch TaskStatusEnum(status) {
-	case TaskStatusCreated, TaskStatusWaiting, TaskStatusProcessing,
+	case TaskStatusWaiting, TaskStatusProcessing,
 		TaskStatusPausing, TaskStatusStopping:
 		return true
 	default:

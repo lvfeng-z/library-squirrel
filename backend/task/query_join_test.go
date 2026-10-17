@@ -139,9 +139,11 @@ func seedChild(t *testing.T, db *gorm.DB, pid int64, name string, status TaskSta
 	return child
 }
 
-// TestQueryChildrenPageMemoryStatusJoin 状态过滤综合内存实时状态的三个分支（瞬态无匹配的
-// 永假条件 / 瞬态命中的 id IN / 稳态排除的 id NOT IN）在 work_task 左连接下须以限定列名
-// 引用 task.id——连接后两表同名列，裸 id 引用产生 ambiguous column name 错误
+// TestQueryChildrenPageMemoryStatusJoin 状态过滤综合内存实时状态的分支语义与限定列名：
+// Created 是稳态 DB 值（未调度任务不在内存、以 DB 行为权威，运行中任务 DB 行恒 Created，
+// 内存异态经排除条件消化）；Waiting/Processing/Pausing/Stopping 是瞬态（仅存在于内存）。
+// 各分支条件（稳态排除的 task.id NOT IN / 瞬态命中的 task.id IN / 瞬态无匹配的永假条件）
+// 在 work_task 左连接下须以限定列名引用 task.id——连接后两表同名列，裸 id 产生歧义错误
 func TestQueryChildrenPageMemoryStatusJoin(t *testing.T) {
 	if testing.Short() {
 		t.Skip("内存 SQLite 依赖 CGO")
@@ -164,16 +166,43 @@ func TestQueryChildrenPageMemoryStatusJoin(t *testing.T) {
 	if err := db.Create(parent).Error; err != nil {
 		t.Fatalf("插父任务核心行失败: %v", err)
 	}
-	// 子任务A：DB 行 Created（运行中任务的落库恒为 Created）；子任务B：DB 行 Finished
+	// 子任务A：DB 行 Created（未调度任务的落库状态）；子任务B：DB 行 Finished
 	childA := seedChild(t, db, parent.GetID(), "子任务A", TaskStatusCreated)
-	seedChild(t, db, parent.GetID(), "子任务B", TaskStatusFinished)
+	childB := seedChild(t, db, parent.GetID(), "子任务B", TaskStatusFinished)
 
 	page := &model.Page[entity.Task]{PageNumber: 1, PageSize: 10}
 
-	// 瞬态（已创建）无内存匹配：永假条件以 task.id 限定列名执行，空结果而非 SQL 歧义错误
+	// 已创建（稳态）+ 内存无此树：DB 行 Created 的子任务A 不在内存、以 DB 行为权威 → 命中
 	got, err := svc.QueryChildrenTaskPage(ctx, page, TaskQueryDTO{
 		Pid:    query.QueryAttribute[int64]{Value: new(parent.GetID())},
 		Status: query.QueryAttribute[int64]{Value: new(int64(TaskStatusCreated))},
+	})
+	if err != nil {
+		t.Fatalf("已创建+无内存查询失败: %v", err)
+	}
+	if got.DataCount != 1 || len(got.Data) != 1 || got.Data[0].Task.GetID() != childA.GetID() {
+		t.Fatalf("已创建+无内存应恰返回子任务A，得到 count=%d rows=%d", got.DataCount, len(got.Data))
+	}
+
+	// 已创建（稳态）+ 子任务A 内存态为进行中：运行中任务 DB 行虽为 Created，
+	// 实时状态非已创建 → 经 task.id NOT IN 排除 → 空结果
+	mem.states = map[int64]int{childA.GetID(): int(TaskStatusProcessing)}
+	got, err = svc.QueryChildrenTaskPage(ctx, page, TaskQueryDTO{
+		Pid:    query.QueryAttribute[int64]{Value: new(parent.GetID())},
+		Status: query.QueryAttribute[int64]{Value: new(int64(TaskStatusCreated))},
+	})
+	if err != nil {
+		t.Fatalf("已创建+内存异态查询失败: %v", err)
+	}
+	if got.DataCount != 0 || len(got.Data) != 0 {
+		t.Fatalf("已创建+内存异态应为空结果，得到 count=%d rows=%d", got.DataCount, len(got.Data))
+	}
+
+	// 瞬态（进行中）无内存匹配：永假条件以 task.id 限定列名执行，空结果而非 SQL 歧义错误
+	mem.states = map[int64]int{}
+	got, err = svc.QueryChildrenTaskPage(ctx, page, TaskQueryDTO{
+		Pid:    query.QueryAttribute[int64]{Value: new(parent.GetID())},
+		Status: query.QueryAttribute[int64]{Value: new(int64(TaskStatusProcessing))},
 	})
 	if err != nil {
 		t.Fatalf("瞬态无匹配查询失败: %v", err)
@@ -182,11 +211,11 @@ func TestQueryChildrenPageMemoryStatusJoin(t *testing.T) {
 		t.Fatalf("瞬态无匹配应为空结果，得到 count=%d rows=%d", got.DataCount, len(got.Data))
 	}
 
-	// 瞬态（已创建）有内存匹配：id IN 条件以 task.id 限定列名命中子任务A
-	mem.states = map[int64]int{childA.GetID(): int(TaskStatusCreated)}
+	// 瞬态（进行中）有内存匹配：task.id IN 条件命中内存态为进行中的子任务A
+	mem.states = map[int64]int{childA.GetID(): int(TaskStatusProcessing)}
 	got, err = svc.QueryChildrenTaskPage(ctx, page, TaskQueryDTO{
 		Pid:    query.QueryAttribute[int64]{Value: new(parent.GetID())},
-		Status: query.QueryAttribute[int64]{Value: new(int64(TaskStatusCreated))},
+		Status: query.QueryAttribute[int64]{Value: new(int64(TaskStatusProcessing))},
 	})
 	if err != nil {
 		t.Fatalf("瞬态命中查询失败: %v", err)
@@ -205,10 +234,10 @@ func TestQueryChildrenPageMemoryStatusJoin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("稳态查询失败: %v", err)
 	}
-	if got.DataCount != 1 || len(got.Data) != 1 || got.Data[0].Task.TaskName.String != "子任务B" {
+	if got.DataCount != 1 || len(got.Data) != 1 || got.Data[0].Task.GetID() != childB.GetID() {
 		t.Fatalf("稳态查询应命中 DB 行 Finished 的子任务B，得到 count=%d rows=%d", got.DataCount, len(got.Data))
 	}
-	mem.states[got.Data[0].Task.GetID()] = int(TaskStatusProcessing)
+	mem.states[childB.GetID()] = int(TaskStatusProcessing)
 	got, err = svc.QueryChildrenTaskPage(ctx, page, TaskQueryDTO{
 		Pid:    query.QueryAttribute[int64]{Value: new(parent.GetID())},
 		Status: query.QueryAttribute[int64]{Value: new(int64(TaskStatusFinished))},
