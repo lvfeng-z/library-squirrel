@@ -270,8 +270,9 @@ func (s *Service) SetRunningStopper(stopper RunningStopper) {
 
 // buildPageOptionWithMemory 构建 PageOption，综合内存中的任务状态调整查询条件
 // 并挂作品任务领域表左连接（领域列过滤经全限定列名引用）
-// 瞬态状态：从内存收集匹配 ID → 清除 Status 条件 → 添加 id IN (匹配IDs)
-// 稳态状态：从内存收集不匹配 ID → 保留 Status 条件 → 追加 id NOT IN (不匹配IDs)
+// 瞬态状态：从内存收集匹配 ID → 清除 Status 条件 → 添加 task.id IN (匹配IDs)
+// 稳态状态：从内存收集不匹配 ID → 保留 Status 条件 → 追加 task.id NOT IN (不匹配IDs)
+// （内存综合条件同样经限定列名引用：连接后 task 与 work_task 同有 id 列，裸 id 产生歧义引用）
 func (s *Service) buildPageOptionWithMemory(query TaskQueryDTO, page, pageSize int) (*database.PageOption, error) {
 	opt, err := s.buildPageOptionCore(query, page, pageSize)
 	if err != nil {
@@ -316,13 +317,13 @@ func (s *Service) buildPageOptionCore(query TaskQueryDTO, page, pageSize int) (*
 				vals[i] = id
 			}
 			opt.Conditions = append(opt.Conditions, clause.IN{
-				Column: clause.Column{Name: "id"},
+				Column: clause.Column{Name: "task.id"},
 				Values: vals,
 			})
 		} else {
-			// 无匹配任务，返回永假条件
+			// 无匹配任务，返回永假条件（限定列名：查询挂 work_task 左连接，两表同有 id 列）
 			opt.Conditions = append(opt.Conditions, clause.Eq{
-				Column: clause.Column{Name: "id"}, Value: int64(-1),
+				Column: clause.Column{Name: "task.id"}, Value: int64(-1),
 			})
 		}
 		return opt, nil
@@ -344,7 +345,7 @@ func (s *Service) buildPageOptionCore(query TaskQueryDTO, page, pageSize int) (*
 
 	if len(excludeIDs) > 0 {
 		opt.Conditions = append(opt.Conditions, clause.Not(clause.IN{
-			Column: clause.Column{Name: "id"},
+			Column: clause.Column{Name: "task.id"},
 			Values: excludeIDs,
 		}))
 	}
