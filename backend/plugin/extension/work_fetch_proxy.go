@@ -671,6 +671,7 @@ func protoToTaskCreateResponse(r *gen.TaskCreateResponse) *pluginsdkdto.TaskCrea
 			Url:           c.Url,
 			PluginData:    c.PluginData,
 			SiteName:      c.SiteName,
+			SiteKey:       c.SiteKey,
 			InvolvedRoles: c.InvolvedRoles,
 			ResourceType:  c.ResourceType,
 		}

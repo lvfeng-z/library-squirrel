@@ -17,6 +17,8 @@ import (
 	"github.com/library-squirrel/backend/site"
 	sdkdto "github.com/lvfeng-z/library-squirrel-sdk/dto"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 // 本文件为 leaf/独立任务创建路径回归测试（task-graph F 节点）。
@@ -527,6 +529,251 @@ func TestHandleTaskArray_ParentChildren(t *testing.T) {
 		t.Errorf("父任务 Pid 应为 NULL（Valid=false，根级），得到 %+v", parent.Pid)
 	}
 	assertChildrenPid(t, repo.tasks, parent.GetID(), 2)
+}
+
+// ---- 子行归属键两态（契约 19：自带非空键=子行键 / 空=继承父键）+ 跨站产出审计 ----
+
+const (
+	testCrossSiteKey = "bilibili" // 第二站点键（子行键覆盖与跨站产出审计测试用）
+	testCrossSiteID  = int64(200) // 第二站点 ID（与 pixiv 的 testSiteID 可区分）
+)
+
+// keyedSiteRepo 按站点键返回可区分的站点 ID：不同键 → 不同 ID，断言据此区分「子行键生效」与
+// 「继承父键」；缺键返回 nil（消费方按 ErrSiteNotFound 处理）。与 fakeSiteRepo 的键无关恒中形态
+// 相对——本 fake 只服务跨站两键场景。
+type keyedSiteRepo struct {
+	site.Repository
+	ids map[string]int64
+}
+
+func (r keyedSiteRepo) GetByKey(_ context.Context, key string) (*entity.Site, error) {
+	if id, ok := r.ids[key]; ok {
+		return &entity.Site{BaseEntity: &model.BaseEntity{ID: id}}, nil
+	}
+	return nil, nil
+}
+
+// newCrossSiteTestService 经生产构造函数组装 Service，站点查找按键区分（pixiv/bilibili 两键可用）。
+func newCrossSiteTestService(t *testing.T) (*Service, *fakeTaskRepo) {
+	t.Helper()
+	repo := newFakeTaskRepo()
+	siteSvc := site.NewService(keyedSiteRepo{ids: map[string]int64{
+		testSiteKey:      testSiteID,
+		testCrossSiteKey: testCrossSiteID,
+	}})
+	svc := NewService(repo, fakeTransactor{}, nil, nil, siteSvc, nil, nil)
+	return svc, repo
+}
+
+// observeLogs 临时替换全局 logger.Log 为观察核心并返回日志集合（t.Cleanup 恢复 nop）——
+// 审计日志断言用。本包测试无 t.Parallel，全局换桩安全。
+func observeLogs(t *testing.T) *observer.ObservedLogs {
+	t.Helper()
+	core, logs := observer.New(zapcore.InfoLevel)
+	logger.Log = zap.New(core).Sugar()
+	t.Cleanup(func() { logger.Log = zap.NewNop().Sugar() })
+	return logs
+}
+
+// fieldOf 取单条日志条目的 string 结构化字段值（无该键返回空串）。
+func fieldOf(e observer.LoggedEntry, key string) string {
+	for _, f := range e.Context {
+		if f.Key == key {
+			return f.String
+		}
+	}
+	return ""
+}
+
+// TestTaskCreateChildSiteKeyOverride 子行键覆盖态：child 自带非空 siteKey → 子任务按自身键解析
+// 站点（归属域=子行键），同批未带键的 child 仍继承父键——同批两态并存各自解析。
+func TestTaskCreateChildSiteKeyOverride(t *testing.T) {
+	svc, repo := newCrossSiteTestService(t)
+	responses := []*sdkdto.TaskCreateResponse{
+		{
+			TaskName: "work-A", Url: "http://x/a", SiteKey: testSiteKey,
+			Children: []*sdkdto.TaskCreateChildResponse{
+				{TaskName: "own", SiteWorkId: "c-1", Url: "http://x/1", SiteKey: testCrossSiteKey, ResourceType: entity.ResourceTypeImage},
+				{TaskName: "inh", SiteWorkId: "c-2", Url: "http://x/2", ResourceType: entity.ResourceTypeImage},
+			},
+		},
+	}
+
+	count, failed, err := svc.handleCreateTaskArray(context.Background(), responses, testListener())
+	if err != nil {
+		t.Fatalf("handleCreateTaskArray 返回错误: %v", err)
+	}
+	if count != 2 || failed != 0 {
+		t.Fatalf("期望计数 2（2 children）、失败 0，得到 count=%d failed=%d", count, failed)
+	}
+
+	parent := findParent(repo.tasks)
+	if parent == nil {
+		t.Fatal("未找到 HasChild=true 的父任务")
+	}
+	if wt := repo.workTaskOf(parent.GetID()); wt == nil || !wt.SiteID.Valid || wt.SiteID.Int64 != testSiteID {
+		t.Errorf("父行 SiteID 应为父键站点 %d，得到 %+v", testSiteID, wt.SiteID)
+	}
+	for _, tk := range repo.tasks {
+		if tk.HasChild.Valid && tk.HasChild.Bool {
+			continue
+		}
+		wt := repo.workTaskOf(tk.GetID())
+		if wt == nil || !wt.SiteID.Valid {
+			t.Fatalf("子任务 %s 缺少有效 SiteID", tk.TaskName.String)
+		}
+		want := testCrossSiteID // own：自带子行键
+		if tk.TaskName.String == "inh" {
+			want = testSiteID // inh：空键继承父键
+		}
+		if wt.SiteID.Int64 != want {
+			t.Errorf("子任务 %s SiteID 应为 %d，得到 %d", tk.TaskName.String, want, wt.SiteID.Int64)
+		}
+	}
+}
+
+// TestTaskCreateChildSiteKeyInherit 子行键继承态（全批空键）：children 均不带 siteKey →
+// 全部按父应答键解析（既有行为不变的回归锚）。
+func TestTaskCreateChildSiteKeyInherit(t *testing.T) {
+	svc, repo := newCrossSiteTestService(t)
+	responses := []*sdkdto.TaskCreateResponse{
+		{
+			TaskName: "work-B", Url: "http://x/b", SiteKey: testSiteKey,
+			Children: []*sdkdto.TaskCreateChildResponse{
+				{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", ResourceType: entity.ResourceTypeImage},
+				{TaskName: "p2", SiteWorkId: "c-2", Url: "http://x/2", ResourceType: entity.ResourceTypeImage},
+			},
+		},
+	}
+
+	count, failed, err := svc.handleCreateTaskArray(context.Background(), responses, testListener())
+	if err != nil {
+		t.Fatalf("handleCreateTaskArray 返回错误: %v", err)
+	}
+	if count != 2 || failed != 0 {
+		t.Fatalf("期望计数 2、失败 0，得到 count=%d failed=%d", count, failed)
+	}
+
+	for _, tk := range repo.tasks {
+		wt := repo.workTaskOf(tk.GetID())
+		if wt == nil || !wt.SiteID.Valid || wt.SiteID.Int64 != testSiteID {
+			t.Errorf("任务 %s SiteID 应全部为父键站点 %d（继承态），得到 %+v",
+				tk.TaskName.String, testSiteID, wt.SiteID)
+		}
+	}
+}
+
+// TestCrossSiteAuditResponseLevel 审计①（应答级：入口域 vs 创建域）：条目声明入口域 pixiv、
+// 应答创建域 bilibili → 恰一条结构化日志行；同域与条目未声明入口域（空）均不记。
+func TestCrossSiteAuditResponseLevel(t *testing.T) {
+	msg := "[Task] 跨站产出（应答级）：插件条目产出非入口域站点任务"
+
+	t.Run("跨域记一条", func(t *testing.T) {
+		logs := observeLogs(t)
+		svc, _ := newCrossSiteTestService(t)
+		listener := testListener()
+		listener.SiteKey = testSiteKey // 条目声明入口域 pixiv
+		responses := []*sdkdto.TaskCreateResponse{
+			{
+				TaskName: "work-X", Url: "http://x/x", SiteKey: testCrossSiteKey, // 创建域 bilibili
+				Children: []*sdkdto.TaskCreateChildResponse{
+					{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", ResourceType: entity.ResourceTypeImage},
+				},
+			},
+		}
+		if _, _, err := svc.handleCreateTaskArray(context.Background(), responses, listener); err != nil {
+			t.Fatalf("handleCreateTaskArray 返回错误: %v", err)
+		}
+
+		entries := logs.FilterMessage(msg).All()
+		if len(entries) != 1 {
+			t.Fatalf("期望恰 1 条应答级审计日志，得到 %d 条：%v", len(entries), entries)
+		}
+		e := entries[0]
+		if got := fieldOf(e, "plugin"); got != testPluginID {
+			t.Errorf("plugin 字段应为 %q，得到 %q", testPluginID, got)
+		}
+		if got := fieldOf(e, "extensionId"); got != testExtID {
+			t.Errorf("extensionId 字段应为 %q，得到 %q", testExtID, got)
+		}
+		if got := fieldOf(e, "entrySiteKey"); got != testSiteKey {
+			t.Errorf("entrySiteKey 字段应为 %q，得到 %q", testSiteKey, got)
+		}
+		if got := fieldOf(e, "createdSiteKey"); got != testCrossSiteKey {
+			t.Errorf("createdSiteKey 字段应为 %q，得到 %q", testCrossSiteKey, got)
+		}
+		// 子行继承父键（归属域=创建域）→ 子行级审计不触发
+		if n := len(logs.FilterMessage("[Task] 跨站产出（子行级）：批次内子任务归属非创建域站点").All()); n != 0 {
+			t.Errorf("子行继承态不应记子行级审计日志，得到 %d 条", n)
+		}
+	})
+
+	t.Run("同域与未声明入口域不记", func(t *testing.T) {
+		logs := observeLogs(t)
+		svc, _ := newCrossSiteTestService(t)
+		sameDomain := testListener()
+		sameDomain.SiteKey = testSiteKey
+		undeclared := testListener() // SiteKey 空 = 无比较基准
+		responses := []*sdkdto.TaskCreateResponse{
+			{TaskName: "same", Url: "http://x/1", SiteKey: testSiteKey, SiteWorkId: "w-1", ResourceType: entity.ResourceTypeImage},
+			{TaskName: "undeclared", Url: "http://x/2", SiteKey: testCrossSiteKey, SiteWorkId: "w-2", ResourceType: entity.ResourceTypeImage},
+		}
+		if _, _, err := svc.handleCreateTaskArray(context.Background(), responses[:1], sameDomain); err != nil {
+			t.Fatalf("handleCreateTaskArray 返回错误: %v", err)
+		}
+		if _, _, err := svc.handleCreateTaskArray(context.Background(), responses[1:], undeclared); err != nil {
+			t.Fatalf("handleCreateTaskArray 返回错误: %v", err)
+		}
+		if n := len(logs.FilterMessage(msg).All()); n != 0 {
+			t.Errorf("同域/未声明入口域均不应记应答级审计日志，得到 %d 条", n)
+		}
+	})
+}
+
+// TestCrossSiteAuditChildLevel 审计②（子行级：创建域 vs 归属域）：父行创建域 pixiv、child 自带
+// 归属键 bilibili → 恰一条结构化日志行；创建域即入口域时审计①不触发；空键继承态不记。
+func TestCrossSiteAuditChildLevel(t *testing.T) {
+	childMsg := "[Task] 跨站产出（子行级）：批次内子任务归属非创建域站点"
+	logs := observeLogs(t)
+	svc, _ := newCrossSiteTestService(t)
+	listener := testListener()
+	listener.SiteKey = testSiteKey // 入口域=创建域=pixiv → 审计①不触发
+	responses := []*sdkdto.TaskCreateResponse{
+		{
+			TaskName: "work-Y", Url: "http://x/y", SiteKey: testSiteKey,
+			Children: []*sdkdto.TaskCreateChildResponse{
+				{TaskName: "split", SiteWorkId: "c-1", Url: "http://x/1", SiteKey: testCrossSiteKey, ResourceType: entity.ResourceTypeImage},
+				{TaskName: "inh", SiteWorkId: "c-2", Url: "http://x/2", ResourceType: entity.ResourceTypeImage},
+			},
+		},
+	}
+	if _, _, err := svc.handleCreateTaskArray(context.Background(), responses, listener); err != nil {
+		t.Fatalf("handleCreateTaskArray 返回错误: %v", err)
+	}
+
+	entries := logs.FilterMessage(childMsg).All()
+	if len(entries) != 1 {
+		t.Fatalf("期望恰 1 条子行级审计日志（仅 split），得到 %d 条：%v", len(entries), entries)
+	}
+	e := entries[0]
+	if got := fieldOf(e, "plugin"); got != testPluginID {
+		t.Errorf("plugin 字段应为 %q，得到 %q", testPluginID, got)
+	}
+	if got := fieldOf(e, "extensionId"); got != testExtID {
+		t.Errorf("extensionId 字段应为 %q，得到 %q", testExtID, got)
+	}
+	if got := fieldOf(e, "parentSiteKey"); got != testSiteKey {
+		t.Errorf("parentSiteKey 字段应为 %q，得到 %q", testSiteKey, got)
+	}
+	if got := fieldOf(e, "childSiteKey"); got != testCrossSiteKey {
+		t.Errorf("childSiteKey 字段应为 %q，得到 %q", testCrossSiteKey, got)
+	}
+	if got := fieldOf(e, "taskName"); got != "split" {
+		t.Errorf("taskName 字段应为 split，得到 %q", got)
+	}
+	if n := len(logs.FilterMessage("[Task] 跨站产出（应答级）：插件条目产出非入口域站点任务").All()); n != 0 {
+		t.Errorf("入口域=创建域不应记应答级审计日志，得到 %d 条", n)
+	}
 }
 
 // ---- OpenTestDB 外键强制库落盘锚定：pid 形态回归 ----

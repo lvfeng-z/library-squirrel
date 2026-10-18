@@ -1252,14 +1252,20 @@ func (p *createPlan) count() int {
 }
 
 // childToResponse 把子响应适配为 TaskCreateResponse，复用 fillTaskFromResponse 的统一字段映射。
-// 子应答契约无 siteKey 字段，站点归属继承父应答的键——同一父任务的子任务必属同站点。
+// 子行归属键（契约 19）：子响应自带非空 siteKey 时用子行键——子任务的作品身份落库域转为自身
+// 声明（仍受宿主站点表存在性校验）；空=继承父应答的键（既有行为不变）。跨站产出语义见
+// doc/plugin-dev-guide.md「作品跨站产出」。
 func childToResponse(c *sdkdto.TaskCreateChildResponse, parentSiteKey string) *sdkdto.TaskCreateResponse {
+	siteKey := c.SiteKey
+	if siteKey == "" {
+		siteKey = parentSiteKey
+	}
 	return &sdkdto.TaskCreateResponse{
 		TaskName:      c.TaskName,
 		SiteWorkId:    c.SiteWorkId,
 		Url:           c.Url,
 		SiteName:      c.SiteName,
-		SiteKey:       parentSiteKey,
+		SiteKey:       siteKey,
 		PluginData:    c.PluginData,
 		InvolvedRoles: c.InvolvedRoles,
 		ResourceType:  c.ResourceType,
@@ -1272,7 +1278,7 @@ func childToResponse(c *sdkdto.TaskCreateChildResponse, parentSiteKey string) *s
 // hasChild：是否父任务（容器，不带 SiteWorkID/PluginData）。
 // siteCache：站点键→ID 缓存（调用方持有，跨任务复用，避免重复查库）。
 // SiteKey 为空时返回 ErrSiteKeyRequired——leaf/parent/child 均须归属站点（child 的键由
-// childToResponse 继承父应答）。
+// childToResponse 判定：自带非空键用子行键，空继承父应答键）。
 func (s *Service) fillTaskFromResponse(ctx context.Context, pair *TaskWithWorkTask, resp *sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithExtension, pid int64, hasChild bool, siteCache map[string]int) error {
 	task, wt := pair.Task, pair.WorkTask
 	task.TaskName = sql.NullString{String: resp.TaskName, Valid: true}
@@ -1326,6 +1332,8 @@ func (s *Service) fillTaskFromResponse(ctx context.Context, pair *TaskWithWorkTa
 // 不变量：改此函数须保 leaf(pid=NULL 根级) 路径不被遗漏/折叠，参见 memory leaf-task-regression-hotspot。
 // 通信契约详见 doc/plugin-dev-guide.md「Create 返回的任务结构契约」。
 func (s *Service) planCreateResponse(ctx context.Context, taskResp *sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithExtension, siteCache map[string]int) (*createPlan, error) {
+	// 跨站产出审计①（应答级）：应答创建域 ≠ 条目声明的入口域时留痕（Info 级，见 auditCrossSiteResponse）
+	auditCrossSiteResponse(taskResp, listener)
 	if len(taskResp.Children) == 0 {
 		// 无 Children：独立 leaf（如 local 单文件导入），pid=NULL（根级）、HasChild=false。
 		// 领域行主键未绑定（落库口 CreateForTask 覆写为核心行 id），BaseEntity 须显式初始化
@@ -1349,6 +1357,8 @@ func (s *Service) planCreateResponse(ctx context.Context, taskResp *sdkdto.TaskC
 	}
 	children := make([]*TaskWithWorkTask, 0, len(taskResp.Children))
 	for _, childResp := range taskResp.Children {
+		// 跨站产出审计②（子行级）：子行归属域 ≠ 父行创建域时留痕（Info 级，见 auditCrossSiteChild）
+		auditCrossSiteChild(taskResp, childResp, listener)
 		child := &TaskWithWorkTask{
 			Task:     &entity.Task{BaseEntity: &model.BaseEntity{}},
 			WorkTask: &entity.WorkTask{BaseEntity: &model.BaseEntity{}},
@@ -1359,6 +1369,39 @@ func (s *Service) planCreateResponse(ctx context.Context, taskResp *sdkdto.TaskC
 		children = append(children, child)
 	}
 	return &createPlan{parent: parent, children: children}, nil
+}
+
+// auditCrossSiteResponse 跨站产出审计①（应答级：入口域 vs 创建域）：应答 SiteKey ≠ 插件监听条目
+// 声明的入口域（清单 workFetch[].siteKey，经 listener.SiteKey 携带）→ 记 Info 级结构化日志留痕。
+// 捕获整批建到非入口域的形态（如 pixiv 组父行建到别站）。条目未声明入口域（空）时无比较基准，
+// 不判。三域模型与准入准则见 doc/plugin-dev-guide.md「作品跨站产出」。
+func auditCrossSiteResponse(taskResp *sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithExtension) {
+	if listener.SiteKey == "" || taskResp.SiteKey == listener.SiteKey {
+		return
+	}
+	logger.Log.Infow("[Task] 跨站产出（应答级）：插件条目产出非入口域站点任务",
+		"plugin", listener.PublicID.String,
+		"extensionId", listener.ExtensionID,
+		"entrySiteKey", listener.SiteKey,
+		"createdSiteKey", taskResp.SiteKey,
+		"taskName", taskResp.TaskName,
+	)
+}
+
+// auditCrossSiteChild 跨站产出审计②（子行级：创建域 vs 归属域）：子行有效站点键（自带非空键，
+// 空=继承父键）≠ 父行站点键 → 记 Info 级结构化日志留痕。捕获批次内归属分裂（同一父批次下
+// 子任务归属到非创建域站点）。继承态（子行键为空）与同键态不判。
+func auditCrossSiteChild(taskResp *sdkdto.TaskCreateResponse, childResp *sdkdto.TaskCreateChildResponse, listener *pluginTaskUrlListener.PluginWithExtension) {
+	if childResp.SiteKey == "" || childResp.SiteKey == taskResp.SiteKey {
+		return
+	}
+	logger.Log.Infow("[Task] 跨站产出（子行级）：批次内子任务归属非创建域站点",
+		"plugin", listener.PublicID.String,
+		"extensionId", listener.ExtensionID,
+		"parentSiteKey", taskResp.SiteKey,
+		"childSiteKey", childResp.SiteKey,
+		"taskName", childResp.TaskName,
+	)
 }
 
 // persistPlanPair 事务内成对落库一个计划成员：核心行拿 id → 领域行绑定同值共享主键

@@ -42,11 +42,10 @@ var (
 const currentContractVersion = pluginsdktransport.ContractVersion
 
 // minSupportedContractVersion 主程序仍兼容的最低插件契约版本；低于此版本的插件拒绝加载。
-// 版本 12 分界：扩展点正名——作品拉取扩展点（workFetch / WorkFetcher / WorkFetchService）的旧名
-// 退役（旧名标识符与线级破坏细节见 SDK 契约版本史 transport.ContractHistory 第 12 条）：清单段名、
-// SDK 接口与选项、gRPC 服务名、宿主侧类型与状态字段一并更换；
-// 清单段名更换属宿主读清单的源级破坏、gRPC 服务名更换属线级破坏
-const minSupportedContractVersion = 12
+// 版本 19 分界：子行归属键（跨站产出规范落地首期，`TaskCreateChildResponse` 加可选 `siteKey`）
+// 经裁定为破坏性分界升版——兼容矩阵按硬边界收紧、不留 12–18 混装载状态（变更叙述见 SDK
+// 契约版本史 transport.ContractHistory 第 19 条），v18 及以下插件包在新宿主加载期拒载并提示升级。
+const minSupportedContractVersion = 19
 
 // ValidateContractVersion 校验插件契约版本是否与主程序兼容。
 // pluginContract 为插件声明的契约版本；未声明（=0）视作低于 minSupported，拒绝加载并

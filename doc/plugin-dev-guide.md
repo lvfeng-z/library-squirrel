@@ -210,7 +210,7 @@ type MyWorkFetcher struct{}
 
 ### 契约版本协商
 
-`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 16，直接引用 SDK `transport.ContractVersion` 常量，`backend/plugin/extension/loader.go:41`）与 `minSupportedContractVersion`（当前 12，`backend/plugin/extension/loader.go:47`），插件 manifest 声明自己编译时锁定的 `contractVersion`。**该字段是 plugin.json 的显式手填字段，不随 SDK 自动跟随**——SDK 提升 `ContractVersion` 常量后，你必须自行把它改到 plugin.json 里；漏改即被主程序按「过旧」拒载。
+`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 19，直接引用 SDK `transport.ContractVersion` 常量，`backend/plugin/extension/loader.go:42`）与 `minSupportedContractVersion`（当前 19，`backend/plugin/extension/loader.go:48`），插件 manifest 声明自己编译时锁定的 `contractVersion`。**该字段是 plugin.json 的显式手填字段，不随 SDK 自动跟随**——SDK 提升 `ContractVersion` 常量后，你必须自行把它改到 plugin.json 里；漏改即被主程序按「过旧」拒载。
 
 **校验**（安装期预检 + 加载期终检，硬拒绝 + 清晰提示）：
 - 插件 `contractVersion` > 主程序 `current` → 插件太新，拒（提示升级主程序）。
@@ -238,6 +238,7 @@ type MyWorkFetcher struct{}
 - 16 — 插件设置变更通知：PluginLifecycle 线级新增 `SettingChanged` 一元 RPC——宿主在 SaveSetting/ResetSetting 落库成功后向已激活插件异步推送 {source, keys} 纯通知（source=save/reset + 变更键集），响应 Empty 无回执面（处置语义由插件处置函数自理，SDK 经 `WithSettingChangeHandler` 注册处置函数，见四节「插件入口」）。线级新增、非破坏、纯通知无回执——未注册处置函数时 SDK 空操作+debug 日志（旧插件内嵌 Unimplemented 兜底，宿主静默降级；新插件对旧宿主只是收不到通知），宿主侧通知尽力而为（插件未激活跳过、发送失败/超时降级为 debug 日志），不构成保存流程的失败面——`minSupportedContractVersion` 维持 12，既有面不受影响。
 - 17 — 本地导入作者关联级角色声明面：`LocalAuthorDTO` 加可选 `RoleName` 字段——作品声明（`WorkResponse.localAuthors`）携带本地作者时随条目声明关联级 role，落点为作品-作者关联行、不写作者实体（语义与站点侧 `TaskSiteAuthorDTO.RoleName` 同构，空=无 role）。加字段向前兼容（旧插件不填该字段线形态零变化），作为本地导入解析新能力标识升版——主程序 `minSupportedContractVersion` 维持 12，既有插件混装载不受影响；声明契约 17 的插件包对 current<17 的旧宿主仍在加载期被拒。
 - 18 — Create 流意图信号收尾：CreateChunk oneof 新增 `CreateIntent` 块（`CreateIntentKind` 枚举两态：转入解析/已取消 + 提示文案）——插件经 Create 流显式声明「本流不产出任务」的成功收尾意图（如本地导入确认弹窗后转入解析视图、用户取消），块必为流的最后一块，宿主消费为成功零任务 + Msg=文案（区别于 error 块的失败收尾）；SDK `TaskCreateResult` 配套 `SetIntent`/`Intent`。加字段向前兼容（旧插件不发该块线形态零变化），作为意图信号新能力标识升版——主程序 `minSupportedContractVersion` 维持 12，既有插件混装载不受影响；声明契约 18 的插件包对 current<18 的旧宿主仍在加载期被拒。
+- 19 — 子行归属键（跨站产出规范落地首期）：`TaskCreateChildResponse` 加可选 `siteKey` 字段——子任务声明自身归属域键（作品身份落库域，仍受宿主站点表存在性校验），空=继承父应答站点键（既有行为不变）。线级上字段本身可缺省（旧插件不填、形态零变化），但本版经裁定为破坏性分界升版：兼容矩阵按硬边界收紧、不留 12-18 混装载状态——主程序 `minSupportedContractVersion` 同步升 19（v18 及以下插件包在新宿主加载期拒载并提示升级，捆绑包随之重建）。
 <!-- contract-history:end -->
 
 **填法（注意：手填，不自动跟随）**：插件作者须把 SDK 的 `ContractVersion` 常量（`github.com/lvfeng-z/library-squirrel-sdk/transport.ContractVersion`）**显式写进 plugin.json 的 `contractVersion` 字段**——该字段不会随 SDK 升版自动变化，SDK bump 后漏改即被主程序按「过旧」拒载。bump（提升契约版本）只在破坏性变更或新能力族标识时由 SDK 侧发起（删/改字段、删 RPC、改 DTO 结构/RPC 签名/前端 props 契约必 bump；proto 加字段、加 RPC 通常不 bump，但当其**开启一族新能力**（宿主/插件按契约版本识别该能力是否可用，如 v7 周边写面、v13 偏好域）时作为能力标识 bump）。加 RPC 不必然 bump 意味着版本门可能拦不住「同代宿主缺某端点」的组合——运行期探测约定见 5.1「Unimplemented 降级」。
@@ -262,6 +263,8 @@ type MyWorkFetcher struct{}
 `extensions.workFetch[].siteKey` 声明该监听条目归属的**站点域**：条目级可选字段，取值为自由字符串，无枚举与格式校验，缺省即空。语义上**约定复用身份域的站点串**——即该条目所服务站点在 SDK 站点注册表中的站点键（如 `pixiv`、`bilibili`），使同一站点的不同 URL 形态归到同一站点域。
 
 宿主在任务创建出现多个候选条目、需要用户显选时，按「站点域 + 候选组合」归组记忆用户的选择（同站点域的同组冲突不再重复询问）：同批候选声明的 `siteKey` 全部一致且非空时，以该声明值为站点域；任一条目缺省或候选间声明不一致时，退回按任务 URL 的 host 兜底判定。不写该字段完全合法——只影响站点域判定走 host 兜底，不影响 URL 监听与路由行为。
+
+注意该声明是**入口域**语义——即该条目处理的 URL/路径域（供上文的歧义归组记忆锚定），**不是产出域声明**：它不约束插件 Create 应答实际创建任务的站点。产出侧的域语义（入口域/创建域/归属域三域模型与跨站产出准则）见 6.1「作品跨站产出」。
 
 顶层 `capabilities` 键在场（值恰为 `null` 亦然）即视为**未迁移**：安装时拒收、加载时跳过（校验入口 `backend/plugin/extension/loader.go:233-241`；安装闸门 `backend/plugin/service.go:345`、加载闸门 `backend/plugin/service.go:146`）。能力不单独版本化，演进由全局 `contractVersion` 兜底。
 
@@ -480,7 +483,7 @@ type WorkFetcher interface {
 | **有 Children**(任务组) | 1 个 parent(HasChild=true、pid=0)+ 每个 child(pid=parent.id、HasChild=false) | len(Children)(parent 容器不计) |
 
 - **不折叠**:即便 `Children` 只有 1 个,也建 parent+1child(2 任务),不把单 child 提升为 leaf。parent 是"作品/目录"容器、child 是"可下载单元",语义不同。
-- **字段落位**:parent 容器只取 `TaskName`/`Url`/`SiteKey`/`InvolvedRoles`/`ResourceType`(不带 `SiteWorkId`/`PluginData`);leaf 与 child 取全部身份字段(含 `SiteWorkId`/`PluginData`)。`SiteKey` 必填(用 `identity.*` 常量,见「十九、站点注册与站点身份」)——缺失则该响应被跳过(不入库);child 未显式带键时继承 parent 的键。`SiteName` 不参与身份判定(主程序忽略,可不填)。
+- **字段落位**:parent 容器只取 `TaskName`/`Url`/`SiteKey`/`InvolvedRoles`/`ResourceType`(不带 `SiteWorkId`/`PluginData`);leaf 与 child 取全部身份字段(含 `SiteWorkId`/`PluginData`)。`SiteKey` 必填(用 `identity.*` 常量,见「十九、站点注册与站点身份」)——缺失则该响应被跳过(不入库);child 自契约 19 起可自带 `siteKey` 声明子行归属域(空=继承 parent 的键,见下「作品跨站产出」)。`SiteName` 不参与身份判定(主程序忽略,可不填)。
 - **流式合并(stream 专属)**:一个超大 work 可拆成多个响应流式发,**复用同一 `PluginTaskId`**——主程序把同 `PluginTaskId` 的连续响应合并到同一 parent(children 累加、不重复建 parent)。`PluginTaskId` 是插件稳定的 work 标识;**勿用 `TaskName` 当合并键**(展示名易重复,且 local 一次导入内 `TaskName` 恒定,用它会误把不同目录焊成一个 work)。批量(array)路径不合并,每个响应须自洽。流式适合"work 数量多想渐进反馈"或"单 work 巨大需拆分"的场景(如本地导入含大量文件的目录)。
 
 四例:
@@ -493,6 +496,24 @@ type WorkFetcher interface {
 | pixiv 5 图作品 | array,1 响应 | 任务组 Children=[5] | 1 parent + 5 child | 5 |
 
 > 站点类插件(如 pixiv)始终发任务组(作品概念,单图也是 Children=[1]);本地单文件发独立 leaf。这是**插件编码的选择**,主程序规则统一(尊重编码、不替它折叠)。一次 `Create` 可返回多个响应(如本地选多个目录),每个独立按上表落盘。
+
+#### 作品跨站产出（三域模型与准入准则）
+
+「跨站产出」指插件在入口域之外的站点创建作品任务（如本地导入把存量的站点下载物归位到原站）。涉及三个「域」概念，分工如下：
+
+| 域 | 载体 | 语义 |
+|---|---|---|
+| **入口域** | 清单 `workFetch[].siteKey` 声明（条目声明的站点域，见「siteKey 站点域声明」） | 该条目处理的 URL/路径域——歧义记忆锚定用，不约束产出 |
+| **创建域** | 应答 `SiteKey`（父行键；无 Children 时即 leaf 自身键） | 本响应任务行的落库站点（父批次整体建在哪个站） |
+| **归属域** | 子行键 `TaskCreateChildResponse.SiteKey`（契约 19；空=继承父键）/ leaf 的应答键 | 子任务作品身份实际落库的站点 |
+
+- **默认规约：归属域与入口域一致**——一个条目产出的任务归属其入口域站点，是常态形态；三域同键时宿主零干预、零留痕。
+- **跨站产出准入三准则**（声明归属域 ≠ 入口域前，逐条自问，任一不满足即不该跨站）：
+  1. **证据在导入物自身**：归属判定依据须是站点侧命名形态等**权威身份证据**（URL/文件名中的站点侧 ID 形态、元数据内嵌的来源标识）——由被转述的文件自证，而不是插件替站点做主（推断/猜测不构成证据）。
+  2. **真实身份准入**：只承认站点侧真实身份——本地造的 ID（无站点侧对应物的自编号）恒落 `local`，不得伪装成站点域键。
+  3. **明确用户价值**：跨站产出须服务可陈述的用户目的（如存量归位——把散落本地的既有下载物按真实归属并回原站作品，配合库内合并去重），不为跨而跨。
+- **聚合器类多域产出走入口级多条目**：一个插件天然服务多个站点时，按站点拆分多个 `workFetch` 条目（各声明自己的 `siteKey` 与 `urlPatterns`），而不是单条目内混合产出多域任务——入口域锚定与歧义记忆都以条目为单位，条目内分裂会绕过这些机制。
+- **跨站产出留痕告知**：宿主在任务创建链落两道 Info 级审计日志（不建表不建 UI）——①应答级：应答创建域 ≠ 条目声明入口域时记「插件条目产出非入口域站点任务」；②子行级：子行归属域 ≠ 父行创建域时记「批次内子任务归属非创建域站点」。插件按上述准则准入后照常产出即可，日志属宿主侧留痕（排查「这批任务为什么建在别的站」的第一现场）。
 
 #### 创建期声明涉及板块(InvolvedRoles)
 

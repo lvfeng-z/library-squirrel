@@ -13,8 +13,9 @@ import (
 )
 
 // TestValidateContractVersion 契约版本协商矩阵：currentContractVersion 跟随 SDK
-// transport.ContractVersion，minSupportedContractVersion=12（扩展点正名的破坏性分界——作品拉取
-// 扩展点 workFetch 的旧名退役，旧名标识符见 SDK 契约版本史 transport.ContractHistory 第 12 条），
+// transport.ContractVersion，minSupportedContractVersion=19（子行归属键的破坏性分界——
+// `TaskCreateChildResponse` 加可选 `siteKey`，经裁定兼容矩阵按硬边界收紧、不留 12–18 混装载
+// 状态，变更叙述见 SDK 契约版本史 transport.ContractHistory 第 19 条），
 // 未声明（=0）视作低于 minSupported 拒载。
 func TestValidateContractVersion(t *testing.T) {
 	tests := []struct {
@@ -44,17 +45,16 @@ func TestValidateContractVersion(t *testing.T) {
 	}
 }
 
-// TestContractVersionBaseline 契约版本双点基线锚定：SDK 当前版本 18（Create 流意图信号
-// 收尾——CreateChunk 增 CreateIntent 块〔枚举两态：转入解析/已取消 + 提示文案〕，插件经
-// Create 流显式声明零任务的成功收尾，宿主消费为成功零任务 + Msg=文案；加块向前兼容，
-// 作为意图信号新能力标识升版），主程序最低支持版本 12（扩展点正名的破坏性分界——
-// 意图信号不升 min：契约 12 插件在新宿主照常运行），任一侧升版须同步更新本基线
+// TestContractVersionBaseline 契约版本双点基线锚定：SDK 当前版本 19（子行归属键——
+// `TaskCreateChildResponse` 加可选 `siteKey` 字段，子任务声明自身归属域键，空=继承父应答
+// 站点键；跨站产出规范落地首期），主程序最低支持版本 19（破坏性分界：兼容矩阵按硬边界
+// 收紧、不留 12–18 混装载状态，v18 及以下插件包拒载），任一侧升版须同步更新本基线
 func TestContractVersionBaseline(t *testing.T) {
-	if pluginsdktransport.ContractVersion != 18 {
-		t.Errorf("SDK 当前契约版本 = %d, 期望 18", pluginsdktransport.ContractVersion)
+	if pluginsdktransport.ContractVersion != 19 {
+		t.Errorf("SDK 当前契约版本 = %d, 期望 19", pluginsdktransport.ContractVersion)
 	}
-	if minSupportedContractVersion != 12 {
-		t.Errorf("最低支持契约版本 = %d, 期望 12", minSupportedContractVersion)
+	if minSupportedContractVersion != 19 {
+		t.Errorf("最低支持契约版本 = %d, 期望 19", minSupportedContractVersion)
 	}
 }
 
