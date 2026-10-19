@@ -42,10 +42,11 @@ var (
 const currentContractVersion = pluginsdktransport.ContractVersion
 
 // minSupportedContractVersion 主程序仍兼容的最低插件契约版本；低于此版本的插件拒绝加载。
-// 版本 19 分界：子行归属键（跨站产出规范落地首期，`TaskCreateChildResponse` 加可选 `siteKey`）
-// 经裁定为破坏性分界升版——兼容矩阵按硬边界收紧、不留 12–18 混装载状态（变更叙述见 SDK
-// 契约版本史 transport.ContractHistory 第 19 条），v18 及以下插件包在新宿主加载期拒载并提示升级。
-const minSupportedContractVersion = 19
+// 版本 20 分界：库内作品集名全集分页查询（集名互证索引，LibraryQuery 线级新增
+// `QueryLocalWorkSets` RPC）经裁定为破坏性分界升版——兼容矩阵按硬边界收紧、不留
+// 19-20 混装载状态（变更叙述见 SDK 契约版本史 transport.ContractHistory 第 20 条），
+// v19 及以下插件包在新宿主加载期拒载并提示升级。
+const minSupportedContractVersion = 20
 
 // ValidateContractVersion 校验插件契约版本是否与主程序兼容。
 // pluginContract 为插件声明的契约版本；未声明（=0）视作低于 minSupported，拒绝加载并
@@ -1044,6 +1045,10 @@ func (p *hostLibraryQueryProvider) ListParentWorkSets(ctx context.Context, req *
 
 func (p *hostLibraryQueryProvider) ListChildWorkSets(ctx context.Context, req *gen.ListChildWorkSetsRequest) (*gen.ListChildWorkSetsResponse, error) {
 	return p.ctx.ListChildWorkSets(req.WorkSetId)
+}
+
+func (p *hostLibraryQueryProvider) QueryLocalWorkSets(ctx context.Context, req *gen.QueryLocalWorkSetsRequest) (*gen.QueryLocalWorkSetsResponse, error) {
+	return p.ctx.QueryLocalWorkSets(req)
 }
 
 // ===== 站点 / 工作目录 =====

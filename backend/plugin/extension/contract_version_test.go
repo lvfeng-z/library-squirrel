@@ -13,10 +13,10 @@ import (
 )
 
 // TestValidateContractVersion 契约版本协商矩阵：currentContractVersion 跟随 SDK
-// transport.ContractVersion，minSupportedContractVersion=19（子行归属键的破坏性分界——
-// `TaskCreateChildResponse` 加可选 `siteKey`，经裁定兼容矩阵按硬边界收紧、不留 12–18 混装载
-// 状态，变更叙述见 SDK 契约版本史 transport.ContractHistory 第 19 条），
-// 未声明（=0）视作低于 minSupported 拒载。
+// transport.ContractVersion，minSupportedContractVersion=20（库内作品集名全集分页查询的
+// 破坏性分界——LibraryQuery 线级新增 `QueryLocalWorkSets` RPC（集名互证索引用），经裁定
+// 兼容矩阵按硬边界收紧、不留 19-20 混装载状态，变更叙述见 SDK 契约版本史
+// transport.ContractHistory 第 20 条），未声明（=0）视作低于 minSupported 拒载。
 func TestValidateContractVersion(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -45,16 +45,16 @@ func TestValidateContractVersion(t *testing.T) {
 	}
 }
 
-// TestContractVersionBaseline 契约版本双点基线锚定：SDK 当前版本 19（子行归属键——
-// `TaskCreateChildResponse` 加可选 `siteKey` 字段，子任务声明自身归属域键，空=继承父应答
-// 站点键；跨站产出规范落地首期），主程序最低支持版本 19（破坏性分界：兼容矩阵按硬边界
-// 收紧、不留 12–18 混装载状态，v18 及以下插件包拒载），任一侧升版须同步更新本基线
+// TestContractVersionBaseline 契约版本双点基线锚定：SDK 当前版本 20（库内作品集名全集
+// 分页查询——LibraryQuery 线级新增 `QueryLocalWorkSets` RPC，集名互证索引拉全用），主程序
+// 最低支持版本 20（破坏性分界：兼容矩阵按硬边界收紧、不留 19-20 混装载状态，v19 及以下
+// 插件包拒载），任一侧升版须同步更新本基线
 func TestContractVersionBaseline(t *testing.T) {
-	if pluginsdktransport.ContractVersion != 19 {
-		t.Errorf("SDK 当前契约版本 = %d, 期望 19", pluginsdktransport.ContractVersion)
+	if pluginsdktransport.ContractVersion != 20 {
+		t.Errorf("SDK 当前契约版本 = %d, 期望 20", pluginsdktransport.ContractVersion)
 	}
-	if minSupportedContractVersion != 19 {
-		t.Errorf("最低支持契约版本 = %d, 期望 19", minSupportedContractVersion)
+	if minSupportedContractVersion != 20 {
+		t.Errorf("最低支持契约版本 = %d, 期望 20", minSupportedContractVersion)
 	}
 }
 

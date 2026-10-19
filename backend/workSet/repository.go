@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/library-squirrel/backend/base/model"
 	domain "github.com/library-squirrel/backend/base/model/entity"
 	"github.com/library-squirrel/backend/database"
 	"github.com/library-squirrel/backend/util"
@@ -42,6 +43,11 @@ func (r *WorkSetRepository) ListByIds(ctx context.Context, ids []int64) ([]*doma
 	var items []*domain.WorkSet
 	err := r.dbFromCtx(ctx).WithContext(ctx).Where("id IN ?", ids).Find(&items).Error
 	return items, err
+}
+
+// PageAllById 作品集全集分页（id 升序稳定分页；库查询集名互证索引拉全用）
+func (r *WorkSetRepository) PageAllById(ctx context.Context, page, pageSize int) (*model.Page[domain.WorkSet], error) {
+	return r.Page(ctx, &database.PageOption{Page: page, PageSize: pageSize})
 }
 
 // BatchUpsert 批量插入或更新（基于 site_id + site_work_set_id + deleted_at 三列唯一约束：

@@ -432,6 +432,15 @@ func (pc *pluginContext) ListChildWorkSets(workSetId int64) (*pluginsdkdto.ListC
 	return core.listChildWorkSets(context.Background(), workSetId)
 }
 
+func (pc *pluginContext) QueryLocalWorkSets(req *pluginsdkdto.QueryLocalWorkSetsRequest) (*pluginsdkdto.QueryLocalWorkSetsResponse, error) {
+	pc.scopedLogger.Infof("库查询 QueryLocalWorkSets(page=%d, pageSize=%d)", req.GetPage().GetPage(), req.GetPage().GetPageSize())
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.queryLocalWorkSets(context.Background(), req)
+}
+
 func (pc *pluginContext) ListSites() (*pluginsdkdto.ListSitesResponse, error) {
 	pc.scopedLogger.Infof("库查询 ListSites()")
 	core, err := pc.queryCore()

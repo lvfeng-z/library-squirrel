@@ -126,6 +126,7 @@ type WorkSetQuerySource interface {
 	GetById(ctx context.Context, id int64) (*entity.WorkSet, error)
 	GetBySiteAndSiteWorkSetID(ctx context.Context, siteId int64, siteWorkSetId string) (*entity.WorkSet, error)
 	ListByIds(ctx context.Context, ids []int64) ([]*entity.WorkSet, error)
+	PageAllById(ctx context.Context, page, pageSize int) (*model.Page[entity.WorkSet], error)
 }
 
 // WorkWorkSetRelationSource 作品-作品集关联只读查询面（reWorkWorkSet.ReWorkWorkSetRepository 实现）
@@ -778,6 +779,29 @@ func (p *libraryQueryProvider) listChildWorkSets(ctx context.Context, workSetId 
 		return nil, err
 	}
 	return &gen.ListChildWorkSetsResponse{Items: items}, nil
+}
+
+// queryLocalWorkSets 库内作品集名全集分页（集名互证索引拉全用）：name=site_work_set_name
+// 缺省回退 nick_name，两名皆空的行不出条目（PageInfo.total 仍为过滤后总行数，条目数可能略少——
+// 互证消费方按名字集合消费，不依赖条目数=total 的对应关系）
+func (p *libraryQueryProvider) queryLocalWorkSets(ctx context.Context, req *gen.QueryLocalWorkSetsRequest) (*gen.QueryLocalWorkSetsResponse, error) {
+	page, pageSize := pageRequestOf(req.Page)
+	result, err := p.deps.WorkSets.PageAllById(ctx, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]*gen.WorkSetNameEntry, 0, len(result.Data))
+	for _, ws := range result.Data {
+		name := nullStringOr(ws.SiteWorkSetName)
+		if name == "" {
+			name = nullStringOr(ws.NickName)
+		}
+		if name == "" {
+			continue
+		}
+		items = append(items, &gen.WorkSetNameEntry{Id: ws.GetID(), Name: name})
+	}
+	return &gen.QueryLocalWorkSetsResponse{Items: items, Page: pageInfoOf(result.DataCount, result.PageNumber, result.PageSize)}, nil
 }
 
 // ===== 站点（注册表投影，只读）=====
