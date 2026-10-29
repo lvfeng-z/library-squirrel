@@ -45,13 +45,12 @@ func TestValidateContractVersion(t *testing.T) {
 	}
 }
 
-// TestContractVersionBaseline 契约版本双点基线锚定：SDK 当前版本 20（库内作品集名全集
-// 分页查询——LibraryQuery 线级新增 `QueryLocalWorkSets` RPC，集名互证索引拉全用），主程序
-// 最低支持版本 20（破坏性分界：兼容矩阵按硬边界收紧、不留 19-20 混装载状态，v19 及以下
-// 插件包拒载），任一侧升版须同步更新本基线
+// TestContractVersionBaseline 契约版本双点基线锚定：SDK 当前版本 21（任务创建流子行批次块
+// children_batch——CreateChunk oneof 第六变体，大批次创建分帧），主程序最低支持版本 20
+//（破坏性分界保持：v19 及以下插件包拒载），任一侧升版须同步更新本基线
 func TestContractVersionBaseline(t *testing.T) {
-	if pluginsdktransport.ContractVersion != 20 {
-		t.Errorf("SDK 当前契约版本 = %d, 期望 20", pluginsdktransport.ContractVersion)
+	if pluginsdktransport.ContractVersion != 21 {
+		t.Errorf("SDK 当前契约版本 = %d, 期望 21", pluginsdktransport.ContractVersion)
 	}
 	if minSupportedContractVersion != 20 {
 		t.Errorf("最低支持契约版本 = %d, 期望 20", minSupportedContractVersion)

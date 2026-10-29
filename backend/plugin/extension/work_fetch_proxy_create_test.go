@@ -134,7 +134,11 @@ func TestProxyCreate_StreamTrailingError(t *testing.T) {
 		t.Fatal("期望流式模式，得到批量")
 	}
 	var n int
-	for resp := range result.Stream() {
+	for item := range result.Items() {
+		resp := item.Task()
+		if resp == nil {
+			t.Fatalf("期望 task 块条目，得到非 task 形态: %+v", item)
+		}
 		if resp.SiteWorkId != "w-1" {
 			t.Fatalf("期望任务声明流经 channel，得到 SiteWorkId=%q", resp.SiteWorkId)
 		}
@@ -269,7 +273,11 @@ func TestProxyCreate_StreamToleratesInterleavedHeartbeat(t *testing.T) {
 		t.Fatal("期望流式模式，得到批量")
 	}
 	var ids []string
-	for resp := range result.Stream() {
+	for item := range result.Items() {
+		resp := item.Task()
+		if resp == nil {
+			t.Fatalf("期望 task 块条目，得到非 task 形态: %+v", item)
+		}
 		ids = append(ids, resp.SiteWorkId)
 	}
 	if len(ids) != 2 || ids[0] != "w-1" || ids[1] != "w-2" {
@@ -326,7 +334,7 @@ func TestProxyCreate_StreamTrailingIntent(t *testing.T) {
 		t.Fatal("期望流式模式，得到批量")
 	}
 	var n int
-	for range result.Stream() {
+	for range result.Items() {
 		n++
 	}
 	if n != 0 {

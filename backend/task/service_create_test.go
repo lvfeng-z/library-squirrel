@@ -171,6 +171,16 @@ func drainStream(out <-chan *CreateTaskStreamChan) (total int, leafUnits int) {
 	return
 }
 
+// taskItemChan 预置 task 块条目的缓冲通道（发送完毕即关闭），构造 handleCreateTaskStream 的输入。
+func taskItemChan(responses ...*sdkdto.TaskCreateResponse) chan *sdkdto.CreateStreamItem {
+	ch := make(chan *sdkdto.CreateStreamItem, len(responses))
+	for _, r := range responses {
+		ch <- sdkdto.TaskItem(r)
+	}
+	close(ch)
+	return ch
+}
+
 // assertChildrenPid 断言 ts 中所有非父任务的 Pid 都指向 parentID，且子任务数等于 want。
 func assertChildrenPid(t *testing.T, ts []*entity.Task, parentID int64, want int) {
 	t.Helper()
@@ -226,15 +236,13 @@ func assertLeafTask(t *testing.T, leaf *entity.Task, wt *entity.WorkTask) {
 // TestHandleCreateTaskStream_Leaf 无 Children 的响应（如 local 单文件导入）创建为独立 leaf。
 func TestHandleCreateTaskStream_Leaf(t *testing.T) {
 	svc, repo := newTestService(t)
-	in := make(chan *sdkdto.TaskCreateResponse, 1)
-	in <- &sdkdto.TaskCreateResponse{
+	in := taskItemChan(&sdkdto.TaskCreateResponse{
 		TaskName:     "单图作品",
 		SiteWorkId:   "w-1",
 		Url:          "http://x/1",
 		SiteKey:      testSiteKey,
 		ResourceType: entity.ResourceTypeImage,
-	}
-	close(in)
+	})
 
 	out, err := svc.handleCreateTaskStream(context.Background(), in, testListener(), 100)
 	if err != nil {
@@ -261,8 +269,7 @@ func TestHandleCreateTaskStream_Leaf(t *testing.T) {
 // TestHandleCreateTaskStream_SingleChild Children=[1] → parent+1child（不折叠）。
 func TestHandleCreateTaskStream_SingleChild(t *testing.T) {
 	svc, repo := newTestService(t)
-	in := make(chan *sdkdto.TaskCreateResponse, 1)
-	in <- &sdkdto.TaskCreateResponse{
+	in := taskItemChan(&sdkdto.TaskCreateResponse{
 		TaskName:     "work-A",
 		Url:          "http://x/a",
 		SiteKey:      testSiteKey,
@@ -270,8 +277,7 @@ func TestHandleCreateTaskStream_SingleChild(t *testing.T) {
 		Children: []*sdkdto.TaskCreateChildResponse{
 			{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", ResourceType: entity.ResourceTypeImage},
 		},
-	}
-	close(in)
+	})
 
 	out, err := svc.handleCreateTaskStream(context.Background(), in, testListener(), 100)
 	if err != nil {
@@ -297,8 +303,7 @@ func TestHandleCreateTaskStream_SingleChild(t *testing.T) {
 // TestHandleCreateTaskStream_ParentChildren Children=[2] → parent+2child。
 func TestHandleCreateTaskStream_ParentChildren(t *testing.T) {
 	svc, repo := newTestService(t)
-	in := make(chan *sdkdto.TaskCreateResponse, 1)
-	in <- &sdkdto.TaskCreateResponse{
+	in := taskItemChan(&sdkdto.TaskCreateResponse{
 		TaskName:     "work-B",
 		Url:          "http://x/b",
 		SiteKey:      testSiteKey,
@@ -307,8 +312,7 @@ func TestHandleCreateTaskStream_ParentChildren(t *testing.T) {
 			{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", ResourceType: entity.ResourceTypeImage},
 			{TaskName: "p2", SiteWorkId: "c-2", Url: "http://x/2", ResourceType: entity.ResourceTypeImage},
 		},
-	}
-	close(in)
+	})
 
 	out, err := svc.handleCreateTaskStream(context.Background(), in, testListener(), 100)
 	if err != nil {
@@ -337,21 +341,21 @@ func TestHandleCreateTaskStream_ParentChildren(t *testing.T) {
 // 守护 stream 合并能力：插件可把一个超大 work 拆成多响应流式发（复用同一 PluginTaskId），host 拼回同一父。
 func TestHandleCreateTaskStream_SameWorkMergedAcrossResponses(t *testing.T) {
 	svc, repo := newTestService(t)
-	in := make(chan *sdkdto.TaskCreateResponse, 2)
-	in <- &sdkdto.TaskCreateResponse{
-		PluginTaskId: "work-X", TaskName: "work-X", Url: "http://x", SiteKey: testSiteKey,
-		Children: []*sdkdto.TaskCreateChildResponse{
-			{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", ResourceType: entity.ResourceTypeImage},
-			{TaskName: "p2", SiteWorkId: "c-2", Url: "http://x/2", ResourceType: entity.ResourceTypeImage},
+	in := taskItemChan(
+		&sdkdto.TaskCreateResponse{
+			PluginTaskId: "work-X", TaskName: "work-X", Url: "http://x", SiteKey: testSiteKey,
+			Children: []*sdkdto.TaskCreateChildResponse{
+				{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", ResourceType: entity.ResourceTypeImage},
+				{TaskName: "p2", SiteWorkId: "c-2", Url: "http://x/2", ResourceType: entity.ResourceTypeImage},
+			},
 		},
-	}
-	in <- &sdkdto.TaskCreateResponse{
-		PluginTaskId: "work-X", TaskName: "work-X", Url: "http://x", SiteKey: testSiteKey,
-		Children: []*sdkdto.TaskCreateChildResponse{
-			{TaskName: "p3", SiteWorkId: "c-3", Url: "http://x/3", ResourceType: entity.ResourceTypeImage},
+		&sdkdto.TaskCreateResponse{
+			PluginTaskId: "work-X", TaskName: "work-X", Url: "http://x", SiteKey: testSiteKey,
+			Children: []*sdkdto.TaskCreateChildResponse{
+				{TaskName: "p3", SiteWorkId: "c-3", Url: "http://x/3", ResourceType: entity.ResourceTypeImage},
+			},
 		},
-	}
-	close(in)
+	)
 
 	out, err := svc.handleCreateTaskStream(context.Background(), in, testListener(), 100)
 	if err != nil {
@@ -372,20 +376,20 @@ func TestHandleCreateTaskStream_SameWorkMergedAcrossResponses(t *testing.T) {
 // TestHandleCreateTaskStream_DifferentWorksNotMerged 不同 PluginTaskId 的响应各自独立 parent（不合并）。
 func TestHandleCreateTaskStream_DifferentWorksNotMerged(t *testing.T) {
 	svc, repo := newTestService(t)
-	in := make(chan *sdkdto.TaskCreateResponse, 2)
-	in <- &sdkdto.TaskCreateResponse{
-		PluginTaskId: "work-A", TaskName: "work-A", Url: "http://x/a", SiteKey: testSiteKey,
-		Children: []*sdkdto.TaskCreateChildResponse{
-			{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", ResourceType: entity.ResourceTypeImage},
+	in := taskItemChan(
+		&sdkdto.TaskCreateResponse{
+			PluginTaskId: "work-A", TaskName: "work-A", Url: "http://x/a", SiteKey: testSiteKey,
+			Children: []*sdkdto.TaskCreateChildResponse{
+				{TaskName: "p1", SiteWorkId: "c-1", Url: "http://x/1", ResourceType: entity.ResourceTypeImage},
+			},
 		},
-	}
-	in <- &sdkdto.TaskCreateResponse{
-		PluginTaskId: "work-B", TaskName: "work-B", Url: "http://x/b", SiteKey: testSiteKey,
-		Children: []*sdkdto.TaskCreateChildResponse{
-			{TaskName: "p2", SiteWorkId: "c-2", Url: "http://x/2", ResourceType: entity.ResourceTypeImage},
+		&sdkdto.TaskCreateResponse{
+			PluginTaskId: "work-B", TaskName: "work-B", Url: "http://x/b", SiteKey: testSiteKey,
+			Children: []*sdkdto.TaskCreateChildResponse{
+				{TaskName: "p2", SiteWorkId: "c-2", Url: "http://x/2", ResourceType: entity.ResourceTypeImage},
+			},
 		},
-	}
-	close(in)
+	)
 
 	out, err := svc.handleCreateTaskStream(context.Background(), in, testListener(), 100)
 	if err != nil {

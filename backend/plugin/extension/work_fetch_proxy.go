@@ -115,9 +115,10 @@ func (p *WorkFetchProxy) CreateWithContext(ctx context.Context, url string) (*pl
 	}
 
 	if modeChunk.IsStream {
-		// 流式模式
-		ch := make(chan *pluginsdkdto.TaskCreateResponse, 16)
-		result := pluginsdkdto.StreamResult(ch)
+		// 流式模式：条目形态通道，task 块与子行批次块（children_batch）按到达序透传；
+		// 批次块的聚合裁决（按 plugin_task_id 指称挂父、last 收批、协议违规收流）归任务服务
+		ch := make(chan *pluginsdkdto.CreateStreamItem, 16)
+		result := pluginsdkdto.StreamItemsResult(ch)
 		go func() {
 			defer close(ch)
 			// 泵退出即取消流 ctx：终结 gRPC stream（EOF/错误/ctx 取消三态统一收尾）
@@ -150,7 +151,19 @@ func (p *WorkFetchProxy) CreateWithContext(ctx context.Context, url string) (*pl
 				if taskProto != nil {
 					// 消费方停止读取（channel 缓冲占满）时，流 ctx 取消可解除发送阻塞令泵退出
 					select {
-					case ch <- protoToTaskCreateResponse(taskProto):
+					case ch <- pluginsdkdto.TaskItem(protoToTaskCreateResponse(taskProto)):
+					case <-streamCtx.Done():
+						return
+					}
+				}
+				// 子行批次块：大批次创建的分帧载荷，按块内声明（指称父 ID、子行清单、末批标志）透传
+				batchProto := c.GetChildrenBatch()
+				if batchProto != nil {
+					select {
+					case ch <- pluginsdkdto.ChildrenBatchItem(
+						batchProto.GetPluginTaskId(),
+						protoToTaskCreateChildResponses(batchProto.GetItems()),
+						batchProto.GetLast()):
 					case <-streamCtx.Done():
 						return
 					}
@@ -161,7 +174,8 @@ func (p *WorkFetchProxy) CreateWithContext(ctx context.Context, url string) (*pl
 	}
 
 	// 批量模式：收集所有 task 块，末尾收尾块（如有）承载插件声明的业务原因（error 块）或
-	// 零任务成功收尾意图（intent 块）。io.EOF 为正常收尾；其他 Recv 错误属 gRPC 层故障
+	// 零任务成功收尾意图（intent 块）。子行批次块仅流式 mode 合法，批量流上出现即插件协议
+	// 违规，按流错误收流。io.EOF 为正常收尾；其他 Recv 错误属 gRPC 层故障
 	//（进程崩溃/连接中断），原样返回
 	var responses []*pluginsdkdto.TaskCreateResponse
 	var reason string
@@ -181,6 +195,10 @@ func (p *WorkFetchProxy) CreateWithContext(ctx context.Context, url string) (*pl
 			intentKind = kind
 			intentMessage = intent.GetMessage()
 			break
+		}
+		if chunk.GetChildrenBatch() != nil {
+			cancel()
+			return nil, fmt.Errorf("批量 mode 的 Create 流不允许子行批次块（children_batch 仅流式 mode 合法）")
 		}
 		taskProto := chunk.GetTask()
 		if taskProto != nil {
@@ -662,10 +680,12 @@ func taskResumeParamToProto(p *pluginsdkdto.TaskResumeParam) *gen.TaskResumePara
 	}
 }
 
-func protoToTaskCreateResponse(r *gen.TaskCreateResponse) *pluginsdkdto.TaskCreateResponse {
-	children := make([]*pluginsdkdto.TaskCreateChildResponse, len(r.Children))
-	for j, c := range r.Children {
-		children[j] = &pluginsdkdto.TaskCreateChildResponse{
+// protoToTaskCreateChildResponses 子行声明 proto → DTO（批量转换；task 块内联子行与
+// children_batch 批次子行共用）
+func protoToTaskCreateChildResponses(children []*gen.TaskCreateChildResponse) []*pluginsdkdto.TaskCreateChildResponse {
+	result := make([]*pluginsdkdto.TaskCreateChildResponse, len(children))
+	for j, c := range children {
+		result[j] = &pluginsdkdto.TaskCreateChildResponse{
 			TaskName:      c.TaskName,
 			SiteWorkId:    c.SiteWorkId,
 			Url:           c.Url,
@@ -676,6 +696,10 @@ func protoToTaskCreateResponse(r *gen.TaskCreateResponse) *pluginsdkdto.TaskCrea
 			ResourceType:  c.ResourceType,
 		}
 	}
+	return result
+}
+
+func protoToTaskCreateResponse(r *gen.TaskCreateResponse) *pluginsdkdto.TaskCreateResponse {
 	return &pluginsdkdto.TaskCreateResponse{
 		PluginTaskId:  r.PluginTaskId,
 		TaskName:      r.TaskName,
@@ -686,7 +710,7 @@ func protoToTaskCreateResponse(r *gen.TaskCreateResponse) *pluginsdkdto.TaskCrea
 		SiteKey:       r.SiteKey,
 		InvolvedRoles: r.InvolvedRoles,
 		ResourceType:  r.ResourceType,
-		Children:      children,
+		Children:      protoToTaskCreateChildResponses(r.Children),
 	}
 }
 

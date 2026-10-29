@@ -1161,7 +1161,12 @@ func (a *taskRouteAdapter) Invoke(ctx context.Context, c *pluginTaskUrlListener.
 	// 处理插件返回，统计成功落库的叶子单元数与失败项数
 	var count, failed int
 	if result.IsStream() {
-		streamCh, streamErr := a.service.handleCreateTaskStream(ctx, result.Stream(), c, 100)
+		itemCh := result.Items()
+		if itemCh == nil {
+			// 旧「纯应答 channel」流产物（SDK 保留兼容形态）：逐条适配为 task 块条目
+			itemCh = taskItemsFromResponses(result.Stream())
+		}
+		streamCh, streamErr := a.service.handleCreateTaskStream(ctx, itemCh, c, 100)
 		if streamErr != nil {
 			logger.Log.Errorf("处理流式任务失败 (plugin=%s): %v", pluginPublicId, streamErr)
 			return nil, route.Failed, failedCandidate(fmt.Sprintf("插件 %s 创建任务失败：%v", pluginName, streamErr))
@@ -1355,20 +1360,31 @@ func (s *Service) planCreateResponse(ctx context.Context, taskResp *sdkdto.TaskC
 	if err := s.fillTaskFromResponse(ctx, parent, taskResp, listener, 0, true, siteCache); err != nil {
 		return nil, err
 	}
-	children := make([]*TaskWithWorkTask, 0, len(taskResp.Children))
-	for _, childResp := range taskResp.Children {
+	children, err := s.planChildrenBatch(ctx, taskResp.SiteKey, taskResp.Children, listener, siteCache)
+	if err != nil {
+		return nil, err
+	}
+	return &createPlan{parent: parent, children: children}, nil
+}
+
+// planChildrenBatch 把一组子行声明填好字段（Pid 除外，由调用方回填父 ID）。归属键继承基准
+// parentSiteKey = 父任务块声明的 SiteKey，子行自带非空键时覆盖（childToResponse 单点判定）；
+// 内联子行（task 块 children）与批次子行（children_batch items）共用本填充，两形态字段语义一致。
+func (s *Service) planChildrenBatch(ctx context.Context, parentSiteKey string, items []*sdkdto.TaskCreateChildResponse, listener *pluginTaskUrlListener.PluginWithExtension, siteCache map[string]int) ([]*TaskWithWorkTask, error) {
+	children := make([]*TaskWithWorkTask, 0, len(items))
+	for _, childResp := range items {
 		// 跨站产出审计②（子行级）：子行归属域 ≠ 父行创建域时留痕（Info 级，见 auditCrossSiteChild）
-		auditCrossSiteChild(taskResp, childResp, listener)
+		auditCrossSiteChild(parentSiteKey, childResp, listener)
 		child := &TaskWithWorkTask{
 			Task:     &entity.Task{BaseEntity: &model.BaseEntity{}},
 			WorkTask: &entity.WorkTask{BaseEntity: &model.BaseEntity{}},
 		}
-		if err := s.fillTaskFromResponse(ctx, child, childToResponse(childResp, taskResp.SiteKey), listener, 0, false, siteCache); err != nil {
+		if err := s.fillTaskFromResponse(ctx, child, childToResponse(childResp, parentSiteKey), listener, 0, false, siteCache); err != nil {
 			return nil, err
 		}
 		children = append(children, child)
 	}
-	return &createPlan{parent: parent, children: children}, nil
+	return children, nil
 }
 
 // auditCrossSiteResponse 跨站产出审计①（应答级：入口域 vs 创建域）：应答 SiteKey ≠ 插件监听条目
@@ -1390,15 +1406,16 @@ func auditCrossSiteResponse(taskResp *sdkdto.TaskCreateResponse, listener *plugi
 
 // auditCrossSiteChild 跨站产出审计②（子行级：创建域 vs 归属域）：子行有效站点键（自带非空键，
 // 空=继承父键）≠ 父行站点键 → 记 Info 级结构化日志留痕。捕获批次内归属分裂（同一父批次下
-// 子任务归属到非创建域站点）。继承态（子行键为空）与同键态不判。
-func auditCrossSiteChild(taskResp *sdkdto.TaskCreateResponse, childResp *sdkdto.TaskCreateChildResponse, listener *pluginTaskUrlListener.PluginWithExtension) {
-	if childResp.SiteKey == "" || childResp.SiteKey == taskResp.SiteKey {
+// 子任务归属到非创建域站点）。继承态（子行键为空）与同键态不判。内联子行与批次子行
+//（children_batch）同受审计，parentSiteKey 均取父任务块声明的 SiteKey。
+func auditCrossSiteChild(parentSiteKey string, childResp *sdkdto.TaskCreateChildResponse, listener *pluginTaskUrlListener.PluginWithExtension) {
+	if childResp.SiteKey == "" || childResp.SiteKey == parentSiteKey {
 		return
 	}
 	logger.Log.Infow("[Task] 跨站产出（子行级）：批次内子任务归属非创建域站点",
 		"plugin", listener.PublicID.String,
 		"extensionId", listener.ExtensionID,
-		"parentSiteKey", taskResp.SiteKey,
+		"parentSiteKey", parentSiteKey,
 		"childSiteKey", childResp.SiteKey,
 		"taskName", childResp.TaskName,
 	)
@@ -1495,12 +1512,37 @@ type CreateTaskStreamChan struct {
 	Error  error
 }
 
+// 子行批次块（children_batch）在流式聚合中的三类协议违规，均为插件侧协议错误，宿主按流错误
+// 收流：计一次失败项并丢弃流上后续块，已落库父行与已进批量缓存的子行照常落盘（部分完成语义）。
+var (
+	// ErrChildrenBatchDanglingParent 悬空引用：批次块指称的父 ID 未出现过（含空 ID）或指向独立叶任务
+	ErrChildrenBatchDanglingParent = &pkgerr.BusinessError{Code: 500, Message: "子行批次块引用了未声明的父任务（plugin_task_id 未出现或指向独立叶任务）"}
+	// ErrChildrenBatchAfterLastBatch 收批后重复批次：同父的 last 末批已到，其后不再有合法批次块
+	ErrChildrenBatchAfterLastBatch = &pkgerr.BusinessError{Code: 500, Message: "子行批次块在末批（last）之后到达"}
+	// ErrChildrenBatchMissingLastBatch 流结束缺末批：已开批的父任务至流关闭未收到 last 声明
+	ErrChildrenBatchMissingLastBatch = &pkgerr.BusinessError{Code: 500, Message: "流结束时子行批次序列缺少末批声明（last）"}
+)
+
+// streamParentState 流式聚合中一个已落库父任务的指称状态：行载体（子行回填 Pid 用）与站点键
+//（子行归属键的继承基准，取父任务块声明值，合并续块不改写）。批次进度两标志——开批（收到过
+// 批次块）与收批（收到 last=true 末批）；流正常结束时开批未收批即协议违规。
+type streamParentState struct {
+	parent       *TaskWithWorkTask
+	siteKey      string
+	batchStarted bool
+	batchClosed  bool
+}
+
 // handleCreateTaskStream 处理插件返回的流式任务（使用 Go channel）。
 // 经 planCreateResponse 单点判定（与 array 路径一致）：无 Children→独立 leaf；有 Children→parent+children（不折叠）。
-// 同 PluginTaskId 的多响应归入同一 parent（合并），让插件可把一个超大 work 拆成多响应流式发
-// （如 local 扫描含大量文件的目录：边扫边发、复用同一 PluginTaskId）。
+// task 块按 PluginTaskId 指称聚合：同 ID 的多块归入同一 parent（合并），让插件可把一个超大 work
+// 拆成多块流式发（如 local 扫描含大量文件的目录：边扫边发、复用同一 PluginTaskId），不同任务的
+// 块交错发送也各归其父（不依赖块位置）。子行批次块（children_batch）按 plugin_task_id 挂到既有
+// 父，last=true 即该父收批；同一父的内联子行与批次子行都计入该父。
+// 批次块三类协议违规（悬空引用/收批后再到/流结束缺 last）按流错误收流：计一次失败项并丢弃
+// 后续块，已落库行保留（部分完成语义）。
 // parent 即时落盘（CreateTask），leaf/child 进批量缓存经 CreateBatch 落盘；通过 channel 返回结果。
-func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *sdkdto.TaskCreateResponse, listener *pluginTaskUrlListener.PluginWithExtension, batchSize int) (<-chan *CreateTaskStreamChan, error) {
+func (s *Service) handleCreateTaskStream(ctx context.Context, itemChan <-chan *sdkdto.CreateStreamItem, listener *pluginTaskUrlListener.PluginWithExtension, batchSize int) (<-chan *CreateTaskStreamChan, error) {
 	outChan := make(chan *CreateTaskStreamChan)
 
 	go func() {
@@ -1508,10 +1550,10 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *s
 
 		siteCache := make(map[string]int)
 		batch := make([]*TaskWithWorkTask, 0, batchSize)
-		// 当前 work 的父任务与其 PluginTaskId；同 PluginTaskId 的后续响应归入同一父（合并续传），
-		// 不同 PluginTaskId 或空值则建新父——以 PluginTaskId（插件稳定 work 标识）为合并键。
-		var currentParent *TaskWithWorkTask
-		var currentPluginTaskId string
+		// 已落库父任务的指称表：PluginTaskId → 父行状态。父块必带首批子行内联（无 children 的
+		// task 块是独立叶、不进本表，批次块指向它即悬空引用）；空 PluginTaskId 无可指称键、
+		// 不登记——每个父块独立建行，永不与后续块合并
+		parents := make(map[string]*streamParentState)
 
 		// 批量保存缓存中的 leaf/child：核心行批量落库拿 id → 领域行批量绑定共享主键（同一事务）
 		flushBatch := func() {
@@ -1542,41 +1584,10 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *s
 			batch = batch[:0]
 		}
 
-		for taskResp := range taskChan {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			plan, err := s.planCreateResponse(ctx, taskResp, listener, siteCache)
-			if err != nil {
-				outChan <- &CreateTaskStreamChan{Error: err}
-				continue
-			}
-
-			if plan.leaf != nil {
-				// 独立 leaf：进批量缓存
-				batch = append(batch, plan.leaf)
-				if len(batch) >= batchSize {
-					flushBatch()
-				}
-				outChan <- &CreateTaskStreamChan{Task: plan.leaf.Task}
-				continue
-			}
-
-			// parent + children：同 PluginTaskId 复用现有 parent（合并续传），否则建新 parent
-			if currentParent == nil || taskResp.PluginTaskId == "" || taskResp.PluginTaskId != currentPluginTaskId {
-				if err := s.persistPlanPair(ctx, plan.parent); err != nil {
-					outChan <- &CreateTaskStreamChan{Error: err}
-					continue
-				}
-				outChan <- &CreateTaskStreamChan{Parent: plan.parent.Task}
-				currentParent = plan.parent
-				currentPluginTaskId = taskResp.PluginTaskId
-			}
-			parentId := currentParent.Task.GetID()
-			for _, child := range plan.children {
+		// appendChildren 把子行挂到指定父（回填 Pid）并进批量缓存，逐行经 outChan 透出；
+		// 内联子行与批次子行同经此通路
+		appendChildren := func(parentId int64, children []*TaskWithWorkTask) {
+			for _, child := range children {
 				child.Task.Pid = sql.NullInt64{Int64: parentId, Valid: true}
 				batch = append(batch, child)
 				if len(batch) >= batchSize {
@@ -1586,8 +1597,123 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, taskChan <-chan *s
 			}
 		}
 
+		streamViolated := false
+		for item := range itemChan {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			taskResp := item.Task()
+			if taskResp != nil {
+				plan, err := s.planCreateResponse(ctx, taskResp, listener, siteCache)
+				if err != nil {
+					outChan <- &CreateTaskStreamChan{Error: err}
+					continue
+				}
+
+				if plan.leaf != nil {
+					// 独立 leaf：进批量缓存
+					batch = append(batch, plan.leaf)
+					if len(batch) >= batchSize {
+						flushBatch()
+					}
+					outChan <- &CreateTaskStreamChan{Task: plan.leaf.Task}
+					continue
+				}
+
+				// parent + children：PluginTaskId 已在指称表则复用既有父行（合并续块），否则建新父并登记
+				parent := plan.parent
+				if _, ok := parents[taskResp.PluginTaskId]; !ok {
+					if err := s.persistPlanPair(ctx, plan.parent); err != nil {
+						outChan <- &CreateTaskStreamChan{Error: err}
+						continue
+					}
+					outChan <- &CreateTaskStreamChan{Parent: plan.parent.Task}
+					if taskResp.PluginTaskId != "" {
+						parents[taskResp.PluginTaskId] = &streamParentState{parent: plan.parent, siteKey: taskResp.SiteKey}
+					}
+				} else {
+					parent = parents[taskResp.PluginTaskId].parent
+				}
+				appendChildren(parent.Task.GetID(), plan.children)
+				continue
+			}
+
+			batchBlock := item.ChildrenBatch()
+			if batchBlock == nil {
+				continue
+			}
+			state, ok := parents[batchBlock.PluginTaskId]
+			if !ok {
+				outChan <- &CreateTaskStreamChan{Error: fmt.Errorf("%w（plugin_task_id=%q）", ErrChildrenBatchDanglingParent, batchBlock.PluginTaskId)}
+				streamViolated = true
+				break
+			}
+			if state.batchClosed {
+				outChan <- &CreateTaskStreamChan{Error: fmt.Errorf("%w（plugin_task_id=%q）", ErrChildrenBatchAfterLastBatch, batchBlock.PluginTaskId)}
+				streamViolated = true
+				break
+			}
+			// 批次进度随块到达推进（与子行字段填充成败无关——协议形状与行有效性分层）
+			state.batchStarted = true
+			if batchBlock.Last {
+				state.batchClosed = true
+			}
+			children, err := s.planChildrenBatch(ctx, state.siteKey, batchBlock.Items, listener, siteCache)
+			if err != nil {
+				// 批次内子行字段填充失败：本批块计失败项，流照常继续（与 task 块填充失败同语义）
+				outChan <- &CreateTaskStreamChan{Error: err}
+				continue
+			}
+			appendChildren(state.parent.Task.GetID(), children)
+		}
+
+		if streamViolated {
+			// 违规收流：丢弃流上剩余块直至流关闭（发送侧因此可正常收尾）；调用方 ctx 取消时
+			// 提前退出且不落盘缓存行（与流中取消同语义）
+			cancelled := false
+		drain:
+			for {
+				select {
+				case _, ok := <-itemChan:
+					if !ok {
+						break drain
+					}
+				case <-ctx.Done():
+					cancelled = true
+					break drain
+				}
+			}
+			if cancelled {
+				return
+			}
+		} else {
+			// 流正常结束：已开批未收批（无 last）的父任务按协议违规计失败项，已到子行照常落盘
+			for id, state := range parents {
+				if state.batchStarted && !state.batchClosed {
+					outChan <- &CreateTaskStreamChan{Error: fmt.Errorf("%w（plugin_task_id=%q）", ErrChildrenBatchMissingLastBatch, id)}
+				}
+			}
+		}
+
 		flushBatch()
 	}()
 
 	return outChan, nil
+}
+
+// taskItemsFromResponses 把旧「纯应答 channel」流产物（SDK 保留兼容形态）适配为条目形态：
+// 每条应答包装为 task 块条目，源 channel 关闭即关闭条目 channel。条目形态是流式消费的统一入口
+//（可携 task 块与子行批次块），旧形态经本适配零改动接入。
+func taskItemsFromResponses(respCh <-chan *sdkdto.TaskCreateResponse) <-chan *sdkdto.CreateStreamItem {
+	itemCh := make(chan *sdkdto.CreateStreamItem)
+	go func() {
+		defer close(itemCh)
+		for resp := range respCh {
+			itemCh <- sdkdto.TaskItem(resp)
+		}
+	}()
+	return itemCh
 }

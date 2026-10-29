@@ -121,7 +121,7 @@ func TestProxyCreateStream_PumpExitsOnCallerCancel(t *testing.T) {
 	drained := make(chan int)
 	go func() {
 		n := 0
-		for range result.Stream() {
+		for range result.Items() {
 			n++
 		}
 		drained <- n
