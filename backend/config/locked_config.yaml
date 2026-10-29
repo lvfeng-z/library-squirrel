@@ -129,7 +129,7 @@ officialPlugins:
     contentDigest: 3fea17e1daab8b4470519588192ccff98c75eee7bdeb43d5e6dd021a71989db5
   - publicId: com.lvfeng.bilibiliSuite
     buildId: f6de2e4
-    contentDigest: ee04a7ea58215b188b392ec4490f4acd1c46ba083d932f534bccc4c4dff998d4
+    contentDigest: fa08c6adaebf5f2bcbaa3325b9ffbf748a57ebf5f09b4a57d42cf6d7927c8ef6
   - publicId: com.lvfeng.localImport
     buildId: 0254f48
     contentDigest: 8c57533b0f29990f417636ff5dbb75dfe211fed789112c9288947851fba16159
@@ -234,7 +234,10 @@ officialPlugins:
     contentDigest: 6a498ba7075c2403f67cbcdb25e233660bd8075fc5283b8e76d41eb886c1aa6c
   - publicId: com.lvfeng.localImport
     buildId: "7440987"
-    contentDigest: ea506a19a49654457be0a10400e0d22cc01e688edf5eac7e9a05db32ef76aa35
+    contentDigest: 854d4c2e42621c5de45a8c6eaf24b2a302078995ee683bb8afedacec4995706f
+  - publicId: com.lvfeng.localImport
+    buildId: 7440987-dirty
+    contentDigest: 5550caa4d95c525b651a24cde95e6fd744e91ea3a76babcc1a9ac3f1491d2df3
   - publicId: com.lvfeng.localImport
     buildId: 7589577-dirty
     contentDigest: 557badaa2eb0b0186180baa21ad7b945ffd388ec1e173616ed137971efc92763
@@ -417,7 +420,7 @@ officialPlugins:
     contentDigest: 6016704cf75b3c8132f23dd2bcf92f5047cad609b3574af851ddb7a6b153137d
   - publicId: com.lvfeng.pixivSuite
     buildId: ce0ac7f
-    contentDigest: 2e23e0016dfba15c3ec7d35ca6fb3a287035382cb51c2d4f4c5e99fa053a3c88
+    contentDigest: 250b807949d771950794423c2846b913543e38f233eb634c3dcf08bb095d5d84
   - publicId: com.lvfeng.pixivSuite
     buildId: ddfb07e
     contentDigest: 6d89cd1efd1e62c5468a4d08d819c9056b670df1ee879211da0a89e1f45846f4
@@ -486,7 +489,7 @@ officialPlugins:
     contentDigest: b13063036559feaa75152d7d59edac742a9fd18fb078325b4fade4c55f7757ad
   - publicId: com.lvfeng.test-plugin
     buildId: d47baa8
-    contentDigest: 4800a0a0f556f214e28f6038becc9f4ed59dd029070a72db72df2b1d3cc2fb74
+    contentDigest: 6883c0e8e0f7b0d2002df9f865da9138dcf9b067681ce86dd6a5d93daa62d374
   - publicId: com.lvfeng.test-plugin
     buildId: dbe1851
     contentDigest: 5bec821a3da5842d9b53ae310c1c9ff011da7b64c487e60a2d279d29b96502a2
