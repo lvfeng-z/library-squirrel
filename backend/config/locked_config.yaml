@@ -326,6 +326,9 @@ officialPlugins:
     buildId: baaf818-dirty
     contentDigest: 7a487b90704264b5c8291731e933eb825bb4a14fd3a11ddab3296520980925c6
   - publicId: com.lvfeng.localImport
+    buildId: c018332
+    contentDigest: 201a6b4b88ba4ca79dfda1c7c05fd903c23dcd6cae5f4e5d3866bc5fa9fb0ddc
+  - publicId: com.lvfeng.localImport
     buildId: c2037a0
     contentDigest: 890283cafb77217e1e46b27e4f0ccc0381a2a77d2a43531a2a6eb373398a14a2
   - publicId: com.lvfeng.localImport
