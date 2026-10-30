@@ -60,7 +60,7 @@ func (a *fakeServiceAccessor) GetServices(string) (*transport.GRPCPluginClient, 
 
 // newCreateProxy 构造以预置块序列为 Create 流的代理。
 func newCreateProxy(chunks ...*gen.CreateChunk) *WorkFetchProxy {
-	return newWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{
+	return NewWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{
 		WorkFetch: &fakeTaskClient{stream: &fakeCreateStream{chunks: chunks}},
 	}}, "", "")
 }
@@ -181,7 +181,7 @@ func TestProxyCreate_RecvErrorReturned(t *testing.T) {
 		},
 		err: io.ErrUnexpectedEOF,
 	}}
-	proxy := newWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: client}}, "", "")
+	proxy := NewWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: client}}, "", "")
 
 	if _, err := proxy.Create("http://x"); err == nil {
 		t.Fatal("gRPC 层收流错误应原样返回，得到 nil")

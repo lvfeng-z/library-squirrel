@@ -27,8 +27,9 @@ type WorkFetchProxy struct {
 
 var _ pluginsdkdto.WorkFetcher = (*WorkFetchProxy)(nil)
 
-// newWorkFetchProxy 构造作品拉取代理；流式接收空闲超时取 SDK 权威常量
-func newWorkFetchProxy(serviceAccessor ServiceAccessor, pluginPublicId, extensionId string) *WorkFetchProxy {
+// NewWorkFetchProxy 构造作品拉取代理（导出面：宿主装配链与跨包集成测试共用）；
+// 流式接收空闲超时取 SDK 权威常量
+func NewWorkFetchProxy(serviceAccessor ServiceAccessor, pluginPublicId, extensionId string) *WorkFetchProxy {
 	return &WorkFetchProxy{
 		serviceAccessor:   serviceAccessor,
 		pluginPublicId:    pluginPublicId,

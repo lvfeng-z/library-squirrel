@@ -158,6 +158,101 @@ func TestStreamCtxCancelMidBatchStillRollsBack(t *testing.T) {
 	assertTableCount(t, db, "work_task", 0)
 }
 
+// stubStreamOutcome 流终态面替身：模拟泵侧结果对象的意图/失败声明（真泵在 close(ch) 前写入，
+// 消费侧在 itemChan 关闭后读取——happens-before 由 channel close 建立）。
+type stubStreamOutcome struct {
+	kind   sdkdto.CreateIntentKind
+	reason string
+}
+
+func (o *stubStreamOutcome) Intent() (sdkdto.CreateIntentKind, string) { return o.kind, "" }
+func (o *stubStreamOutcome) Reason() string                            { return o.reason }
+
+// TestStreamInlineChildrenCancelledIntentRollsBack 内联首批面（B3 缺陷 1 形态）：父块内联子行、
+// children_batch 批次块从未到达（开批标志恒 false），流以「已取消」意图收尾——分帧插件取消
+// 落在首个批次块之前时仅此面可达，须按未收批统一回滚（决策4）：父行与全部内联子行删除、
+// task/work_task 零残留，缺末批错误项折减数=已透出子行数。
+func TestStreamInlineChildrenCancelledIntentRollsBack(t *testing.T) {
+	svc, db := newRealDBStreamService(t)
+	in := make(chan *sdkdto.CreateStreamItem, 1)
+	in <- sdkdto.TaskItem(parentBlockOf("work-X", "work-X", childOf("inline-1", "c-1"), childOf("inline-2", "c-2")))
+	close(in)
+
+	out, err := svc.handleCreateTaskStreamWithOutcome(context.Background(), in, testListener(), createStreamFlushBatchSize,
+		&stubStreamOutcome{kind: sdkdto.CreateIntentCancelled})
+	if err != nil {
+		t.Fatalf("handleCreateTaskStreamWithOutcome 返回错误: %v", err)
+	}
+	var retracted int
+	var errs []error
+	for item := range out {
+		if item.Error != nil {
+			errs = append(errs, item.Error)
+			retracted += item.RetractedTaskCount
+		}
+	}
+	if len(errs) != 1 || !errors.Is(errs[0], ErrChildrenBatchMissingLastBatch) {
+		t.Fatalf("期望恰 1 个缺末批错误项（内联面回滚），得到 %v", errs)
+	}
+	if retracted != 2 {
+		t.Fatalf("期望回滚折减数 = 已透出内联子行数 2，得到 %d", retracted)
+	}
+	assertTableCount(t, db, "task", 0)
+	assertTableCount(t, db, "work_task", 0)
+}
+
+// TestStreamInlineChildrenErrorReasonRollsBack 内联首批面 + 失败收尾（error 块/流异常 reason）：
+// 同属未收批统一回滚（决策4：error 收流一律同路径）——父行与内联子行删除、零残留。
+func TestStreamInlineChildrenErrorReasonRollsBack(t *testing.T) {
+	svc, db := newRealDBStreamService(t)
+	in := make(chan *sdkdto.CreateStreamItem, 1)
+	in <- sdkdto.TaskItem(parentBlockOf("work-X", "work-X", childOf("inline-1", "c-1")))
+	close(in)
+
+	out, err := svc.handleCreateTaskStreamWithOutcome(context.Background(), in, testListener(), createStreamFlushBatchSize,
+		&stubStreamOutcome{reason: "所选文件已不存在（磁盘对账未通过）"})
+	if err != nil {
+		t.Fatalf("handleCreateTaskStreamWithOutcome 返回错误: %v", err)
+	}
+	for range out {
+	}
+	assertTableCount(t, db, "task", 0)
+	assertTableCount(t, db, "work_task", 0)
+}
+
+// TestStreamInlineChildrenCleanOutcomeCommits 内联首批面 + 干净收尾（无意图/无失败声明，或
+// 「转入解析」意图）：单批全内联的正常完成形态 = 隐式原子提交点（无批次块=无回滚面）——
+// 父行与内联子行全部落盘（过度回滚对照组）。
+func TestStreamInlineChildrenCleanOutcomeCommits(t *testing.T) {
+	svc, db := newRealDBStreamService(t)
+
+	// 干净 EOF（无终态面）与转入解析意图两形态都不得回滚（每次消费用新建通道——
+	// 同一通道 close 后不可重复投递）
+	inlineOnly := func() chan *sdkdto.CreateStreamItem {
+		ch := make(chan *sdkdto.CreateStreamItem, 1)
+		ch <- sdkdto.TaskItem(parentBlockOf("work-X", "work-X", childOf("inline-1", "c-1"), childOf("inline-2", "c-2")))
+		close(ch)
+		return ch
+	}
+	out, err := svc.handleCreateTaskStreamWithOutcome(context.Background(), inlineOnly(), testListener(), createStreamFlushBatchSize, nil)
+	if err != nil {
+		t.Fatalf("handleCreateTaskStreamWithOutcome 返回错误: %v", err)
+	}
+	if _, _, errs := drainStreamFull(out); len(errs) != 0 {
+		t.Fatalf("期望零错误项，得到 %v", errs)
+	}
+	out, err = svc.handleCreateTaskStreamWithOutcome(context.Background(), inlineOnly(), testListener(), createStreamFlushBatchSize,
+		&stubStreamOutcome{kind: sdkdto.CreateIntentToParse})
+	if err != nil {
+		t.Fatalf("handleCreateTaskStreamWithOutcome 返回错误: %v", err)
+	}
+	if _, _, errs := drainStreamFull(out); len(errs) != 0 {
+		t.Fatalf("期望零错误项，得到 %v", errs)
+	}
+	assertTableCount(t, db, "task", 6) // 两次消费 ×（父 1+内联 2）
+	assertTableCount(t, db, "work_task", 6)
+}
+
 // TestStreamClosedBatchCommitsNotRolledBack 收批（last=true 已到）为原子提交点：同形状流仅
 // 末批 last 差异，流正常结束不回滚——父 + 内联 1 + 批次 1 全部落盘（对照组）。
 func TestStreamClosedBatchCommitsNotRolledBack(t *testing.T) {

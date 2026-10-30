@@ -402,7 +402,7 @@ func unregisterPluginResourceTypes(info *PluginInfo) {
 // 由激活相位的统一回滚清两注册表；停用/崩溃清理走 UnloadPlugin 的 UnregisterAll。
 func (l *Loader) registerDeclaredExtensions(info *PluginInfo) error {
 	for _, entry := range info.WorkFetch {
-		var handler sdkdto.WorkFetcher = newWorkFetchProxy(l, info.PublicID, entry.ID)
+		var handler sdkdto.WorkFetcher = NewWorkFetchProxy(l, info.PublicID, entry.ID)
 		metadata := model.ExtensionMetadata{
 			Type:           model.ExtensionTypeWorkFetch,
 			ID:             entry.ID,

@@ -500,31 +500,67 @@ func (r *TaskRepository) ListSchedule(ctx context.Context, ids []int64) ([]*doma
 	return r.ListStatus(ctx, ids)
 }
 
+// deleteIDShardSize SQLite 绑定变量分片批大小：SQLITE_MAX_VARIABLE_NUMBER=32766（mattn/go-sqlite3
+// 内置 SQLite ≥3.32 默认值），大选择集删除链的全 id IN 列表（如 6.8 万子行级）超限即报
+//「too many SQL variables」整链失败（净室 C 清理实测：resource 引用清理与领域行删除双双超限）。
+// 4000/批留足余量（清引用子查询 id/pid 双列表 = 批×2 参数，8000 仍远低于上限），且分片只改
+// 语句粒度、不改事务边界——dbFromCtx 纪律与调用方单事务语义不变。包级变量供单测注入缩值
+var deleteIDShardSize = 4000
+
+// shardInt64IDs 把 id 列表切为不超过 size 的连续分片（空表返回空切片）
+func shardInt64IDs(ids []int64, size int) [][]int64 {
+	if size <= 0 {
+		size = 1
+	}
+	shards := make([][]int64, 0, (len(ids)+size-1)/size)
+	for start := 0; start < len(ids); start += size {
+		end := start + size
+		if end > len(ids) {
+			end = len(ids)
+		}
+		shards = append(shards, ids[start:end])
+	}
+	return shards
+}
+
 // ClearResourceTaskId 批量清空资源行对任务及其子任务的 task_id 引用（置 NULL=非任务产）。
 // 任务行删除链的前置步：外键强制下引用未清即删任务行被拒；子任务行同随删除链消亡，引用面一并覆盖。
-// resource.task_id 引用 work_task（与 task.id 同值 1:1），此处按 task.id 圈定即可命中同值领域行
+// resource.task_id 引用 work_task（与 task.id 同值 1:1），此处按 task.id 圈定即可命中同值领域行。
+// id 列表按 deleteIDShardSize 分片执行（超 SQLite 绑定变量上限的删除面此前整链失败，见净室 C 实测）
 func (r *TaskRepository) ClearResourceTaskId(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	return r.dbFromCtx(ctx).WithContext(ctx).
-		Exec("UPDATE resource SET task_id = NULL WHERE task_id IN (SELECT id FROM task WHERE id IN ? OR pid IN ?)", ids, ids).Error
+	db := r.dbFromCtx(ctx).WithContext(ctx)
+	for _, shard := range shardInt64IDs(ids, deleteIDShardSize) {
+		if err := db.
+			Exec("UPDATE resource SET task_id = NULL WHERE task_id IN (SELECT id FROM task WHERE id IN ? OR pid IN ?)", shard, shard).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // DeleteTask 删除任务（包含子任务）- 批量删除，返回全量被删任务 ID 集（入参与其子任务，
 // 供删除链消费方清理任务级附属物——下载暂存目录键即任务 ID）。
 // dbFromCtx 模式：删除链在事务内执行——清 resource.task_id 引用（见 Service.DeleteTask）→
-// 删 work_task/share_task/export_task/import_task 领域行 → 删核心行（共享主键 id→task 外键要求领域行先于核心行消亡）
+// 删 work_task/share_task/export_task/import_task 领域行 → 删核心行（共享主键 id→task 外键要求领域行先于核心行消亡）。
+// 全 id IN 列表按 deleteIDShardSize 分片循环删除（6.8 万子行级此前超 SQLite 绑定变量上限整链失败），
+// 事务边界不变
 func (r *TaskRepository) DeleteTask(ctx context.Context, ids []int64) ([]int64, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
 	db := r.dbFromCtx(ctx).WithContext(ctx)
 
-	// 子任务核心行 id 集（其领域行随删除链一并消亡）
+	// 子任务核心行 id 集（其领域行随删除链一并消亡）——pid IN 圈定同按分片执行
 	var childIds []int64
-	if err := db.Model(&domain.Task{}).Where("pid IN ?", ids).Pluck("id", &childIds).Error; err != nil {
-		return nil, err
+	for _, shard := range shardInt64IDs(ids, deleteIDShardSize) {
+		var shardChildIds []int64
+		if err := db.Model(&domain.Task{}).Where("pid IN ?", shard).Pluck("id", &shardChildIds).Error; err != nil {
+			return nil, err
+		}
+		childIds = append(childIds, shardChildIds...)
 	}
 	allIds := ids
 	if len(childIds) > 0 {
@@ -532,24 +568,33 @@ func (r *TaskRepository) DeleteTask(ctx context.Context, ids []int64) ([]int64, 
 	}
 
 	// 领域行先删：共享主键外键（id→task）下，核心行先删会被在册领域行拒绝
-	if err := db.Where("id IN ?", allIds).Delete(&domain.WorkTask{}).Error; err != nil {
-		return nil, err
-	}
-	if err := db.Where("id IN ?", allIds).Delete(&domain.ShareTask{}).Error; err != nil {
-		return nil, err
-	}
-	if err := db.Where("id IN ?", allIds).Delete(&domain.ExportTask{}).Error; err != nil {
-		return nil, err
-	}
-	if err := db.Where("id IN ?", allIds).Delete(&domain.ImportTask{}).Error; err != nil {
-		return nil, err
+	for _, shard := range shardInt64IDs(allIds, deleteIDShardSize) {
+		if err := db.Where("id IN ?", shard).Delete(&domain.WorkTask{}).Error; err != nil {
+			return nil, err
+		}
+		if err := db.Where("id IN ?", shard).Delete(&domain.ShareTask{}).Error; err != nil {
+			return nil, err
+		}
+		if err := db.Where("id IN ?", shard).Delete(&domain.ExportTask{}).Error; err != nil {
+			return nil, err
+		}
+		if err := db.Where("id IN ?", shard).Delete(&domain.ImportTask{}).Error; err != nil {
+			return nil, err
+		}
 	}
 
-	// 先删除所有子任务核心行，再删除主任务核心行
-	if err := db.Where("pid IN ?", ids).Delete(&domain.Task{}).Error; err != nil {
-		return nil, err
+	// 先删除所有子任务核心行，再删除主任务核心行（pid/id IN 圈定同按分片执行）
+	for _, shard := range shardInt64IDs(ids, deleteIDShardSize) {
+		if err := db.Where("pid IN ?", shard).Delete(&domain.Task{}).Error; err != nil {
+			return nil, err
+		}
 	}
-	return allIds, db.Where("id IN ?", ids).Delete(&domain.Task{}).Error
+	for _, shard := range shardInt64IDs(ids, deleteIDShardSize) {
+		if err := db.Where("id IN ?", shard).Delete(&domain.Task{}).Error; err != nil {
+			return nil, err
+		}
+	}
+	return allIds, nil
 }
 
 // 辅助函数：将int64数组转换为逗号分隔的字符串

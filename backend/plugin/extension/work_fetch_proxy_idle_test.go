@@ -84,7 +84,7 @@ func (c *blockingPauseClient) Pause(ctx context.Context, _ *gen.TaskResParamMess
 // TestProxyCreate_FirstChunkIdleTimeout 插件建流后不产出（hang）：首块接收在空闲窗口内到期，
 // 返回超时错误而非无限阻塞。
 func TestProxyCreate_FirstChunkIdleTimeout(t *testing.T) {
-	proxy := newWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &hangingTaskClient{}}}, "", "")
+	proxy := NewWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &hangingTaskClient{}}}, "", "")
 	proxy.readerIdleTimeout = 40 * time.Millisecond
 
 	start := time.Now()
@@ -106,7 +106,7 @@ func TestProxyCreateStream_PumpExitsOnCallerCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	proxy := newWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &endlessTaskClient{}}}, "", "")
+	proxy := NewWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &endlessTaskClient{}}}, "", "")
 
 	result, err := proxy.CreateWithContext(ctx, "http://x")
 	if err != nil {
@@ -141,7 +141,7 @@ func TestProxyCreateStream_PumpExitsOnCallerCancel(t *testing.T) {
 // TestProxyPauseWithContext_CallerCancelBreaksWait unary 调用以调用方 ctx 为基：
 // 插件 handler 阻塞时调用方取消应立即打断等待（Background 基则须等满 UnaryRPCTimeout）。
 func TestProxyPauseWithContext_CallerCancelBreaksWait(t *testing.T) {
-	proxy := newWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &blockingPauseClient{}}}, "", "")
+	proxy := NewWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &blockingPauseClient{}}}, "", "")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -280,7 +280,7 @@ func (s *heartbeatCreateStream) Recv() (*gen.CreateChunk, error) {
 // （心跳到达即重置窗口），心跳停止后连接静默仍按窗超时——hang 检测保留的锚定：
 // 心跳延长的是线级窗口，不取消空闲检测本身。
 func TestProxyCreate_HeartbeatExtendsWindowThenTimeout(t *testing.T) {
-	proxy := newWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &heartbeatThenHangingClient{}}}, "", "")
+	proxy := NewWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &heartbeatThenHangingClient{}}}, "", "")
 	proxy.readerIdleTimeout = 60 * time.Millisecond
 
 	start := time.Now()
@@ -333,7 +333,7 @@ func (s *dataThenHangStream) Recv() (*gen.CreateChunk, error) {
 // 首块后的每次接收同受空闲窗约束，窗口到期收流——cancel 流 ctx、关闭结果 channel（阶段1
 // 退出标准②·停发超时收流），收流原因记进 reason（消费侧流结束后可读，建任务调用带因失败）。
 func TestProxyCreateStream_PumpIdleTimeoutClosesStream(t *testing.T) {
-	proxy := newWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &dataThenHangClient{}}}, "", "")
+	proxy := NewWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &dataThenHangClient{}}}, "", "")
 	proxy.readerIdleTimeout = 40 * time.Millisecond
 
 	result, err := proxy.Create("http://x")
@@ -413,7 +413,7 @@ func (s *channelCreateStream) Recv() (*gen.CreateChunk, error) {
 // 首块后数据停发期内周期心跳到达（累计 ≥100ms 越过单个 60ms 窗口），泵不误判超时；心跳停后
 // 数据恢复，流正常收尾——全部任务透出、reason 为空（心跳重置的是窗口，不取消空闲检测）。
 func TestProxyCreateStream_PumpHeartbeatKeepsWindowAlive(t *testing.T) {
-	proxy := newWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &pumpHeartbeatClient{}}}, "", "")
+	proxy := NewWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &pumpHeartbeatClient{}}}, "", "")
 	proxy.readerIdleTimeout = 60 * time.Millisecond
 
 	result, err := proxy.Create("http://x")

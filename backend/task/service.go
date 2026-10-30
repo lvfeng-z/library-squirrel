@@ -1166,7 +1166,10 @@ func (a *taskRouteAdapter) Invoke(ctx context.Context, c *pluginTaskUrlListener.
 			// 旧「纯应答 channel」流产物（SDK 保留兼容形态）：逐条适配为 task 块条目
 			itemCh = taskItemsFromResponses(result.Stream())
 		}
-		streamCh, streamErr := a.service.handleCreateTaskStream(ctx, itemCh, c, createStreamFlushBatchSize)
+		// 流终态面（result 的意图/失败原因）随传：泵侧在 close(ch) 前写入、消费侧在
+		// itemChan 关闭后读取（happens-before 由 channel close 建立）——内联首批面的
+		// 未收批回滚判定依赖它（见 handleCreateTaskStreamWithOutcome）
+		streamCh, streamErr := a.service.handleCreateTaskStreamWithOutcome(ctx, itemCh, c, createStreamFlushBatchSize, result)
 		if streamErr != nil {
 			logger.Log.Errorf("处理流式任务失败 (plugin=%s): %v", pluginPublicId, streamErr)
 			return nil, route.Failed, failedCandidate(fmt.Sprintf("插件 %s 创建任务失败：%v", pluginName, streamErr))
@@ -1536,7 +1539,9 @@ var (
 
 // streamParentState 流式聚合中一个已落库父任务的指称状态：行载体（子行回填 Pid 用）与站点键
 //（子行归属键的继承基准，取父任务块声明值，合并续块不改写）。批次进度两标志——开批（收到过
-// 批次块）与收批（收到 last=true 末批）；流正常结束时开批未收批即触发未收批统一回滚（决策4）。
+// 批次块）与收批（收到 last=true 末批）；未收批统一回滚（决策4）按双面判定：开批未收批（批次
+// 块面），或批次块从未到达而流终态为取消/失败（内联首批面——分帧插件首批随父块内联，见
+// inlineBatchUnclosedRollbackFace）。
 // emittedChildren 累计该父已按 Task 项透出（并计入消费方成功数）的子行数，回滚时作折减数
 type streamParentState struct {
 	parent          *TaskWithWorkTask
@@ -1566,6 +1571,39 @@ const createStreamFlushBatchSize = 2000
 // persistCtx 执行——源 ctx 已取消不致回滚事务失败。
 // parent 即时落盘（CreateTask），leaf/child 进批量缓存经 CreateBatch 落盘；通过 channel 返回结果。
 func (s *Service) handleCreateTaskStream(ctx context.Context, itemChan <-chan *sdkdto.CreateStreamItem, listener *pluginTaskUrlListener.PluginWithExtension, batchSize int) (<-chan *CreateTaskStreamChan, error) {
+	// 无终态面（桩流/旧应答形态适配路径）：内联首批面维持提交语义（见下），批次块面不受影响
+	return s.handleCreateTaskStreamWithOutcome(ctx, itemChan, listener, batchSize, nil)
+}
+
+// streamOutcomeReader 流终态读取面：泵侧结果对象（*sdkdto.TaskCreateResult）实现——
+// 意图块/error 块/流异常原因在条目 channel close 之前写入（同一 goroutine 内顺序执行），
+// 消费侧在 itemChan 关闭（range 退出）之后读取，happens-before 由 channel close 建立
+type streamOutcomeReader interface {
+	Intent() (sdkdto.CreateIntentKind, string)
+	Reason() string
+}
+
+// inlineBatchUnclosedRollbackFace 内联首批面的未收批回滚判定：父块内联子行（children_batch
+// 批次块从未到达、该父从未收到任何 last 收批声明）在流终态为「已取消」意图或失败收尾（error 块
+// 或流异常 reason——插件中止/泵空闲超时/通道断均落此面）时，同属决策4 的未收批统一回滚——
+// 插件分帧发射的首批即随父块内联（契约 21：大批次父块 children 携带首批），取消/失败落在
+// 首个批次块之前时该父的批次两标志均为 false，仅靠批次块判定会漏回滚（B3 实测缺陷 1：
+// 取消后父行+首批 2 万子行静默残留、零日志）。干净 EOF 与「转入解析」意图 = 单批原子提交点
+//（无批次块=无回滚面——单批全内联的正常完成形态）；nil（无终态面）维持既有提交语义。
+func inlineBatchUnclosedRollbackFace(outcome streamOutcomeReader) bool {
+	if outcome == nil {
+		return false
+	}
+	if kind, _ := outcome.Intent(); kind == sdkdto.CreateIntentCancelled {
+		return true
+	}
+	return outcome.Reason() != ""
+}
+
+// handleCreateTaskStreamWithOutcome handleCreateTaskStream 的终态面接线条目：outcome 携带
+// 泵侧结果对象（流收尾的意图/失败声明），内联首批面的回滚判定消费它；其余语义与
+// handleCreateTaskStream 完全一致
+func (s *Service) handleCreateTaskStreamWithOutcome(ctx context.Context, itemChan <-chan *sdkdto.CreateStreamItem, listener *pluginTaskUrlListener.PluginWithExtension, batchSize int, outcome streamOutcomeReader) (<-chan *CreateTaskStreamChan, error) {
 	outChan := make(chan *CreateTaskStreamChan)
 
 	go func() {
@@ -1730,24 +1768,31 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, itemChan <-chan *s
 			}
 		}
 		if !streamViolated || ctxCancelled {
-			// 流结束（正常收尾，或 ctx 取消=通道断——含违规排空中途取消）：已开批未收批（无
+			// 流结束（正常收尾，或 ctx 取消=通道断——含违规排空中途取消）：未收批（无
 			// last）的父任务按未收批统一回滚（决策4=甲）——父行与全部已落库子行删除，不区分
 			// 显式取消与异常中断（取消文案区分留给插件侧意图终态）；无开批父的流（零任务早退、
 			// 内联形态）无回滚面，天然不受影响。违规收流且排空至流关闭（未取消）时本分支不进
-			//——悬空引用/收批后再到两类违规保持既有部分完成语义
+			//——悬空引用/收批后再到两类违规保持既有部分完成语义。
+			// 未收批判定双面（B3 缺陷 1 修复）：①批次块面（既有）——开批未收批；②内联首批面
+			//（新增）——批次块从未到达的父，在流终态为「已取消」意图或失败收尾时同属未收批
+			//（插件分帧首批随父块内联，取消/失败落在首个批次块前仅此面可达）；收批（last=true）
+			// 为原子提交点、单批全内联的干净收尾为隐式提交点，均不回滚
 			rollbackParentIds := make([]int64, 0, len(parents))
 			for _, state := range parents {
-				if state.batchStarted && !state.batchClosed {
+				if state.batchClosed {
+					continue
+				}
+				if state.batchStarted || inlineBatchUnclosedRollbackFace(outcome) {
 					rollbackParentIds = append(rollbackParentIds, state.parent.Task.GetID())
 				}
+			}
+			rollbackSet := make(map[int64]bool, len(rollbackParentIds))
+			for _, id := range rollbackParentIds {
+				rollbackSet[id] = true
 			}
 			if len(rollbackParentIds) > 0 {
 				// 批量缓存中属待回滚父的未落库子行一并丢弃：父行将删，落盘即成 pid 悬空引用；
 				// 独立 leaf 的 Pid 无效（Int64=0）不命中任何父 ID，不受回滚过滤影响
-				rollbackSet := make(map[int64]bool, len(rollbackParentIds))
-				for _, id := range rollbackParentIds {
-					rollbackSet[id] = true
-				}
 				kept := batch[:0]
 				for _, pair := range batch {
 					if !rollbackSet[pair.Task.Pid.Int64] {
@@ -1763,8 +1808,10 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, itemChan <-chan *s
 					logger.Log.Errorf("[Task] 未收批统一回滚失败（父任务 %v）: %v", rollbackParentIds, err)
 				}
 			}
+			// 缺末批错误项随回滚折减数透出：判定集与回滚集同源（双面谓词），内联面回滚的
+			// 父同样计一项（已透出子行数全数折减）
 			for id, state := range parents {
-				if state.batchStarted && !state.batchClosed {
+				if rollbackSet[state.parent.Task.GetID()] {
 					outChan <- &CreateTaskStreamChan{
 						Error:              fmt.Errorf("%w（plugin_task_id=%q）", ErrChildrenBatchMissingLastBatch, id),
 						RetractedTaskCount: state.emittedChildren,
