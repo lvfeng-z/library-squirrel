@@ -13,8 +13,9 @@ import (
 // 本文件为流式创建的子行批次块（children_batch，契约 21）聚合与协议违规测试：
 //   - 指称聚合：批次块按 plugin_task_id 挂既有父，last=true 即收批；内联子行与批次子行都计入该父。
 //   - 多任务交错：不同 PluginTaskId 的 task 块交错发送也各归其父（不依赖块位置）。
-//   - 三类协议违规收流：悬空引用（父 ID 未出现过或指向叶块）、收批后再到批次、流结束缺 last——
-//     计失败项并丢弃后续块，已到父行与子行保留（部分完成语义）。
+//   - 协议违规收流：悬空引用（父 ID 未出现过或指向叶块）、收批后再到批次两类计失败项并丢弃
+//     后续块，已到父行与子行保留（部分完成语义）；流结束缺 last 按未收批统一回滚（决策4=甲，
+//     父行与全部已落库子行删除、已透出计数经折减数纠偏）。
 
 // batchItem 构造子行批次块条目。
 func batchItem(pluginTaskId string, last bool, children ...*sdkdto.TaskCreateChildResponse) *sdkdto.CreateStreamItem {
@@ -277,9 +278,10 @@ func TestHandleCreateTaskStream_BatchAfterLastViolates(t *testing.T) {
 	}
 }
 
-// TestHandleCreateTaskStream_BatchMissingLastViolatesAtStreamEnd 流结束缺末批：父已开批但至流
-// 关闭未收到 last → 协议违规计失败项；已到子行照常落盘（部分完成语义）。
-func TestHandleCreateTaskStream_BatchMissingLastViolatesAtStreamEnd(t *testing.T) {
+// TestHandleCreateTaskStream_BatchMissingLastRollsBackAtStreamEnd 流结束缺末批：父已开批但至流
+// 关闭未收到 last → 未收批统一回滚（决策4=甲）——父行与全部已落库子行删除（零残留），批量缓存
+// 中未落库子行一并丢弃；缺末批错误项携带回滚折减数（=已透出子行数，消费方成功计数据此归零）。
+func TestHandleCreateTaskStream_BatchMissingLastRollsBackAtStreamEnd(t *testing.T) {
 	svc, repo := newTestService(t)
 	in := make(chan *sdkdto.CreateStreamItem, 2)
 	in <- sdkdto.TaskItem(parentBlockOf("work-X", "work-X", childOf("inline-1", "c-1")))
@@ -290,19 +292,29 @@ func TestHandleCreateTaskStream_BatchMissingLastViolatesAtStreamEnd(t *testing.T
 	if err != nil {
 		t.Fatalf("handleCreateTaskStream 返回错误: %v", err)
 	}
-	tasks, _, errs := drainStreamFull(out)
+	var tasks, retracted int
+	var errs []error
+	for item := range out {
+		switch {
+		case item.Task != nil:
+			tasks++
+		case item.Error != nil:
+			errs = append(errs, item.Error)
+			retracted += item.RetractedTaskCount
+		}
+	}
 	if len(errs) != 1 || !errors.Is(errs[0], ErrChildrenBatchMissingLastBatch) {
 		t.Fatalf("期望恰 1 个缺末批错误项，得到 %v", errs)
 	}
+	if retracted != 2 {
+		t.Fatalf("期望回滚折减数 = 已透出子行数 2（内联 1 + 批次 1），得到 %d", retracted)
+	}
 	if tasks != 2 {
-		t.Fatalf("期望内联 1 子 + 批次 1 子均透出，得到 tasks=%d", tasks)
+		t.Fatalf("透出面不变：内联 1 子 + 批次 1 子仍按 Task 项透出（回滚经折减数纠偏），得到 tasks=%d", tasks)
 	}
-	// 缺 last 不抹除已到行：父 + 2 子全部落盘
-	if len(repo.tasks) != 3 {
-		t.Fatalf("期望落盘 3 行（父 + 2 子），得到 %d: %v", len(repo.tasks), taskNamesInOrder(repo.tasks))
+	if len(repo.tasks) != 0 {
+		t.Fatalf("未收批统一回滚后应零残留（父 + 2 子全删），得到 %d: %v", len(repo.tasks), taskNamesInOrder(repo.tasks))
 	}
-	parent := findParent(repo.tasks)
-	assertChildrenPid(t, repo.tasks, parent.GetID(), 2)
 }
 
 // TestHandleCreateTaskStream_EmptyPluginTaskIdParentBlocksIndependent 空 PluginTaskId 的父块

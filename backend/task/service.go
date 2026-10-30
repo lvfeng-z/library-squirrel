@@ -1166,7 +1166,7 @@ func (a *taskRouteAdapter) Invoke(ctx context.Context, c *pluginTaskUrlListener.
 			// 旧「纯应答 channel」流产物（SDK 保留兼容形态）：逐条适配为 task 块条目
 			itemCh = taskItemsFromResponses(result.Stream())
 		}
-		streamCh, streamErr := a.service.handleCreateTaskStream(ctx, itemCh, c, 100)
+		streamCh, streamErr := a.service.handleCreateTaskStream(ctx, itemCh, c, createStreamFlushBatchSize)
 		if streamErr != nil {
 			logger.Log.Errorf("处理流式任务失败 (plugin=%s): %v", pluginPublicId, streamErr)
 			return nil, route.Failed, failedCandidate(fmt.Sprintf("插件 %s 创建任务失败：%v", pluginName, streamErr))
@@ -1178,6 +1178,9 @@ func (a *taskRouteAdapter) Invoke(ctx context.Context, c *pluginTaskUrlListener.
 				count++
 			} else if item.Error != nil {
 				failed++
+				// 未收批统一回滚折减：缺末批错误项携带的已透出子行数从成功计数扣除
+				//（行已随父任务删除，不得计为已创建；见 handleCreateTaskStream 回滚分支）
+				count -= item.RetractedTaskCount
 			}
 		}
 	} else {
@@ -1510,28 +1513,45 @@ type CreateTaskStreamChan struct {
 	Task   *entity.Task
 	Parent *entity.Task // 父任务（如果是子任务的话）
 	Error  error
+	// RetractedTaskCount 回滚折减数：未收批统一回滚的父任务，其子行此前已按 Task 项透出、
+	// 被消费方计入成功数——行已随父任务删除，消费方须从成功计数折减该数（随本父的
+	// 缺末批错误项携带）
+	RetractedTaskCount int
 }
 
 // 子行批次块（children_batch）在流式聚合中的三类协议违规，均为插件侧协议错误，宿主按流错误
-// 收流：计一次失败项并丢弃流上后续块，已落库父行与已进批量缓存的子行照常落盘（部分完成语义）。
+// 收流并计一次失败项。悬空引用与收批后再到（前两类）丢弃流上后续块，已落库行照常落盘（部分
+// 完成语义）；流结束缺末批（第三类）按未收批统一回滚处置（决策4=甲）——不区分显式取消与
+// 异常中断（插件死亡/通道断/读挂起在宿主侧同表现为流结束未收批），父任务与全部已落库子行删除，
+// 显式取消的文案区分由插件侧意图终态承担；收批（last=true 已到）为原子提交点，其后不回滚。
 var (
 	// ErrChildrenBatchDanglingParent 悬空引用：批次块指称的父 ID 未出现过（含空 ID）或指向独立叶任务
 	ErrChildrenBatchDanglingParent = &pkgerr.BusinessError{Code: 500, Message: "子行批次块引用了未声明的父任务（plugin_task_id 未出现或指向独立叶任务）"}
 	// ErrChildrenBatchAfterLastBatch 收批后重复批次：同父的 last 末批已到，其后不再有合法批次块
 	ErrChildrenBatchAfterLastBatch = &pkgerr.BusinessError{Code: 500, Message: "子行批次块在末批（last）之后到达"}
-	// ErrChildrenBatchMissingLastBatch 流结束缺末批：已开批的父任务至流关闭未收到 last 声明
-	ErrChildrenBatchMissingLastBatch = &pkgerr.BusinessError{Code: 500, Message: "流结束时子行批次序列缺少末批声明（last）"}
+	// ErrChildrenBatchMissingLastBatch 流结束缺末批：已开批的父任务至流关闭未收到 last 声明，
+	// 触发未收批统一回滚（父行与全部已落库子行删除）
+	ErrChildrenBatchMissingLastBatch = &pkgerr.BusinessError{Code: 500, Message: "流结束时子行批次序列缺少末批声明（last），父任务与已落库子行已统一回滚"}
 )
 
 // streamParentState 流式聚合中一个已落库父任务的指称状态：行载体（子行回填 Pid 用）与站点键
 //（子行归属键的继承基准，取父任务块声明值，合并续块不改写）。批次进度两标志——开批（收到过
-// 批次块）与收批（收到 last=true 末批）；流正常结束时开批未收批即协议违规。
+// 批次块）与收批（收到 last=true 末批）；流正常结束时开批未收批即触发未收批统一回滚（决策4）。
+// emittedChildren 累计该父已按 Task 项透出（并计入消费方成功数）的子行数，回滚时作折减数
 type streamParentState struct {
-	parent       *TaskWithWorkTask
-	siteKey      string
-	batchStarted bool
-	batchClosed  bool
+	parent          *TaskWithWorkTask
+	siteKey         string
+	batchStarted    bool
+	batchClosed     bool
+	emittedChildren int
 }
+
+// createStreamFlushBatchSize 流式创建批量落库的每事务行数（flushBatch 的切片容量即事务边界，
+// 由 CreateTaskByURL 流式路径传入）。2000 × work_task 14 列 = 28000 绑定参数，仍低于 SQLite
+// SQLITE_MAX_VARIABLE_NUMBER（32766，mattn/go-sqlite3 内置 SQLite ≥3.32 的默认值；task 核心
+// 行 9 列同限内）——GORM Create 对切片产单条多值 INSERT，2000 行一条语句合法、无须再显式分片。
+// 大选择集创建 15 万子行的落库事务从 ~1502 个（100 行/事务）降至 ~76 个
+const createStreamFlushBatchSize = 2000
 
 // handleCreateTaskStream 处理插件返回的流式任务（使用 Go channel）。
 // 经 planCreateResponse 单点判定（与 array 路径一致）：无 Children→独立 leaf；有 Children→parent+children（不折叠）。
@@ -1539,14 +1559,23 @@ type streamParentState struct {
 // 拆成多块流式发（如 local 扫描含大量文件的目录：边扫边发、复用同一 PluginTaskId），不同任务的
 // 块交错发送也各归其父（不依赖块位置）。子行批次块（children_batch）按 plugin_task_id 挂到既有
 // 父，last=true 即该父收批；同一父的内联子行与批次子行都计入该父。
-// 批次块三类协议违规（悬空引用/收批后再到/流结束缺 last）按流错误收流：计一次失败项并丢弃
-// 后续块，已落库行保留（部分完成语义）。
+// 批次块协议违规按流错误收流：悬空引用与收批后再到计一次失败项并丢弃后续块，已落库行保留
+//（部分完成语义）；流结束缺 last 按未收批统一回滚（决策4=甲）——父行与全部已落库子行删除、
+// 批量缓存中未落库子行一并丢弃，不区分显式取消与异常中断（取消文案区分留给插件侧意图终态）；
+// 调用方 ctx 取消（=通道断）中断消费时同样落入回滚分支，回滚与收尾落盘以剥取消信号的
+// persistCtx 执行——源 ctx 已取消不致回滚事务失败。
 // parent 即时落盘（CreateTask），leaf/child 进批量缓存经 CreateBatch 落盘；通过 channel 返回结果。
 func (s *Service) handleCreateTaskStream(ctx context.Context, itemChan <-chan *sdkdto.CreateStreamItem, listener *pluginTaskUrlListener.PluginWithExtension, batchSize int) (<-chan *CreateTaskStreamChan, error) {
 	outChan := make(chan *CreateTaskStreamChan)
 
 	go func() {
 		defer close(outChan)
+
+		// persistCtx 剥取消信号的持久化上下文：ctx 取消（=通道断，决策4 明列形态——外部
+		// AI 操作链的请求 ctx 断开、调用方放弃等）后，未收批统一回滚与缓存收尾落盘仍须执行；
+		// 回滚删除与批量 flush 改用它——仅剥取消信号、不换连接来源（values 原样保留，
+		// dbFromCtx 事务纪律不受影响）
+		persistCtx := context.WithoutCancel(ctx)
 
 		siteCache := make(map[string]int)
 		batch := make([]*TaskWithWorkTask, 0, batchSize)
@@ -1555,13 +1584,15 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, itemChan <-chan *s
 		// 不登记——每个父块独立建行，永不与后续块合并
 		parents := make(map[string]*streamParentState)
 
-		// 批量保存缓存中的 leaf/child：核心行批量落库拿 id → 领域行批量绑定共享主键（同一事务）
+		// 批量保存缓存中的 leaf/child：核心行批量落库拿 id → 领域行批量绑定共享主键（同一事务）；
+		// 事务走 persistCtx——ctx 取消后已收批（last 已到）父任务的待落库子行仍完整收尾
+		//（收批=原子提交点，取消不得截断其子行集）
 		flushBatch := func() {
 			if len(batch) == 0 {
 				return
 			}
 			pending := batch
-			err := s.transactor.ExecInTransaction(ctx, func(txCtx context.Context) error {
+			err := s.transactor.ExecInTransaction(persistCtx, func(txCtx context.Context) error {
 				coreBatch := make([]*entity.Task, 0, len(pending))
 				for _, pair := range pending {
 					coreBatch = append(coreBatch, pair.Task)
@@ -1585,8 +1616,9 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, itemChan <-chan *s
 		}
 
 		// appendChildren 把子行挂到指定父（回填 Pid）并进批量缓存，逐行经 outChan 透出；
-		// 内联子行与批次子行同经此通路
-		appendChildren := func(parentId int64, children []*TaskWithWorkTask) {
+		// 内联子行与批次子行同经此通路。state 非空时累计该父已透出子行数（回滚折减数；
+		// 空 PluginTaskId 父不进指称表、无回滚面，state 传 nil）
+		appendChildren := func(parentId int64, state *streamParentState, children []*TaskWithWorkTask) {
 			for _, child := range children {
 				child.Task.Pid = sql.NullInt64{Int64: parentId, Valid: true}
 				batch = append(batch, child)
@@ -1594,14 +1626,22 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, itemChan <-chan *s
 					flushBatch()
 				}
 				outChan <- &CreateTaskStreamChan{Task: child.Task}
+				if state != nil {
+					state.emittedChildren++
+				}
 			}
 		}
 
 		streamViolated := false
+		ctxCancelled := false
+	itemLoop:
 		for item := range itemChan {
 			select {
 			case <-ctx.Done():
-				return
+				// ctx 取消=通道断（插件死亡/调用方放弃，决策4 明列形态）：不裸退——跳出消费
+				// 循环后走流结束分支执行未收批统一回滚（回滚语义优先于既有早退语义）
+				ctxCancelled = true
+				break itemLoop
 			default:
 			}
 
@@ -1625,19 +1665,22 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, itemChan <-chan *s
 
 				// parent + children：PluginTaskId 已在指称表则复用既有父行（合并续块），否则建新父并登记
 				parent := plan.parent
-				if _, ok := parents[taskResp.PluginTaskId]; !ok {
+				var parentState *streamParentState
+				if existed, ok := parents[taskResp.PluginTaskId]; ok {
+					parent = existed.parent
+					parentState = existed
+				} else {
 					if err := s.persistPlanPair(ctx, plan.parent); err != nil {
 						outChan <- &CreateTaskStreamChan{Error: err}
 						continue
 					}
 					outChan <- &CreateTaskStreamChan{Parent: plan.parent.Task}
 					if taskResp.PluginTaskId != "" {
-						parents[taskResp.PluginTaskId] = &streamParentState{parent: plan.parent, siteKey: taskResp.SiteKey}
+						parentState = &streamParentState{parent: plan.parent, siteKey: taskResp.SiteKey}
+						parents[taskResp.PluginTaskId] = parentState
 					}
-				} else {
-					parent = parents[taskResp.PluginTaskId].parent
 				}
-				appendChildren(parent.Task.GetID(), plan.children)
+				appendChildren(parent.Task.GetID(), parentState, plan.children)
 				continue
 			}
 
@@ -1667,13 +1710,12 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, itemChan <-chan *s
 				outChan <- &CreateTaskStreamChan{Error: err}
 				continue
 			}
-			appendChildren(state.parent.Task.GetID(), children)
+			appendChildren(state.parent.Task.GetID(), state, children)
 		}
 
 		if streamViolated {
 			// 违规收流：丢弃流上剩余块直至流关闭（发送侧因此可正常收尾）；调用方 ctx 取消时
-			// 提前退出且不落盘缓存行（与流中取消同语义）
-			cancelled := false
+			// 提前结束排空——取消=通道断，取消后的收尾不裸退，同样走下方未收批回滚面
 		drain:
 			for {
 				select {
@@ -1682,18 +1724,51 @@ func (s *Service) handleCreateTaskStream(ctx context.Context, itemChan <-chan *s
 						break drain
 					}
 				case <-ctx.Done():
-					cancelled = true
+					ctxCancelled = true
 					break drain
 				}
 			}
-			if cancelled {
-				return
+		}
+		if !streamViolated || ctxCancelled {
+			// 流结束（正常收尾，或 ctx 取消=通道断——含违规排空中途取消）：已开批未收批（无
+			// last）的父任务按未收批统一回滚（决策4=甲）——父行与全部已落库子行删除，不区分
+			// 显式取消与异常中断（取消文案区分留给插件侧意图终态）；无开批父的流（零任务早退、
+			// 内联形态）无回滚面，天然不受影响。违规收流且排空至流关闭（未取消）时本分支不进
+			//——悬空引用/收批后再到两类违规保持既有部分完成语义
+			rollbackParentIds := make([]int64, 0, len(parents))
+			for _, state := range parents {
+				if state.batchStarted && !state.batchClosed {
+					rollbackParentIds = append(rollbackParentIds, state.parent.Task.GetID())
+				}
 			}
-		} else {
-			// 流正常结束：已开批未收批（无 last）的父任务按协议违规计失败项，已到子行照常落盘
+			if len(rollbackParentIds) > 0 {
+				// 批量缓存中属待回滚父的未落库子行一并丢弃：父行将删，落盘即成 pid 悬空引用；
+				// 独立 leaf 的 Pid 无效（Int64=0）不命中任何父 ID，不受回滚过滤影响
+				rollbackSet := make(map[int64]bool, len(rollbackParentIds))
+				for _, id := range rollbackParentIds {
+					rollbackSet[id] = true
+				}
+				kept := batch[:0]
+				for _, pair := range batch {
+					if !rollbackSet[pair.Task.Pid.Int64] {
+						kept = append(kept, pair)
+					}
+				}
+				batch = kept
+				// 复用批量删除链（先停后删直通 Created 态 → 清 resource.task_id 引用 → 领域行 →
+				// 核心行，单事务），以 persistCtx 执行——源 ctx 已取消（通道断）时回滚事务仍须
+				// 落地（仅剥取消信号，事务连接与 dbFromCtx 纪律不变）；15 万行级回滚占 SQLite
+				// 唯一写连接，事务时长见方案风险3
+				if err := s.DeleteTask(persistCtx, rollbackParentIds); err != nil {
+					logger.Log.Errorf("[Task] 未收批统一回滚失败（父任务 %v）: %v", rollbackParentIds, err)
+				}
+			}
 			for id, state := range parents {
 				if state.batchStarted && !state.batchClosed {
-					outChan <- &CreateTaskStreamChan{Error: fmt.Errorf("%w（plugin_task_id=%q）", ErrChildrenBatchMissingLastBatch, id)}
+					outChan <- &CreateTaskStreamChan{
+						Error:              fmt.Errorf("%w（plugin_task_id=%q）", ErrChildrenBatchMissingLastBatch, id),
+						RetractedTaskCount: state.emittedChildren,
+					}
 				}
 			}
 		}

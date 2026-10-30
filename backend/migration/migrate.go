@@ -182,6 +182,15 @@ func AutoMigrate(db *gorm.DB) error {
 		return fmt.Errorf("迁移 external_api_op_record create_time 索引创建失败: %w", err)
 	}
 
+	// 命名迁移(后置)：task.pid 二级索引——大选择集创建（子行批次块分帧发射）落地后，按父圈定
+	// 行集的查询（任务页父行子行计数、未收批统一回滚与既有删除链的 pid IN 删除）不再全表扫描
+	//（15 万子行实测父行计数 234ms → 索引区间探测）。task 核心行无实体索引声明（AutoMigrate
+	// 不管二级索引），入命名迁移手写建；IF NOT EXISTS 幂等（同上 create_time 索引先例）。
+	// 置于外键表重建批次之前：重建舞步按 sqlite_master 现册索引逐一复原，本索引随表重建存续
+	if err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_task_pid ON task(pid)`).Error; err != nil {
+		return fmt.Errorf("迁移 task.pid 索引创建失败: %w", err)
+	}
+
 	// 数据迁移：share-host 任务行退役清理（分享方发布去任务化——发布直跑不经任务模块，
 	// 分享参数与生命周期改由 share_record 承载）。存量 share-host 任务行一次性物理删除
 	// （原生 DELETE，无软删改写；task 表无软删列；幂等——二次启动无命中行）

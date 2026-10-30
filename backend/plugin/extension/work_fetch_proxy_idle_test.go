@@ -3,6 +3,7 @@ package extension
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 // 本文件锚定流式链路的空闲超时与取消语义：
 // - 单次接收等待数据的窗口为「两次数据之间的最大空闲」，到期 cancel 所属流 ctx（插件 hang → 超时错误）
 // - Create 接收泵在流 ctx 取消后退出（结果 channel 关闭），不再因消费方停止读取而永久阻塞
+// - 泵循环首块之后同样受空闲窗约束：数据停发（插件死亡/读挂起）到期收流报错，心跳块豁免
 // - unary 调用以调用方 ctx 为基：调用方取消立即打断 gRPC 等待
 // 超时窗口经 readerIdleTimeout 覆写注入缩时值（生产默认 60s 语义以「缩时内报错」等价验证）
 
@@ -292,5 +294,153 @@ func TestProxyCreate_HeartbeatExtendsWindowThenTimeout(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Fatalf("停跳后应在窗口内超时，实际耗时 %v", elapsed)
+	}
+}
+
+// dataThenHangClient 首块（mode 流式声明）与首个任务块即达、随后数据停发的客户端替身：
+// 流的 Recv 从此静默阻塞直至流 ctx 取消（模拟插件发射中途挂死/死亡：连接活但不产出）。
+type dataThenHangClient struct {
+	gen.WorkFetchServiceClient
+}
+
+func (c *dataThenHangClient) Create(ctx context.Context, _ *gen.CreateRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[gen.CreateChunk], error) {
+	head := make(chan *gen.CreateChunk, 2)
+	head <- &gen.CreateChunk{Payload: &gen.CreateChunk_Mode{Mode: &gen.CreateMode{IsStream: true}}}
+	head <- taskChunk("w-1")
+	return &dataThenHangStream{streamCtx: ctx, head: head}, nil
+}
+
+// dataThenHangStream 先吐预置数据块、随后 Recv 静默阻塞的流替身（头块通道不关闭，Recv 永远等不到）。
+type dataThenHangStream struct {
+	grpc.ClientStream
+	streamCtx context.Context
+	head      chan *gen.CreateChunk
+}
+
+func (s *dataThenHangStream) Recv() (*gen.CreateChunk, error) {
+	select {
+	case c, ok := <-s.head:
+		if ok {
+			return c, nil
+		}
+	case <-s.streamCtx.Done():
+	}
+	<-s.streamCtx.Done()
+	return nil, s.streamCtx.Err()
+}
+
+// TestProxyCreateStream_PumpIdleTimeoutClosesStream 泵首块之后的数据停发（插件死亡/读挂起）：
+// 首块后的每次接收同受空闲窗约束，窗口到期收流——cancel 流 ctx、关闭结果 channel（阶段1
+// 退出标准②·停发超时收流），收流原因记进 reason（消费侧流结束后可读，建任务调用带因失败）。
+func TestProxyCreateStream_PumpIdleTimeoutClosesStream(t *testing.T) {
+	proxy := newWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &dataThenHangClient{}}}, "", "")
+	proxy.readerIdleTimeout = 40 * time.Millisecond
+
+	result, err := proxy.Create("http://x")
+	if err != nil {
+		t.Fatalf("Create 返回错误: %v", err)
+	}
+	if !result.IsStream() {
+		t.Fatal("期望流式模式")
+	}
+
+	done := make(chan struct{})
+	var ids []string
+	go func() {
+		defer close(done)
+		for item := range result.Items() {
+			resp := item.Task()
+			if resp == nil {
+				t.Errorf("期望 task 块条目，得到非 task 形态: %+v", item)
+				return
+			}
+			ids = append(ids, resp.SiteWorkId)
+		}
+	}()
+	start := time.Now()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("数据停发后泵应按空闲窗收流（关闭结果 channel），实际持续阻塞")
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("收流应在缩时窗口内完成，实际耗时 %v", elapsed)
+	}
+	if len(ids) != 1 || ids[0] != "w-1" {
+		t.Fatalf("期望停发前 1 个任务已透出，得到 %v", ids)
+	}
+	// 收流原因可读（happens-before 由 channel close 建立）
+	if !strings.Contains(result.Reason(), "空闲超时") {
+		t.Fatalf("期望空闲超时记进 reason，得到 %q", result.Reason())
+	}
+}
+
+// pumpHeartbeatClient 泵窗口期心跳保活的客户端替身：mode 块与首个任务块即达，随后数据停发、
+// 仅周期心跳（周期小于空闲窗，累计时长越过单个窗口），心跳预算耗尽后恢复发数据并正常收流。
+type pumpHeartbeatClient struct {
+	gen.WorkFetchServiceClient
+}
+
+func (c *pumpHeartbeatClient) Create(ctx context.Context, _ *gen.CreateRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[gen.CreateChunk], error) {
+	ch := make(chan *gen.CreateChunk, 8)
+	go func() {
+		defer close(ch)
+		ch <- &gen.CreateChunk{Payload: &gen.CreateChunk_Mode{Mode: &gen.CreateMode{IsStream: true}}}
+		ch <- taskChunk("w-1")
+		for range 5 {
+			time.Sleep(20 * time.Millisecond)
+			ch <- heartbeatChunk()
+		}
+		ch <- taskChunk("w-2")
+	}()
+	return &channelCreateStream{ch: ch}, nil
+}
+
+// channelCreateStream 以通道为块的流替身：通道关闭后 Recv 返回 io.EOF（正常收尾）。
+type channelCreateStream struct {
+	grpc.ClientStream
+	ch chan *gen.CreateChunk
+}
+
+func (s *channelCreateStream) Recv() (*gen.CreateChunk, error) {
+	if c, ok := <-s.ch; ok {
+		return c, nil
+	}
+	return nil, io.EOF
+}
+
+// TestProxyCreateStream_PumpHeartbeatKeepsWindowAlive 泵空闲窗的心跳块豁免（阶段1 退出标准②）：
+// 首块后数据停发期内周期心跳到达（累计 ≥100ms 越过单个 60ms 窗口），泵不误判超时；心跳停后
+// 数据恢复，流正常收尾——全部任务透出、reason 为空（心跳重置的是窗口，不取消空闲检测）。
+func TestProxyCreateStream_PumpHeartbeatKeepsWindowAlive(t *testing.T) {
+	proxy := newWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &pumpHeartbeatClient{}}}, "", "")
+	proxy.readerIdleTimeout = 60 * time.Millisecond
+
+	result, err := proxy.Create("http://x")
+	if err != nil {
+		t.Fatalf("Create 返回错误: %v", err)
+	}
+	if !result.IsStream() {
+		t.Fatal("期望流式模式")
+	}
+
+	start := time.Now()
+	var ids []string
+	for item := range result.Items() {
+		resp := item.Task()
+		if resp == nil {
+			t.Fatalf("期望 task 块条目，得到非 task 形态: %+v", item)
+		}
+		ids = append(ids, resp.SiteWorkId)
+	}
+	if len(ids) != 2 || ids[0] != "w-1" || ids[1] != "w-2" {
+		t.Fatalf("期望 2 个任务按序透出（心跳豁免不误伤收流），得到 %v", ids)
+	}
+	// 心跳累计 ≥100ms 越过单个 60ms 窗口仍未超时，即豁免生效的证明
+	if elapsed := time.Since(start); elapsed < 100*time.Millisecond {
+		t.Fatalf("流应在心跳期（≥100ms）后收尾，实际 %v", elapsed)
+	}
+	if got := result.Reason(); got != "" {
+		t.Fatalf("正常收尾 reason 应为空，得到 %q", got)
 	}
 }

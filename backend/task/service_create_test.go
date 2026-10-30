@@ -53,10 +53,11 @@ const (
 // CreateWorkTaskForTask/CreateWorkTaskBatch。
 type fakeTaskRepo struct {
 	Repository
-	mu        sync.Mutex
-	tasks     []*entity.Task
-	workTasks map[int64]*entity.WorkTask
-	nextID    int64
+	mu               sync.Mutex
+	tasks            []*entity.Task
+	workTasks        map[int64]*entity.WorkTask
+	nextID           int64
+	createBatchSizes []int // 每次 CreateBatch 的行数（落库批量边界断言用）
 }
 
 func newFakeTaskRepo() *fakeTaskRepo {
@@ -75,6 +76,7 @@ func (f *fakeTaskRepo) CreateTask(_ context.Context, task *entity.Task) error {
 func (f *fakeTaskRepo) CreateBatch(_ context.Context, tasks []*entity.Task) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.createBatchSizes = append(f.createBatchSizes, len(tasks))
 	for _, t := range tasks {
 		t.BaseEntity.ID = f.nextID
 		f.nextID++
@@ -98,6 +100,34 @@ func (f *fakeTaskRepo) CreateWorkTaskBatch(_ context.Context, wts []*entity.Work
 		f.workTasks[wt.GetID()] = wt
 	}
 	return nil
+}
+
+// ClearResourceTaskId 创建路径测试无 resource 行引用，空实现满足删除链前置步签名
+func (f *fakeTaskRepo) ClearResourceTaskId(_ context.Context, _ []int64) error {
+	return nil
+}
+
+// DeleteTask 模拟按父删全部子行（未收批统一回滚链消费）：入参父行及其 pid 子行的核心行与
+// 对应作品领域行一并移除，返回全量被删 ID 集（与生产仓储语义一致）
+func (f *fakeTaskRepo) DeleteTask(_ context.Context, ids []int64) ([]int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	idSet := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		idSet[id] = true
+	}
+	deleted := make([]int64, 0, len(ids))
+	kept := f.tasks[:0]
+	for _, t := range f.tasks {
+		if idSet[t.GetID()] || (t.Pid.Valid && idSet[t.Pid.Int64]) {
+			delete(f.workTasks, t.GetID())
+			deleted = append(deleted, t.GetID())
+			continue
+		}
+		kept = append(kept, t)
+	}
+	f.tasks = kept
+	return deleted, nil
 }
 
 // workTaskOf 取核心行 id 对应的作品领域行（无则 nil）
