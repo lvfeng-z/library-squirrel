@@ -15,6 +15,13 @@ import (
 	transport "github.com/lvfeng-z/library-squirrel-sdk/transport"
 )
 
+// preFirstItemIdleWindowFactor 流式 Create 泵在首个实质块（task 块/子行批次块）到达前的
+// 接收空闲窗放宽倍数：首个批次块要等插件完成首个域的核对（哈希）后才发射，该相位插件不发
+// 心跳块、60s 基窗无法靠心跳维持，冷库/USB 桥冷启下首域核对实测可超 60s（2026-10-31 复测
+// B1 两轮被 60s 基窗误杀收流）；首个实质块到达后回落基窗——批次间隙重新受 60s 约束，挂死
+// 检测仅在该前置相位让渡（5×窗仍为有界上限，远优于无检测）
+const preFirstItemIdleWindowFactor = 5
+
 // WorkFetchProxy 通过 gRPC 代理到子进程的 WorkFetcher
 type WorkFetchProxy struct {
 	serviceAccessor ServiceAccessor
@@ -126,11 +133,19 @@ func (p *WorkFetchProxy) CreateWithContext(ctx context.Context, url string) (*pl
 			defer close(ch)
 			// 泵退出即取消流 ctx：终结 gRPC stream（EOF/错误/ctx 取消三态统一收尾）
 			defer cancel()
+			// 首个实质块前的接收等待按 preFirstItemIdleWindowFactor 放宽（冷首域核对相位
+			// 无心跳可喂窗，见常量注释）；首个实质块到达即回落基窗
+			preFirstItemWindow := p.readerIdleTimeout * preFirstItemIdleWindowFactor
+			firstItemSeen := false
 			for {
 				// 首块之后的泵循环同样受空闲超时约束：插件死亡/读挂起时连接静默、数据停发，
 				// 窗口到期收流报错（cancel 流 ctx，终结阻塞中的接收与该流上后续读取）；
 				// 心跳块豁免——每次接收的空闲窗口独立起算，心跳到达即重置窗口
-				c, err := recvWithIdleTimeout(stream.Recv, cancel, p.readerIdleTimeout)
+				window := p.readerIdleTimeout
+				if !firstItemSeen {
+					window = preFirstItemWindow
+				}
+				c, err := recvWithIdleTimeout(stream.Recv, cancel, window)
 				if err != nil {
 					// 正常收尾（io.EOF）静默；异常收流（空闲超时/gRPC 层错误：插件死亡、通道断）
 					// 把收流原因记进 reason——消费侧流结束后读到失败原因，建任务调用得以带因失败
@@ -162,6 +177,7 @@ func (p *WorkFetchProxy) CreateWithContext(ctx context.Context, url string) (*pl
 				}
 				taskProto := c.GetTask()
 				if taskProto != nil {
+					firstItemSeen = true
 					// 消费方停止读取（channel 缓冲占满）时，流 ctx 取消可解除发送阻塞令泵退出
 					select {
 					case ch <- pluginsdkdto.TaskItem(protoToTaskCreateResponse(taskProto)):
@@ -172,6 +188,7 @@ func (p *WorkFetchProxy) CreateWithContext(ctx context.Context, url string) (*pl
 				// 子行批次块：大批次创建的分帧载荷，按块内声明（指称父 ID、子行清单、末批标志）透传
 				batchProto := c.GetChildrenBatch()
 				if batchProto != nil {
+					firstItemSeen = true
 					select {
 					case ch <- pluginsdkdto.ChildrenBatchItem(
 						batchProto.GetPluginTaskId(),

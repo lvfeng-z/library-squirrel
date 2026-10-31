@@ -18,6 +18,8 @@ import (
 // - 单次接收等待数据的窗口为「两次数据之间的最大空闲」，到期 cancel 所属流 ctx（插件 hang → 超时错误）
 // - Create 接收泵在流 ctx 取消后退出（结果 channel 关闭），不再因消费方停止读取而永久阻塞
 // - 泵循环首块之后同样受空闲窗约束：数据停发（插件死亡/读挂起）到期收流报错，心跳块豁免
+// - 首个实质块（task/children_batch）到达前接收窗按 preFirstItemIdleWindowFactor 放宽（冷首域
+//   核对相位无心跳可喂窗），首个实质块后回落基窗；扩窗仍为有界上限（挂死检测保留）
 // - unary 调用以调用方 ctx 为基：调用方取消立即打断 gRPC 等待
 // 超时窗口经 readerIdleTimeout 覆写注入缩时值（生产默认 60s 语义以「缩时内报错」等价验证）
 
@@ -442,5 +444,111 @@ func TestProxyCreateStream_PumpHeartbeatKeepsWindowAlive(t *testing.T) {
 	}
 	if got := result.Reason(); got != "" {
 		t.Fatalf("正常收尾 reason 应为空，得到 %q", got)
+	}
+}
+
+// scriptedGapClient 首块（mode 流式声明）即达、随后按脚本延迟产出实质块的客户端替身：
+// gap1=mode 块到首个任务块的静默时长（模拟冷首域核对：插件在该相位不发心跳，静默即真空窗）；
+// gap2=首个任务块之后的静默时长；tail 为 nil 时随后收流（io.EOF），否则再透出一块。
+type scriptedGapClient struct {
+	gen.WorkFetchServiceClient
+	gap1, gap2 time.Duration
+	tail       *gen.CreateChunk
+}
+
+func (c *scriptedGapClient) Create(ctx context.Context, _ *gen.CreateRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[gen.CreateChunk], error) {
+	ch := make(chan *gen.CreateChunk, 4)
+	go func() {
+		defer close(ch)
+		ch <- &gen.CreateChunk{Payload: &gen.CreateChunk_Mode{Mode: &gen.CreateMode{IsStream: true}}}
+		time.Sleep(c.gap1)
+		ch <- taskChunk("w-1")
+		time.Sleep(c.gap2)
+		if c.tail != nil {
+			ch <- c.tail
+		}
+	}()
+	return &channelCreateStream{ch: ch}, nil
+}
+
+// TestProxyCreateStream_PreFirstItemWindowExtendedThenFallsBack 首个实质块前的接收空闲窗
+// 放宽为 5×基窗（2026-10-31 复测 B1 修复锚：冷首域核对静默 60-300s 不得误杀）；首个实质块
+// 到达后立即回落基窗——同一轮内第二批间静默超基窗即收流。基窗 40ms/扩窗 200ms：gap1=150ms
+// 越过基窗仍在扩窗内（泵存活、w-1 透出），gap2=150ms 超回落后的基窗（收流、reason=空闲超时）。
+func TestProxyCreateStream_PreFirstItemWindowExtendedThenFallsBack(t *testing.T) {
+	proxy := NewWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &scriptedGapClient{
+		gap1: 150 * time.Millisecond,
+		gap2: 150 * time.Millisecond,
+	}}}, "", "")
+	proxy.readerIdleTimeout = 40 * time.Millisecond
+
+	result, err := proxy.Create("http://x")
+	if err != nil {
+		t.Fatalf("Create 返回错误: %v", err)
+	}
+	if !result.IsStream() {
+		t.Fatal("期望流式模式")
+	}
+
+	start := time.Now()
+	var ids []string
+	for item := range result.Items() {
+		resp := item.Task()
+		if resp == nil {
+			t.Fatalf("期望 task 块条目，得到非 task 形态: %+v", item)
+		}
+		ids = append(ids, resp.SiteWorkId)
+	}
+	if len(ids) != 1 || ids[0] != "w-1" {
+		t.Fatalf("期望扩窗内首个任务块透出（w-1）、回落基窗后收流，得到 %v", ids)
+	}
+	if !strings.Contains(result.Reason(), "空闲超时") {
+		t.Fatalf("首个实质块后回落基窗，gap2 超窗应收流记原因，得到 %q", result.Reason())
+	}
+	// gap1（150ms）在扩窗内不收流：全程须等到 gap1 走满见首个块、gap2 静默 40ms（基窗）即收流
+	//——若扩窗未生效，gap1 内 40ms 即收流零透出；若未回落基窗，须等 gap2 走满 300ms 后 EOF 干净收尾
+	if elapsed := time.Since(start); elapsed < 185*time.Millisecond {
+		t.Fatalf("泵应按脚本静默推进（gap1 150ms+基窗 40ms ≥190ms），实际 %v 即收流", elapsed)
+	}
+	if elapsed := time.Since(start); elapsed >= 290*time.Millisecond {
+		t.Fatalf("首个实质块后应回落基窗（gap2 静默 40ms 即收流，非等满 300ms EOF），实际 %v", elapsed)
+	}
+}
+
+// TestProxyCreateStream_PreFirstItemWindowStillBounded 扩窗不取消挂死检测：mode 块后静默
+// 超扩窗（基窗 40ms/扩窗 200ms，gap1=400ms）仍按窗收流——cancel 流 ctx、关闭结果 channel、
+// 零实质块透出、reason=空闲超时（前置相位挂死的检测上限=5×基窗，有界）。
+func TestProxyCreateStream_PreFirstItemWindowStillBounded(t *testing.T) {
+	proxy := NewWorkFetchProxy(&fakeServiceAccessor{client: &transport.GRPCPluginClient{WorkFetch: &scriptedGapClient{
+		gap1: 400 * time.Millisecond,
+		gap2: 0,
+	}}}, "", "")
+	proxy.readerIdleTimeout = 40 * time.Millisecond
+
+	result, err := proxy.Create("http://x")
+	if err != nil {
+		t.Fatalf("Create 返回错误: %v", err)
+	}
+	if !result.IsStream() {
+		t.Fatal("期望流式模式")
+	}
+
+	start := time.Now()
+	var ids []string
+	for item := range result.Items() {
+		resp := item.Task()
+		if resp == nil {
+			t.Fatalf("期望 task 块条目，得到非 task 形态: %+v", item)
+		}
+		ids = append(ids, resp.SiteWorkId)
+	}
+	if len(ids) != 0 {
+		t.Fatalf("扩窗内无实质块到达，应零透出，得到 %v", ids)
+	}
+	if !strings.Contains(result.Reason(), "空闲超时") {
+		t.Fatalf("静默超扩窗应按窗收流记原因，得到 %q", result.Reason())
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("收流应在扩窗（200ms 级）内完成，实际耗时 %v", elapsed)
 	}
 }
