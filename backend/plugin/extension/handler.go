@@ -22,6 +22,7 @@ type FrontendExtensionResponse struct {
 	Order          int                         `json:"order,omitempty"`
 	Title          string                      `json:"title,omitempty"`
 	Parent         string                      `json:"parent,omitempty"`         // view: 父页面路由名（本插件另一 view 条目的 id，或宿主路由名；空 = 一级页面）
+	KeepAlive      bool                        `json:"keepAlive,omitempty"`      // view: 视图保活标记（true = 切走不卸载，宿主缓存组件实例）
 	SettingsDialog bool                        `json:"settingsDialog,omitempty"` // view: 设置页弹窗呈现标记（在场 = 该条目为 dialog 呈现的设置页，前端只入注册表不注册路由）
 	Icon           string                      `json:"icon,omitempty"`
 	ViewId         string                      `json:"viewId,omitempty"`
@@ -80,6 +81,7 @@ func FrontendExtensionConfigToResponse(cfg *domain.FrontendExtensionConfig) *Fro
 		Order:          cfg.Order,
 		Title:          cfg.Title,
 		Parent:         cfg.Parent,
+		KeepAlive:      cfg.KeepAlive,
 		SettingsDialog: cfg.SettingsDialog,
 		Icon:           cfg.Icon,
 		ViewId:         cfg.ViewId,

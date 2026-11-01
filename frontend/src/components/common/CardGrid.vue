@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="T">
-import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, watch, nextTick, onActivated, onDeactivated, onMounted, onUnmounted } from 'vue'
 
 // props
 const props = defineProps<{
@@ -429,10 +429,12 @@ function endAnimWindow() {
 }
 
 // 容器宽度变化 → 全量重排（仅监听 width，避免 JS 设置 height 触发循环）
+// 可重复调用（保活切回复挂）：先拆旧观察再按当前宽度立基线，重挂不产生伪宽度变化
 function setupContainerObserver() {
   if (!containerRef.value) {
     return
   }
+  containerResizeObserver?.disconnect()
   lastContainerWidth = containerRef.value.clientWidth
   containerResizeObserver = new ResizeObserver((entries) => {
     const width = entries[0]?.contentRect.width ?? 0
@@ -501,11 +503,18 @@ onMounted(() => {
   nextTick(() => doLayout())
 })
 
-onUnmounted(() => {
+// 统一拆除布局观察与调度：卸载与保活切走共用。保活形态下 DOM 脱离文档时，Chromium 会给
+// ResizeObserver 投递宽度归零项（内容盒消失），若容器宽度防抖计时器/卡片高度 rAF 批次在
+// 移出期间触发，将以脱附态垃圾几何（clientWidth=0 → 列宽为负）重写卡片布局——切回重插入
+// 瞬间塌陷布局先生效，滚动位被浏览器钳制并连带误触滚动触底指令（实测：切走期容器高度被
+// 重写 9349.76px→150px→1102.96px、卡片 transform 塌到左上角）。断开观察 + 清空计时/rAF
+// 批次 + 拆动画窗口，保证移出期间布局完全静止
+function teardownLayoutObservers(): void {
   containerResizeObserver?.disconnect()
   itemResizeObserver?.disconnect()
   if (containerResizeTimer) {
     clearTimeout(containerResizeTimer)
+    containerResizeTimer = null
   }
   if (animTeardownRaf !== null) {
     cancelAnimationFrame(animTeardownRaf)
@@ -513,11 +522,38 @@ onUnmounted(() => {
   }
   if (animTeardownTimer) {
     clearTimeout(animTeardownTimer)
+    animTeardownTimer = null
   }
   if (itemResizeRaf !== null) {
     cancelAnimationFrame(itemResizeRaf)
     itemResizeRaf = null
   }
+  dirtyIndices.clear()
+  endAnimWindow()
+}
+
+// 保活切回（activated，keep-alive 缓存实例重插入文档后触发；非保活用法不经过此钩子）：
+// 移出期窗口宽度可能已变，先按当前真实几何补排（宽度未变则跳过，避免逐卡重写布局），
+// 再重挂两路观察（同一观察器重复 observe 幂等）
+onActivated(() => {
+  if (!containerRef.value) {
+    return
+  }
+  if (containerRef.value.clientWidth !== lastContainerWidth) {
+    beginAnimWindow()
+    relayoutAll()
+  }
+  setupContainerObserver()
+  observeAllItems()
+})
+
+// 保活切走（deactivated，DOM 移出文档）：拆除全部观察与调度，移出期间布局静止
+onDeactivated(() => {
+  teardownLayoutObservers()
+})
+
+onUnmounted(() => {
+  teardownLayoutObservers()
 })
 </script>
 

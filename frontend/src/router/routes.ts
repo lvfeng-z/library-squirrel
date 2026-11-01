@@ -10,7 +10,10 @@ export const routes: RouteRecordRaw[] = [
         path: '',
         name: 'mainPage',
         component: () => import('@renderer/views/MainView.vue'),
-        meta: { title: '主页', icon: 'HomeFilled', order: 0 }
+        // 视图保活声明（宿主静态源）：keepAlive 为真条目按 keepAliveName（MainView.vue 的
+        // defineOptions 显式名）并入 SlotRegistryStore.keepAliveViewNames 白名单，与插件声明源
+        // 在 include 派生处合流。主视图切走不卸载，筛选/列表/滚动/多选状态保持
+        meta: { title: '主页', icon: 'HomeFilled', order: 0, keepAlive: true, keepAliveName: 'MainView' }
       },
       {
         path: 'localTagManage',

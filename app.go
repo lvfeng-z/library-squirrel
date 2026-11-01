@@ -511,6 +511,7 @@ func parseFrontendExtensionContent(fe dto.FrontendExtensionDeclaration, cfg *bas
 		cfg.Content = resolveSourceURLs(c.Source, c.ContentType, publicId, cacheKey)
 		cfg.Title = c.Title
 		cfg.Parent = c.Parent
+		cfg.KeepAlive = c.KeepAlive
 		cfg.Props = c.Props
 
 	case base.FrontendExtensionKindMenu:

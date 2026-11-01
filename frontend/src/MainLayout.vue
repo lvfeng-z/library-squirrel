@@ -16,6 +16,7 @@ import { usePluginUpdateStore } from '@renderer/store/UsePluginUpdateStore.ts'
 import { useWorkdirStatusStore } from '@renderer/store/UseWorkdirStatusStore.ts'
 import { useTourCenterStore } from '@renderer/store/UseTourCenterStore.ts'
 import { useViewCloseButtonStore } from '@renderer/store/UseViewCloseButtonStore.ts'
+import { useSlotRegistryStore } from '@renderer/store/SlotRegistryStore'
 import { isBlank } from '@renderer/utils/StringUtil.ts'
 
 const router = useRouter()
@@ -23,6 +24,7 @@ const route = useRoute()
 const notificationListState = ref(false)
 const workdirStatus = useWorkdirStatusStore()
 const tourCenter = useTourCenterStore()
+const slotRegistry = useSlotRegistryStore()
 
 // 外壳挂载即拉取插件更新待办：启动期检测（pre-Run InstallBundled）的结果在此进入前端，
 // 「插件」菜单红点与管理页待更新区块均消费本 store
@@ -138,7 +140,15 @@ onUnmounted(() => {
         <!-- 页面层级面包屑条：文档流内占位（同横幅机制），仅当前页面存在 meta.parent 链时可见（组件内部判定） -->
         <BreadcrumbBar />
         <div class="main-view-host">
-          <router-view />
+          <!-- 视图保活：keep-alive 常驻渲染（不按路由条件包裹，条件包裹会在切到非保活页时整体
+               卸载 keep-alive 清空全部缓存）；include 为 store 派生的响应式白名单（插件声明源
+               与宿主路由 meta 静态源双源合流，见 SlotRegistryStore.keepAliveViewNames），名单外
+               组件经 keep-alive 直接透传渲染，不缓存不拦截 -->
+          <router-view v-slot="{ Component }">
+            <keep-alive :include="slotRegistry.keepAliveViewNames">
+              <component :is="Component" />
+            </keep-alive>
+          </router-view>
         </div>
       </el-main>
     </el-container>

@@ -1,5 +1,5 @@
 import type { MenuSlotItem, SiteBrowserListSlotItem } from '@renderer/store/SlotRegistryStore'
-import { useSlotRegistryStore } from '@renderer/store/SlotRegistryStore'
+import { useSlotRegistryStore, pluginViewBoundaryName } from '@renderer/store/SlotRegistryStore'
 import { useHandlerRegistryStore } from '@renderer/store/HandlerRegistryStore'
 import type { EmbedSlot, DialogSlot, ReplaceViewSlot, ViewSlot } from '@renderer/model/slot'
 import type { ResourceViewerHandler } from '@renderer/model/handler/ResourceViewerHandler'
@@ -23,15 +23,22 @@ import PluginBoundary from '@renderer/components/common/PluginBoundary.vue'
  * 返回新的 loader：解析出的组件渲染时外层套一层错误边界，
  * 插件视图 render 抛错只降级该视图，不波及主程序
  */
-function wrapWithBoundary(loader: () => Promise<DefineComponent>, name: string): () => Promise<DefineComponent> {
+function wrapWithBoundary(
+  loader: () => Promise<DefineComponent>,
+  slotId: string,
+  displayName: string
+): () => Promise<DefineComponent> {
   return async () => {
     const child = await loader()
     return defineComponent({
-      name: 'PluginViewBoundary',
+      // 组件名逐条目唯一：keep-alive include 按组件名匹配缓存条目，
+      // 恒名无法区分条目（命名与 include 派生共用 pluginViewBoundaryName，同源不漂移）
+      name: pluginViewBoundaryName(slotId),
       setup() {
         // 通过 component prop 让 PluginBoundary 直接挂载子组件，
-        // 边界即其 parent，onErrorCaptured 稳定生效
-        return () => h(PluginBoundary, { name, component: child })
+        // 边界即其 parent，onErrorCaptured 稳定生效；
+        // 边界标识用显示名（错误降级文案面向用户可读）
+        return () => h(PluginBoundary, { name: displayName, component: child })
       }
     }) as DefineComponent
   }
@@ -51,14 +58,16 @@ function compositeSlotId(pluginPublicId: string, extensionId: string): string {
  */
 function convertToViewSlot(config: FrontendExtensionResponse): ViewSlot {
   const componentLoader = () => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId)
+  const slotId = compositeSlotId(config.pluginPublicId, config.frontendExtensionId)
   return {
-    slotId: compositeSlotId(config.pluginPublicId, config.frontendExtensionId),
+    slotId,
     name: config.name,
-    component: wrapWithBoundary(componentLoader, config.name),
+    component: wrapWithBoundary(componentLoader, slotId, config.name),
     order: config.order ?? 100,
     isPlugin: true,
     props: config.props as Record<string, unknown> | undefined,
-    parent: config.parent
+    parent: config.parent,
+    keepAlive: config.keepAlive === true
   }
 }
 
@@ -113,10 +122,11 @@ function convertToReplaceViewSlot(config: FrontendExtensionResponse): ReplaceVie
   if (isBlank(config.target)) {
     throw new Error('转换替换视图插槽配置失败，target不能为空')
   }
+  const slotId = compositeSlotId(config.pluginPublicId, config.frontendExtensionId)
   return {
-    slotId: compositeSlotId(config.pluginPublicId, config.frontendExtensionId),
+    slotId,
     target: config.target,
-    component: wrapWithBoundary(() => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId), config.name),
+    component: wrapWithBoundary(() => loadPluginComponent(config.contentType, config.content as AnySlotContent, config.pluginPublicId), slotId, config.name),
     props: config.props as Record<string, unknown> | undefined
   }
 }

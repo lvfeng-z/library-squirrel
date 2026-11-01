@@ -825,6 +825,27 @@ type SiteBrowser interface {
 
 **建议 precompiled**：正式设置页走 precompiled（Vite + `componentFactoryPlugin` 产物）。vueSource 为运行时 SFC 编译——无构建期类型检查与模板优化、script 经运行时求值，质量与体积有限，仅适合最简演示载体（test 插件即此形态）。
 
+#### 6.3.2 视图保活（view 条目的 keepAlive 字段）
+
+`kind=view` 条目的 `content` 可声明可选布尔字段 `"keepAlive": true`——声明后宿主以 keep-alive 缓存该页面组件实例：切走不卸载（触发 `onDeactivated`）、切回秒开且组件实例与全部本地状态（滚动位置/展开态/筛选态/已载数据）原样保持；缺省或不声明即现状行为（切走整树卸载）。声明是 plugin.json 单行，随时增删；旧宿主忽略未知字段，不声明保活的新旧组合双向兼容。
+
+```jsonc
+{ "id": "workbench-parse", "name": "解析视图", "kind": "view",
+  "content": { "contentType": "precompiled", "source": { "js": "views/parse.js" }, "keepAlive": true } }
+```
+
+**保活生命周期契约（声明保活的 view 必须遵守；宿主无运行期强制闸门，靠本契约自律）**：
+
+keep-alive 下切走触发 `onDeactivated` 而非 `onUnmounted`，切回触发 `onActivated`。声明保活的页面必须按以下条目迁移生命周期：
+
+1. **document/window 级全局监听必须移入 `deactivated` 断开 / `activated` 重挂对**：挂在 document 上的 `selectionchange`、capture 阶段 `click`/`keyup` 等全局监听在保活态不随页面离开而消失——不迁移的话，你的代码将在其他页面的事件链上继续运行（行为正确性问题，不是优化项）。
+2. **观察器（ResizeObserver/IntersectionObserver）`deactivated` 断开、`activated` 重挂并立即重测一次**：DOM 移出文档期间观察器静默、窗口尺寸变化不回传；切回重绑补测，避免布局判定陈旧。
+3. **Wails 事件监听（`Events.On`）保持长活**：mounted 注册、unmounted 断开——不要在 deactivated 断开。长活的收益=保活期后台继续收事件（进度/完成通知在后台推进，切回即最新）。
+4. **`activated` 轻对账**：切回时（首次挂载后的 activated 同样要过，逻辑须幂等）比对路由参数与当前呈现所依据的会话/上下文——不同则按首次挂载路径重建数据；相同则只做轻量刷新，不重载全量（重载即失去保活收益）。
+5. **`onUnmounted` 清理保留**：作为缓存修剪（插件停用/参与度停用把条目移出保活白名单）与应用卸载时的最终清理，照常触发。
+
+未声明 keepAlive 的页面不适用本契约（仍是 mounted/unmounted 现状语义）。
+
 ## 七、站点交互：HTTP 客户端、代理、风控与登录态
 
 爬虫型插件（下载/抓取外部站点资源）的核心挑战在于与站点的博弈——代理环境、风控拦截、登录态。本节给出经实践验证的模式。

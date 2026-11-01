@@ -16,4 +16,7 @@ export interface ViewSlot {
   // 父页面为本插件页面时是裸 extensionId，为宿主页面时是宿主路由名；
   // 注册层（SlotRegistryStore）解析两形态后写入路由 meta.parent
   parent?: string
+  // view 条目声明的视图保活标记（plugin.json content.keepAlive 透传）：
+  // true = 切走不卸载，宿主以 keep-alive 缓存组件实例；缺省不保活
+  keepAlive?: boolean
 }

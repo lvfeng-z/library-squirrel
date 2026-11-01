@@ -56,6 +56,17 @@ export function getRouterInstance(): Router | null {
 const MAX_PARENT_CHAIN_HOPS = 32
 
 /**
+ * 插件 view 错误边界 wrapper 的组件名（keep-alive include 的匹配键）。
+ * keep-alive 按组件名匹配缓存条目，wrapper 名必须逐条目唯一（恒名无法区分条目）；
+ * 名字含 "/" 与 ":" 无碍——include 匹配是纯字符串比较，不经组件注册表。
+ * 摄入层（useSlotSyncListener.wrapWithBoundary）产 wrapper 与本模块 include 派生共用此函数，
+ * 保证「产出名」与「白名单名」同源不漂移
+ */
+export function pluginViewBoundaryName(slotId: string): string {
+  return `PluginViewBoundary:${slotId}`
+}
+
+/**
  * 从复合 slotId（publicId/extensionId）取插件 publicId。
  * 两段均不含斜杠（publicId 为反向域名格式、extensionId 为 manifest 裸条目 id），
  * 按最后一个斜杠切分即得 publicId；无斜杠返回 undefined
@@ -162,6 +173,31 @@ export const useSlotRegistryStore = defineStore('slotRegistry', {
     // 获取所有站点浏览器列表插槽（已排序）
     allSiteBrowserSlots: (state): SiteBrowserListSlotItem[] => {
       return Array.from(state.siteBrowserSlots.values()).sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
+    },
+
+    // keep-alive include 白名单（双源在此合流）：
+    // 插件源 = viewSlots 中声明保活（keepAlive===true）条目的 wrapper 组件名；
+    // 宿主静态源 = 路由表中 meta.keepAlive 为真条目按 meta.keepAliveName（组件显式名）并入。
+    // 插件源随 viewSlots 增删响应式变化；宿主静态路由表在应用启动即就位，随插件源的
+    // 重算一并重读。keep-alive 按组件名匹配，名单外组件直接透传不缓存
+    keepAliveViewNames(): string[] {
+      const names = new Set<string>()
+      this.viewSlots.forEach((slot) => {
+        if (slot.keepAlive === true) {
+          names.add(pluginViewBoundaryName(slot.slotId))
+        }
+      })
+      const router = routerInstance
+      if (router) {
+        router.getRoutes().forEach((route) => {
+          if (route.meta?.keepAlive !== true) return
+          const explicitName = route.meta?.keepAliveName
+          if (typeof explicitName === 'string' && explicitName !== '') {
+            names.add(explicitName)
+          }
+        })
+      }
+      return Array.from(names)
     },
 
     // 获取用于菜单的路由配置

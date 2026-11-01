@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {onBeforeUnmount, onMounted, Ref, ref, toRaw} from 'vue'
+import {onActivated, onDeactivated, onUnmounted, Ref, ref, toRaw} from 'vue'
 import ApiUtil from '@renderer/utils/ApiUtil.js'
 import {
   SearchCondition,
@@ -28,6 +28,12 @@ import {Page} from "@bindings/github.com/library-squirrel/backend/base/model";
 import {Events} from '@wailsio/runtime'
 import EmbedSlotRenderer from '@renderer/components/slot/EmbedSlotRenderer.vue'
 import {useWorkSelectionStore} from '@renderer/store/UseWorkSelectionStore.ts'
+
+// 视图保活的组件名契约面：路由 meta.keepAliveName 按此名并入 keep-alive include 白名单，
+// 名字不符则主视图不被缓存。显式声明而非依赖 SFC 文件名推断的隐式 name
+defineOptions({
+  name: 'MainView'
+})
 
 // 接口
 const apis = {
@@ -61,15 +67,17 @@ const searchBarPanelState: Ref<boolean> = ref(false)
 const loadMore: Ref<boolean> = ref(false)
 // 作品集视图加载更多按钮开关
 const loadMoreWorkSet: Ref<boolean> = ref(false)
-// 监听workGrid和workSetGrid组件的高度变化
+// 监听workGrid和workSetGrid组件的高度变化（驱动「加载更多」按钮可见性）
+// 保活形态：观察器只观察两个网格根元素（子树内目标，非全局目标），deactivated 断开、
+// activated 重挂——DOM 移出文档期间观察器自然静默，保活期窗口尺寸变化不会回传，
+// 故切回时另需主动补测一次（refreshLoadMoreVisibility）
 const resizeObserver = new ResizeObserver((entries) => {
   const entry = entries[0]
   // 判断是作品视图还是作品集视图
   if (workSetView.value) {
-    loadMoreWorkSet.value =
-      entry.contentRect.height < workSpace.value.clientHeight && workSetPage.value.pageNumber < workSetPage.value.pageCount
+    loadMoreWorkSet.value = isLoadMoreNeeded(entry.contentRect.height, workSetPage.value)
   } else {
-    loadMore.value = entry.contentRect.height < workSpace.value.clientHeight && workPage.value.pageNumber < workPage.value.pageCount
+    loadMore.value = isLoadMoreNeeded(entry.contentRect.height, workPage.value)
   }
 })
 // 作品集视图开关
@@ -85,14 +93,51 @@ const workSelectionStore = useWorkSelectionStore()
 // 主页多选模式开关（默认关；会话内开关，不持久化，重启恒关）
 const multiSelectEnabled: Ref<boolean> = ref(false)
 
-// onMounted
-onMounted(() => {
-  resizeObserver.observe(workGridRef.value.$el)
-  resizeObserver.observe(workSetGridRef.value.$el)
+// 「加载更多」可见性判定：网格内容高度未撑满可视区且还有下一页时显示
+function isLoadMoreNeeded(gridHeight: number, page: { pageNumber: number; pageCount: number }): boolean {
+  return gridHeight < (workSpace.value?.clientHeight ?? 0) && page.pageNumber < page.pageCount
+}
+
+// 重挂两个网格的尺寸观察（同一观察器重复 observe 同一目标为幂等；两网格常驻渲染、无需分支）
+function observeGrids(): void {
+  const workGridEl = workGridRef.value?.$el
+  const workSetGridEl = workSetGridRef.value?.$el
+  if (notNullish(workGridEl)) {
+    resizeObserver.observe(workGridEl)
+  }
+  if (notNullish(workSetGridEl)) {
+    resizeObserver.observe(workSetGridEl)
+  }
+}
+
+// 立即重测一次「加载更多」可见性：切回不等 ResizeObserver 的异步回调——保活期窗口尺寸
+// 变化后补测，避免按钮可见性沿用切走前的陈旧判定
+function refreshLoadMoreVisibility(): void {
+  const activeGridEl = workSetView.value ? workSetGridRef.value?.$el : workGridRef.value?.$el
+  if (isNullish(activeGridEl)) {
+    return
+  }
+  const gridHeight = (activeGridEl as HTMLElement).getBoundingClientRect().height
+  if (workSetView.value) {
+    loadMoreWorkSet.value = isLoadMoreNeeded(gridHeight, workSetPage.value)
+  } else {
+    loadMore.value = isLoadMoreNeeded(gridHeight, workPage.value)
+  }
+}
+
+// activated：首挂与每次切回都触发（keep-alive 缓存实例切回不重挂载）——重挂观察 + 立即重测
+onActivated(() => {
+  observeGrids()
+  refreshLoadMoreVisibility()
 })
 
-// onBeforeUnmount
-onBeforeUnmount(() => {
+// deactivated：切走即断开观察（DOM 移出文档，观察器保留也收不到尺寸回传）
+onDeactivated(() => {
+  resizeObserver.disconnect()
+})
+
+// onUnmounted：缓存修剪/应用卸载的最终清理（保活常态下不触发，兜底不漏观察）
+onUnmounted(() => {
   resizeObserver.disconnect()
 })
 

@@ -8,6 +8,43 @@ import (
 	domain "github.com/library-squirrel/backend/base"
 )
 
+// TestRegisterEventPayloadCarriesViewKeepAlive 注册事件载荷透传 view 条目 keepAlive：
+// 声明 true 时载荷带 keepAlive=true；未声明时 omitempty 省略该键（旧清单下行零差异，
+// 前端按不保活处理）
+func TestRegisterEventPayloadCarriesViewKeepAlive(t *testing.T) {
+	pusher := &mockPusher{}
+	r := NewFrontendExtensionRegistry()
+	r.SetPusher(pusher)
+
+	const publicId = "com.example.viewkeepalive"
+	keepAliveView := newTestExtension(publicId, "parse-view", domain.FrontendExtensionKindView)
+	keepAliveView.Instance.KeepAlive = true
+	if err := r.Register(keepAliveView); err != nil {
+		t.Fatalf("注册失败: %v", err)
+	}
+	plainView := newTestExtension(publicId, "plain-view", domain.FrontendExtensionKindView)
+	if err := r.Register(plainView); err != nil {
+		t.Fatalf("注册失败: %v", err)
+	}
+
+	if len(pusher.registered) != 2 {
+		t.Fatalf("注册事件数不符: %d", len(pusher.registered))
+	}
+	if !pusher.registered[0].KeepAlive {
+		t.Errorf("声明 keepAlive=true 的条目注册事件 payload.keepAlive 应为 true")
+	}
+	if pusher.registered[1].KeepAlive {
+		t.Errorf("未声明 keepAlive 的条目注册事件 payload.keepAlive 应为 false")
+	}
+	raw, err := json.Marshal(pusher.registered[1])
+	if err != nil {
+		t.Fatalf("序列化响应失败: %v", err)
+	}
+	if strings.Contains(string(raw), `"keepAlive"`) {
+		t.Errorf("未声明 keepAlive 的条目载荷应省略该键, 实际: %s", raw)
+	}
+}
+
 // TestRegisterEventPayloadCarriesViewParent 注册事件载荷透传 view 条目 parent：同插件指向
 // 与宿主路由名两形态的声明值原样下行；未声明（空值）时载荷省略该键（旧清单下行零差异，
 // 前端按缺省一级页面处理）

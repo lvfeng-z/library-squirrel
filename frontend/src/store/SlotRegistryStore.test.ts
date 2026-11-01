@@ -1,7 +1,7 @@
 import { createPinia, getActivePinia, setActivePinia, type Pinia } from 'pinia'
 import { createRouter, createMemoryHistory, type Router, type RouteRecordRaw } from 'vue-router'
 import { defineComponent, type DefineComponent } from 'vue'
-import { setRouterInstance, getRouterInstance, useSlotRegistryStore } from '@renderer/store/SlotRegistryStore.ts'
+import { setRouterInstance, getRouterInstance, useSlotRegistryStore, pluginViewBoundaryName } from '@renderer/store/SlotRegistryStore.ts'
 import type { ViewSlot, ReplaceViewSlot } from '@renderer/model/slot'
 
 /**
@@ -54,7 +54,7 @@ function builtinRoutes(): RouteRecordRaw[] {
   ]
 }
 
-function pluginViewSlot(pluginPublicId: string, extensionId: string, parent?: string): ViewSlot {
+function pluginViewSlot(pluginPublicId: string, extensionId: string, parent?: string, keepAlive?: boolean): ViewSlot {
   const loader = (): Promise<DefineComponent> => Promise.resolve(stubComponent(`${extensionId}-view`))
   return {
     slotId: `${pluginPublicId}/${extensionId}`,
@@ -62,7 +62,8 @@ function pluginViewSlot(pluginPublicId: string, extensionId: string, parent?: st
     component: loader,
     order: 50,
     isPlugin: true,
-    parent
+    parent,
+    keepAlive
   }
 }
 
@@ -375,6 +376,48 @@ async function unregisterSingleLandsOnSurvivingParent(store: SlotRegistryStore, 
   assert(routeOf(router, child.slotId) === undefined, '注销后路由应被移除')
 }
 
+// include 派生（插件源）：声明保活的 view 条目以唯一 wrapper 名进入 keep-alive 白名单，未声明条目不入
+async function keepAliveIncludeDerivesDeclaredViewWrapperNames(store: SlotRegistryStore) {
+  const alive = pluginViewSlot('com.plugin.k', 'alive-view', undefined, true)
+  const plain = pluginViewSlot('com.plugin.k', 'plain-view')
+  store.registerViewSlot(alive)
+  store.registerViewSlot(plain)
+  const names = store.keepAliveViewNames
+  assert(names.includes(pluginViewBoundaryName(alive.slotId)), '声明保活的条目应以唯一 wrapper 名进入白名单')
+  assert(!names.includes(pluginViewBoundaryName(plain.slotId)), '未声明保活的条目不得进入白名单')
+}
+
+// include 派生（宿主静态源合流）：路由 meta.keepAlive 为真条目按 meta.keepAliveName 并入白名单。
+// 注册一次 view 触发 viewSlots 变化，保证 getter 重读路由表（路由表本身不是响应式源）
+async function keepAliveIncludeMergesHostStaticMetaSource(store: SlotRegistryStore, router: Router) {
+  router.addRoute('MainLayout', {
+    path: 'hostKeepView',
+    name: 'hostKeepView',
+    component: stubComponent('HostKeepView'),
+    meta: { title: '宿主保活页', keepAlive: true, keepAliveName: 'HostKeepView' }
+  })
+  store.registerViewSlot(pluginViewSlot('com.plugin.k', 'static-source-view'))
+  assert(
+    store.keepAliveViewNames.includes('HostKeepView'),
+    '宿主静态声明的组件显式名应并入 keep-alive 白名单'
+  )
+}
+
+// include 派生（响应式修剪）：保活条目注销后其 wrapper 名移出白名单（keep-alive 据此修剪缓存、实例真正卸载）
+async function keepAliveIncludeReactsToUnregister(store: SlotRegistryStore) {
+  const alive = pluginViewSlot('com.plugin.k', 'alive-view-2', undefined, true)
+  store.registerViewSlot(alive)
+  assert(
+    store.keepAliveViewNames.includes(pluginViewBoundaryName(alive.slotId)),
+    '前置条件：声明保活条目应在白名单内'
+  )
+  store.unregisterViewSlot(alive.slotId)
+  assert(
+    !store.keepAliveViewNames.includes(pluginViewBoundaryName(alive.slotId)),
+    '注销后 wrapper 名应移出白名单'
+  )
+}
+
 // ---- 用例登记 ----
 
 const testCases: Array<[string, (store: SlotRegistryStore, router: Router) => Promise<void>]> = [
@@ -392,7 +435,10 @@ const testCases: Array<[string, (store: SlotRegistryStore, router: Router) => Pr
   ['热切换重启用：重新注册即接管', replaceViewReRegisterTakesOverAgain],
   ['注销级联：同批消亡祖先跳过落幸存者（两种到达顺序）', unregisterCascadeSkipsDyingAncestors],
   ['注销级联：链上全灭落主页', unregisterCascadeAllDeadFallsHome],
-  ['注销级联：单条注销落紧邻父页面', unregisterSingleLandsOnSurvivingParent]
+  ['注销级联：单条注销落紧邻父页面', unregisterSingleLandsOnSurvivingParent],
+  ['include 派生（插件源）：声明保活条目入白名单、未声明不入', keepAliveIncludeDerivesDeclaredViewWrapperNames],
+  ['include 派生（宿主静态源）：meta.keepAlive 条目按 keepAliveName 并入', keepAliveIncludeMergesHostStaticMetaSource],
+  ['include 派生（响应式）：保活条目注销后名字移出白名单', keepAliveIncludeReactsToUnregister]
 ]
 
 // ---- 运行入口 ----
