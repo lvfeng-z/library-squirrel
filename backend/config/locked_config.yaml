@@ -284,6 +284,9 @@ officialPlugins:
     buildId: 9a4bf91
     contentDigest: 6dbe96486738f0f605778f14880064f189cb5d3f24ec4288629bafeb05f936e2
   - publicId: com.lvfeng.localImport
+    buildId: 9a4eb9b
+    contentDigest: 55a951f8ad132eb4d1f413e9c2c3dd52cd63bdc2182b16867c28dbdf7e61de9a
+  - publicId: com.lvfeng.localImport
     buildId: 9ea829c-dirty
     contentDigest: 700b7ebcae673ef681f0c8b72ee98f86779682b6d85e96d02c2b5a952738fb0e
   - publicId: com.lvfeng.localImport
