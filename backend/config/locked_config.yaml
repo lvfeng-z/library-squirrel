@@ -302,6 +302,9 @@ officialPlugins:
     buildId: 85325ad-dirty
     contentDigest: e256511c9029d9ec6071c00321bcc751ea2faca038f4d2b77b14f16c81700ebd
   - publicId: com.lvfeng.localImport
+    buildId: 8ba2b68
+    contentDigest: 9b8d730b39a234cad22ffb6f1734006911c66701ab42d6984ec084d243f22611
+  - publicId: com.lvfeng.localImport
     buildId: 8f25dc4-dirty
     contentDigest: d6d443842cff6a2a2654d210a46e223175c7177c38b80549564b3af249956601
   - publicId: com.lvfeng.localImport
