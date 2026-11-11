@@ -239,8 +239,17 @@ async function loadCompiledComponent(jsUrl: string, cssUrl: string | undefined, 
     const module = await import(/* @vite-ignore */ jsUrl)
     return defineComponent(module.default(Vue, WailsRuntime) as Record<string, unknown>)
   } catch (error) {
-    console.error('加载编译后的组件失败:', error)
-    throw new Error(`加载编译后的组件失败: ${error}`)
+    console.error('加载编译后的组件失败:', error, 'url:', jsUrl)
+    // 失败时补一次只读探测把 HTTP 状态带进错误文案——SyntaxError 场景（内容非法 ESM 等）
+    // 返回 200 恰好证明"资源在、内容有问题"，与通道断开（探测亦失败）可区分，缩短同类排查。
+    let httpDetail = ''
+    try {
+      const resp = await fetch(jsUrl)
+      httpDetail = `，HTTP ${resp.status}`
+    } catch {
+      httpDetail = '，fetch 探测亦失败（通道断开或 URL 不可达）'
+    }
+    throw new Error(`加载编译后的组件失败[${pluginPublicId}] ${jsUrl}${httpDetail}: ${error}`)
   }
 }
 
