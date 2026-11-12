@@ -45,9 +45,14 @@ tasks:
       - task: common:setup:docker
 
   build:plugins:
-    summary: Builds all sibling plugin repos and copies their zips into resources/bundled-plugins
+    summary: Builds all sibling plugin repos and copies their zips into resources/bundled-plugins (roster untouched)
     cmds:
       - powershell -NoProfile -ExecutionPolicy Bypass -File build/plugins.ps1
+
+  build:plugins:official:
+    summary: Same as build:plugins plus explicit officialization (fingerprint upsert into locked_config; refuses dirty builds)
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File build/plugins.ps1 -Official
 
   build:docker:
     summary: Builds a Docker image for server mode deployment

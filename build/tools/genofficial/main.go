@@ -3,7 +3,12 @@
 // 内容摘要实现算 contentDigest，upsert 进订死配置 backend/config/locked_config.yaml。
 // 名单文件为机器生成域：整体读-改-写（解析 → 合并条目 → 固定文件头注释 + marshal 重写），无段替换手术。
 //
-// 用法：go run ./build/tools/genofficial -zip <package.zip> [-locked <locked_config.yaml>]
+// 官方化是显式声明（2026-11-12 用户裁决）：打包（task build:plugins）默认不再触碰名单，
+// 仅 -Official/手动本工具显式官方化；名单语义=「受认可的官方发布」，dirty 构建（源状态不被
+// 任何 git 提交捕获、不可复现不可审计）默认拒绝入名单，-allow-dirty 留显式出口。
+//
+// 用法：go run ./build/tools/genofficial -zip <package.zip> [-locked <locked_config.yaml>] [-allow-dirty]
+//       go run ./build/tools/genofficial -prune-dirty [-locked <locked_config.yaml>]
 package main
 
 import (
@@ -15,6 +20,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/library-squirrel/backend/base/model/dto"
 	"github.com/library-squirrel/backend/config"
@@ -109,14 +115,20 @@ func marshalLocked(entries []config.OfficialPluginEntry) ([]byte, error) {
 }
 
 // run 单包处理主流程：取身份键 → 算摘要 → 读-改-写名单文件。
-// 输出与磁盘内容字节一致时跳过写入（幂等，不扰动文件时间戳）
-func run(zipPath, lockedPath string) error {
+// 输出与磁盘内容字节一致时跳过写入（幂等，不扰动文件时间戳）。
+// dirty 守卫：buildId 含 "-dirty"（源状态不被 git 提交捕获）默认拒绝——官方名单=受认可
+// 发布的注册表，不可复现产物不具官方资格；allowDirty 为显式出口（如临时认可一个未提交修复）
+func run(zipPath, lockedPath string, allowDirty bool) error {
 	manifest, err := readManifestFromZip(zipPath)
 	if err != nil {
 		return err
 	}
 	if manifest.ID == "" || manifest.BuildID == "" {
 		return fmt.Errorf("plugin.json 缺少 id 或 buildId（包：%s），构建管线打标缺失", zipPath)
+	}
+	if !allowDirty && strings.Contains(manifest.BuildID, "-dirty") {
+		return fmt.Errorf("buildId=%s 为 dirty 构建（源状态不被任何 git 提交捕获），默认拒绝入官方名单；"+
+			"先提交干净树重打，或确需临时认可时加 -allow-dirty 显式覆盖", manifest.BuildID)
 	}
 	digest, err := plugin.ComputeContentDigestZip(zipPath)
 	if err != nil {
@@ -157,22 +169,68 @@ func run(zipPath, lockedPath string) error {
 	return nil
 }
 
+// pruneDirty 清淤模式：剔除名单中全部 dirty 构建条目（buildId 含 "-dirty"）。
+// 测试指纹入名单是旧管线的自动副作用（2026-11-12 前无条件 upsert），此模式一次性回收
+func pruneDirty(lockedPath string) error {
+	data, err := os.ReadFile(lockedPath)
+	if err != nil {
+		return fmt.Errorf("读取订死配置失败: %w", err)
+	}
+	var locked config.LockedConfig
+	if err := yaml.Unmarshal(data, &locked); err != nil {
+		return fmt.Errorf("解析订死配置失败（机器生成域，损坏须重新生成）: %w", err)
+	}
+	kept := make([]config.OfficialPluginEntry, 0, len(locked.OfficialPlugins))
+	removed := 0
+	for _, e := range locked.OfficialPlugins {
+		if strings.Contains(e.BuildID, "-dirty") {
+			removed++
+			continue
+		}
+		kept = append(kept, e)
+	}
+	out, err := marshalLocked(kept)
+	if err != nil {
+		return err
+	}
+	if bytes.Equal(data, out) {
+		fmt.Printf("[genofficial] 无 dirty 条目可清（幂等，文件未动）: %s\n", lockedPath)
+		return nil
+	}
+	if err := os.WriteFile(lockedPath, out, 0o644); err != nil {
+		return fmt.Errorf("写回订死配置失败: %w", err)
+	}
+	fmt.Printf("[genofficial] 已剔除 dirty 条目 %d 条，余 %d 条: %s\n", removed, len(kept), lockedPath)
+	return nil
+}
+
 func main() {
-	zipPath := flag.String("zip", "", "插件安装包 zip 路径（必填）")
+	zipPath := flag.String("zip", "", "插件安装包 zip 路径（-prune-dirty 模式下可省）")
 	lockedPath := flag.String("locked", "backend/config/locked_config.yaml", "订死配置文件路径（相对主仓库根）")
+	allowDirty := flag.Bool("allow-dirty", false, "显式覆盖 dirty 守卫：允许 dirty 构建入名单（临时认可未提交产物的出口）")
+	pruneDirtyMode := flag.Bool("prune-dirty", false, "清淤模式：剔除名单中全部 dirty 条目（无需 -zip）")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "官方插件指纹名单生成工具：读插件包产出 (publicId, buildId, contentDigest) 条目并 upsert 进订死配置")
+		fmt.Fprintln(os.Stderr, "官方化是显式声明：打包（task build:plugins）默认不动名单；dirty 构建默认拒绝入名单")
 		fmt.Fprintln(os.Stderr)
-		fmt.Fprintln(os.Stderr, "用法: go run ./build/tools/genofficial -zip <package.zip> [-locked <locked_config.yaml>]")
+		fmt.Fprintln(os.Stderr, "用法: go run ./build/tools/genofficial -zip <package.zip> [-locked <locked_config.yaml>] [-allow-dirty]")
+		fmt.Fprintln(os.Stderr, "      go run ./build/tools/genofficial -prune-dirty [-locked <locked_config.yaml>]")
 		fmt.Fprintln(os.Stderr)
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+	if *pruneDirtyMode {
+		if err := pruneDirty(*lockedPath); err != nil {
+			fmt.Fprintf(os.Stderr, "[genofficial] 失败: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *zipPath == "" {
 		flag.Usage()
 		os.Exit(2)
 	}
-	if err := run(*zipPath, *lockedPath); err != nil {
+	if err := run(*zipPath, *lockedPath, *allowDirty); err != nil {
 		fmt.Fprintf(os.Stderr, "[genofficial] 失败: %v\n", err)
 		os.Exit(1)
 	}
