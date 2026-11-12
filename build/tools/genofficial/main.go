@@ -204,21 +204,58 @@ func pruneDirty(lockedPath string) error {
 	return nil
 }
 
+// clearRoster 清空模式：名单归零（保留文件头与空列表形态，与 marshalLocked 产出一致）。
+// 2026-11-12 用户裁决：当前无正式发布插件，历史条目均为开发期交付产物——名单清空回到
+// 与现实一致的空态，自首个正式发布（build:plugins:official）重新起算；历史指纹在 git
+// 提交史中留档不丢
+func clearRoster(lockedPath string) error {
+	data, err := os.ReadFile(lockedPath)
+	if err != nil {
+		return fmt.Errorf("读取订死配置失败: %w", err)
+	}
+	var locked config.LockedConfig
+	if err := yaml.Unmarshal(data, &locked); err != nil {
+		return fmt.Errorf("解析订死配置失败（机器生成域，损坏须重新生成）: %w", err)
+	}
+	out, err := marshalLocked(nil)
+	if err != nil {
+		return err
+	}
+	if bytes.Equal(data, out) {
+		fmt.Printf("[genofficial] 名单已为空（幂等，文件未动）: %s\n", lockedPath)
+		return nil
+	}
+	if err := os.WriteFile(lockedPath, out, 0o644); err != nil {
+		return fmt.Errorf("写回订死配置失败: %w", err)
+	}
+	fmt.Printf("[genofficial] 名单已清空（移除 %d 条，历史在 git 提交史留档）: %s\n", len(locked.OfficialPlugins), lockedPath)
+	return nil
+}
+
 func main() {
 	zipPath := flag.String("zip", "", "插件安装包 zip 路径（-prune-dirty 模式下可省）")
 	lockedPath := flag.String("locked", "backend/config/locked_config.yaml", "订死配置文件路径（相对主仓库根）")
 	allowDirty := flag.Bool("allow-dirty", false, "显式覆盖 dirty 守卫：允许 dirty 构建入名单（临时认可未提交产物的出口）")
 	pruneDirtyMode := flag.Bool("prune-dirty", false, "清淤模式：剔除名单中全部 dirty 条目（无需 -zip）")
+	clearMode := flag.Bool("clear", false, "清空模式：名单归零（无正式发布时的空态重置，历史在 git 留档；无需 -zip）")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "官方插件指纹名单生成工具：读插件包产出 (publicId, buildId, contentDigest) 条目并 upsert 进订死配置")
 		fmt.Fprintln(os.Stderr, "官方化是显式声明：打包（task build:plugins）默认不动名单；dirty 构建默认拒绝入名单")
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintln(os.Stderr, "用法: go run ./build/tools/genofficial -zip <package.zip> [-locked <locked_config.yaml>] [-allow-dirty]")
 		fmt.Fprintln(os.Stderr, "      go run ./build/tools/genofficial -prune-dirty [-locked <locked_config.yaml>]")
+		fmt.Fprintln(os.Stderr, "      go run ./build/tools/genofficial -clear [-locked <locked_config.yaml>]")
 		fmt.Fprintln(os.Stderr)
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+	if *clearMode {
+		if err := clearRoster(*lockedPath); err != nil {
+			fmt.Fprintf(os.Stderr, "[genofficial] 失败: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *pruneDirtyMode {
 		if err := pruneDirty(*lockedPath); err != nil {
 			fmt.Fprintf(os.Stderr, "[genofficial] 失败: %v\n", err)
