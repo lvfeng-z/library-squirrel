@@ -110,7 +110,8 @@
 task dev                # 开发模式（前端热重载，直接运行程序）
 task build              # 构建生产版本（输出到 bin/）
 task run                # 运行编译产物
-task build:plugins      # 构建全部捆绑插件并更新 resources/bundled-plugins/
+task build:plugins      # 构建全部捆绑插件并更新 resources/bundled-plugins/（不动官方指纹名单）
+task build:plugins:official  # 同上并显式官方化——指纹入 locked_config（拒绝 dirty 构建，先提交干净树）
 ```
 
 > Windows 下因 CGO 兼容性问题，请使用 `task build`（内部调用 `wails3 build`）而非直接 `go build`。

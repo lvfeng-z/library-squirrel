@@ -1399,7 +1399,7 @@ return fmt.Errorf("API 业务错误: code=%d message=%s body=%s", code, msg, tru
   → plugin_storage 用户设置/凭据保留（按记录 ID 关联，重装不丢）
 ```
 
-发布节奏：`version` bump + commit + 打 tag（如 `v1.2.0`，buildId 转为 tag 基准、获得人读语义）→ `task build:plugins` 产出 zip（产物校验 buildId 非空，漏打标整体失败）。
+发布节奏：`version` bump + commit + 打 tag（如 `v1.2.0`，buildId 转为 tag 基准、获得人读语义）→ `task build:plugins` 产出 zip（产物校验 buildId 非空，漏打标整体失败）→ 正式发布/收官换装时 `task build:plugins:official` 显式官方化（指纹入 locked_config 名单；dirty 构建被拒绝——官方名单=受认可发布的注册表，日常开发打包不入名单）。
 
 ### 两个开发期特有的坑
 
