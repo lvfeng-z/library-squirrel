@@ -1,12 +1,17 @@
-# 一键构建全部插件并把安装包复制到主仓库 resources/bundled-plugins/
+﻿# 一键构建全部插件并把安装包复制到主仓库 resources/bundled-plugins/
 # 复用各插件仓库自带的 build.ps1（以各自仓库根为工作目录运行）。用法：task build:plugins
 # 插件仓库默认位于主仓库同级目录；不同开发环境位置不同时，用本地配置 build/plugins.local.json 覆盖
 # （不入库，格式见 build/plugins.local.example.json）：reposRoot 改全部仓库的共同父目录，
 # plugins 按仓库名逐个覆盖（优先级更高）；两者均可缺省/留空，未覆盖的插件回落同级目录默认
 #
-# -Official：显式官方化——构建成功后将指纹 upsert 进 backend/config/locked_config.yaml（官方名单）。
-# 默认（无开关）只构建+校验+复制 zip，不触碰名单；官方化是发布声明，仅正式发布/收官换装时使用
-# （genofficial 对 dirty 构建默认拒绝入名单，想官方化先提交干净树）。
+# -Official: explicit officialization - upsert build fingerprints into
+# backend/config/locked_config.yaml (the official roster) after each successful build.
+# Default (no switch) only builds, validates and copies zips; the roster stays untouched.
+# Officialization is a release declaration - use it only for formal releases / delivery
+# upgrades (genofficial rejects dirty builds; commit a clean tree first).
+# NOTE: this file REQUIRES the UTF-8 BOM - powershell -File (PS 5.1) decodes no-BOM
+# scripts as GBK and CJK text then swallows line breaks / closing quotes (parse cascade).
+# Editors or tools that rewrite the file must preserve the BOM.
 param([switch]$Official)
 $ErrorActionPreference = "Stop"
 # 重定向/管道场景下 PS 5.1 默认按 OEM 代码页输出中文会乱码，强制 UTF-8
@@ -131,7 +136,7 @@ foreach ($plugin in $plugins) {
         try {
             Assert-BuildId $directZip $repoName
             if ($Official) { Add-OfficialRosterEntry $directZip }
-            else { Write-Host "  [未官方化] 未加 -Official，名单未变更" -ForegroundColor DarkYellow }
+            else { Write-Host "  [roster untouched] -Official not given, official roster left unchanged" -ForegroundColor DarkYellow }
             Write-Host "[完成] $zipName 已直接打包到目标目录" -ForegroundColor Green
         } catch {
             Write-Host "[失败] $repoName ：产物校验未通过（$($_.Exception.Message)）" -ForegroundColor Red
@@ -164,7 +169,7 @@ foreach ($plugin in $plugins) {
             continue
         }
     } else {
-        Write-Host "  [未官方化] 未加 -Official，名单未变更" -ForegroundColor DarkYellow
+        Write-Host "  [roster untouched] -Official not given, official roster left unchanged" -ForegroundColor DarkYellow
     }
     Write-Host "[完成] $zipName -> resources\bundled-plugins\" -ForegroundColor Green
 }
