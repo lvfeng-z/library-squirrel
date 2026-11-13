@@ -110,6 +110,20 @@ func (r *resourceTypeRegistry) Lookup(resourceType string) (ResourceTypeSpec, bo
 	return spec, ok
 }
 
+// ListAll 返回注册表全量规约快照（内置 6 类 + 插件运行时注册的自定义类型），
+// 按资源类型键字母序确定性排序。返回切片为规约值拷贝；规约内的 Roles/PrimaryRoles/
+// StoreStandards 引用注册表内部集合，调用方须只读消费。
+func (r *resourceTypeRegistry) ListAll() []ResourceTypeSpec {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]ResourceTypeSpec, 0, len(r.specs))
+	for _, spec := range r.specs {
+		out = append(out, spec)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ResourceType < out[j].ResourceType })
+	return out
+}
+
 // builtinResourceTypes 内置类型集合(含 audio):不可被插件覆盖注册或反注册。
 var builtinResourceTypes = map[string]struct{}{
 	ResourceTypeImage:    {},

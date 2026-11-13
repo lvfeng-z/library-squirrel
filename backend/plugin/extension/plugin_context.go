@@ -450,6 +450,15 @@ func (pc *pluginContext) ListSites() (*pluginsdkdto.ListSitesResponse, error) {
 	return core.listSites(context.Background())
 }
 
+func (pc *pluginContext) ListResourceTypes() (*pluginsdkdto.ListResourceTypesResponse, error) {
+	pc.scopedLogger.Infof("库查询 ListResourceTypes()")
+	core, err := pc.queryCore()
+	if err != nil {
+		return nil, err
+	}
+	return core.listResourceTypes()
+}
+
 func (pc *pluginContext) GetWorkDir() (*pluginsdkdto.GetWorkDirResponse, error) {
 	pc.scopedLogger.Infof("库查询 GetWorkDir()")
 	core, err := pc.queryCore()

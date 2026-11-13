@@ -1051,10 +1051,14 @@ func (p *hostLibraryQueryProvider) QueryLocalWorkSets(ctx context.Context, req *
 	return p.ctx.QueryLocalWorkSets(req)
 }
 
-// ===== 站点 / 工作目录 =====
+// ===== 站点 / 资源类型 / 工作目录 =====
 
 func (p *hostLibraryQueryProvider) ListSites(ctx context.Context, req *gen.Empty) (*gen.ListSitesResponse, error) {
 	return p.ctx.ListSites()
+}
+
+func (p *hostLibraryQueryProvider) ListResourceTypes(ctx context.Context, req *gen.Empty) (*gen.ListResourceTypesResponse, error) {
+	return p.ctx.ListResourceTypes()
 }
 
 func (p *hostLibraryQueryProvider) GetWorkDir(ctx context.Context, req *gen.Empty) (*gen.GetWorkDirResponse, error) {

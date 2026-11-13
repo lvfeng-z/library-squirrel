@@ -210,7 +210,7 @@ type MyWorkFetcher struct{}
 
 ### 契约版本协商
 
-`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 21，直接引用 SDK `transport.ContractVersion` 常量，`backend/plugin/extension/loader.go:42`）与 `minSupportedContractVersion`（当前 20，`backend/plugin/extension/loader.go:48`），插件 manifest 声明自己编译时锁定的 `contractVersion`。**该字段是 plugin.json 的显式手填字段，不随 SDK 自动跟随**——SDK 提升 `ContractVersion` 常量后，你必须自行把它改到 plugin.json 里；漏改即被主程序按「过旧」拒载。
+`contractVersion` 是插件与主程序之间的**业务契约版本**（整数），与 go-plugin 的传输层 `ProtocolVersion` 分工（传输握手 / 业务契约）。主程序持有 `currentContractVersion`（当前 22，直接引用 SDK `transport.ContractVersion` 常量，`backend/plugin/extension/loader.go:42`）与 `minSupportedContractVersion`（当前 20，`backend/plugin/extension/loader.go:48`），插件 manifest 声明自己编译时锁定的 `contractVersion`。**该字段是 plugin.json 的显式手填字段，不随 SDK 自动跟随**——SDK 提升 `ContractVersion` 常量后，你必须自行把它改到 plugin.json 里；漏改即被主程序按「过旧」拒载。
 
 **校验**（安装期预检 + 加载期终检，硬拒绝 + 清晰提示）：
 - 插件 `contractVersion` > 主程序 `current` → 插件太新，拒（提示升级主程序）。
@@ -241,6 +241,7 @@ type MyWorkFetcher struct{}
 - 19 — 子行归属键（跨站产出规范落地首期）：`TaskCreateChildResponse` 加可选 `siteKey` 字段——子任务声明自身归属域键（作品身份落库域，仍受宿主站点表存在性校验），空=继承父应答站点键（既有行为不变）。线级上字段本身可缺省（旧插件不填、形态零变化），但本版经裁定为破坏性分界升版：兼容矩阵按硬边界收紧、不留 12-18 混装载状态——主程序 `minSupportedContractVersion` 同步升 19（v18 及以下插件包在新宿主加载期拒载并提示升级，捆绑包随之重建）。
 - 20 — 库内作品集名全集分页查询（集名互证索引）：LibraryQuery 线级新增 `QueryLocalWorkSets` RPC（互证索引用：无过滤条件、按行 id 升序确定性分页，响应条目=集行 id+展示名〔site_work_set_name 缺省回退 nick_name、两名皆空不出条目〕+分页回执），SDK `PluginContext` 查询方法组配套 `QueryLocalWorkSets`。线级新增 RPC 本身非破坏（旧插件不调用、形态零变化），但按契约 19 先例裁定为破坏性分界升版：兼容矩阵维持硬边界、不留 19-20 混装载状态——主程序 `minSupportedContractVersion` 同步升 20（v19 及以下插件包在新宿主加载期拒载并提示升级，捆绑包随之重建）。
 - 21 — 任务创建流新增子行批次块 children_batch（CreateChunk oneof 第六变体，载荷 `TaskChildrenBatch`{plugin_task_id, items, last}）：大批次创建时父块 children 置空、子行拆多块发射，加法式、仅流式 mode 合法（批量 mode 流上出现即协议违规、宿主按 error 收流）、聚合按父 ID `plugin_task_id` 指称（不依赖块位置；task 块 children 内联在两种 mode 下继续有效，同一父内联与批次混用=都计入该父；四条不变量入 proto 契约注释（不变量④收尾语义后经同代修订，见条末修订记录））；SDK `TaskCreateResult` 配套条目形态流产物（`StreamItemsResult`/`CreateStreamItem`，旧「纯应答 channel」形态保留兼容）。加 oneof 变体向前兼容（旧插件不发该块线形态零变化），作为分帧新能力标识升版——主程序 `minSupportedContractVersion` 维持 20（既有插件混装载不受影响）；声明契约 21 的插件包对 current<21 的旧宿主仍在加载期被拒。同代修订记录（2026-10-30，大选择集创建链决策4=统一回滚）：不变量④由「error 收流时已到子行与父行保留（部分完成语义）」修订为「未收批统一回滚」——流结束时已开批父任务未收到 last=true 末批声明（流异常中断〔插件死亡/通道断〕、显式取消提前收流、error 收流一律同路径），宿主删除该父任务及已落库子行，显式取消仅终态文案区分；收批（last=true 已到）为原子提交点、其后不回滚。纯行为语义修订、wire 协议零变化（无消息结构与字段变更），故契约版本号不升。
+- 22 — subtitle 存储角色与资源类型注册表投影查询：contract 包新增 `StoreTypeSubtitle` 常量（字幕轨角色：video 规约的可选轨、多语言字幕多例——语言维度由文件名承载，规约无语言字段）；LibraryQuery 线级新增 `ListResourceTypes` RPC（资源类型注册表投影，沿 ListSites 投影先例：内置 6 类+插件运行时注册的自定义类型，类型规约〔结构角色与必含/数量界、展示主体优先级链、各角色文件标准〕一并下发，插件一次拉取缓存消费），SDK `PluginContext` 查询方法组配套 `ListResourceTypes`。线级新增、纯加法（旧插件不调用、形态零变化）——主程序 `minSupportedContractVersion` 维持 20（既有插件混装载不受影响）；声明契约 22 的插件包对 current<22 的旧宿主仍在加载期被拒。
 <!-- contract-history:end -->
 
 **填法（注意：手填，不自动跟随）**：插件作者须把 SDK 的 `ContractVersion` 常量（`github.com/lvfeng-z/library-squirrel-sdk/transport.ContractVersion`）**显式写进 plugin.json 的 `contractVersion` 字段**——该字段不会随 SDK 升版自动变化，SDK bump 后漏改即被主程序按「过旧」拒载。bump（提升契约版本）只在破坏性变更或新能力族标识时由 SDK 侧发起（删/改字段、删 RPC、改 DTO 结构/RPC 签名/前端 props 契约必 bump；proto 加字段、加 RPC 通常不 bump，但当其**开启一族新能力**（宿主/插件按契约版本识别该能力是否可用，如 v7 周边写面、v13 偏好域）时作为能力标识 bump）。加 RPC 不必然 bump 意味着版本门可能拦不住「同代宿主缺某端点」的组合——运行期探测约定见 5.1「Unimplemented 降级」。
@@ -410,9 +411,9 @@ func main() {
 
 ### 5.1 宿主库查询（Tier 1 只读）
 
-`PluginContext` 暴露 22 个库查询方法，打到宿主 `LibraryQuery` gRPC 服务（契约定义：SDK `proto/plugin.proto` 的 `service LibraryQuery`，proto 单源、dto 层别名透出），查询主程序库内**已有**的作品及周边数据——统计面板、去重扫描、跨站聚合、导出同步、元数据补全等工具型形态的数据面。查询 RPC **无需任何声明**，与 `GetValue`/`CreateTask` 等 HostService RPC 同等对待、直接调用（声明面约束的是主程序→插件方向——主程序按 `extensions` 各条目的声明决定是否调用插件的能力，见「能力声明」；插件对宿主的调用不受声明面约束。宿主对每次调用记诊断级日志——调用方插件 + 端点 + 关键参数，日志短留存不作台账）。
+`PluginContext` 暴露 23 个库查询方法，打到宿主 `LibraryQuery` gRPC 服务（契约定义：SDK `proto/plugin.proto` 的 `service LibraryQuery`，proto 单源、dto 层别名透出），查询主程序库内**已有**的作品及周边数据——统计面板、去重扫描、跨站聚合、导出同步、元数据补全等工具型形态的数据面。查询 RPC **无需任何声明**，与 `GetValue`/`CreateTask` 等 HostService RPC 同等对待、直接调用（声明面约束的是主程序→插件方向——主程序按 `extensions` 各条目的声明决定是否调用插件的能力，见「能力声明」；插件对宿主的调用不受声明面约束。宿主对每次调用记诊断级日志——调用方插件 + 端点 + 关键参数，日志短留存不作台账）。
 
-**端点分组**（22 个）：
+**端点分组**（23 个）：
 
 | 分组 | 方法 | 说明 |
 |---|---|---|
@@ -422,12 +423,13 @@ func main() {
 | 标签 | `GetLocalTagById` / `QueryLocalTags` / `GetSiteTagBySiteKey` / `QuerySiteTags` / `ListTagsByWorkId`（与作者对称） | `ListTagsByWorkId` 条目带**关联级 namespace**（该标签在本作品关联行上的 ns，空串=无 ns）；站点标签实体查询（`GetSiteTagBySiteKey`/`QuerySiteTags`）不携带 namespace——ns 只在关联行上 |
 | 作品集 | `GetWorkSetById` / `GetWorkSetBySiteKey` / `ListWorkSetsByWorkId` / `ListParentWorkSets` / `ListChildWorkSets` / `QueryLocalWorkSets(req)` | 父子导航按库内作品集行 id；`QueryLocalWorkSets` 为库内作品集名全集分页（集名互证索引拉全用：条目 name=site_work_set_name 缺省回退 nick_name，两名皆空的行不出条目——total 仍为总行数，条目数可能略少） |
 | 站点 | `ListSites()` | identity 注册表投影全集，只读 |
+| 资源类型 | `ListResourceTypes()` | 资源类型注册表投影全集（内置 6 类 + 插件运行时注册的自定义类型），类型规约（结构角色与必含/数量界、展示主体优先级链、各角色文件标准）一并下发；一次拉取缓存消费 |
 | 工作目录 | `GetWorkDir()` | 资源库根目录绝对路径（OS 原生分隔符） |
 
 **使用规则**：
 
 1. **身份键优先**：跨库语义寻址一律 `(site_key, 站点侧 id)` 复合键（如 `GetWorkBySiteKey("pixiv", "128937464")`）。消息内各 int64 id 是库内行 id，仅作**会话内不透明句柄**（Get 结果携带 → `List*` 导航链路使用），不构成跨会话稳定标识。站点侧作者/标签/作品集同理（`GetSiteAuthorBySiteKey(siteKey, siteAuthorId)` 等）。
-2. **分页强制**：`Query*` 族（无界集合）强制分页——请求带 `PageRequest{page, page_size}`，响应带 `PageInfo{total, page, page_size}` 回执（dto 层为 gen 类型别名）。宿主钳制：`page < 1` 按 1、`page_size` 缺省 20、**上限 200**（超限截到 200），实际生效值以 `PageInfo` 回执为准。按归属锚定的完整关联（`List*ByWorkId` 族、作品集父子导航——语义即全集，体量由归属上界锚定）与 `ListSites`（站点键只增不改，个位数级）不分页。
+2. **分页强制**：`Query*` 族（无界集合）强制分页——请求带 `PageRequest{page, page_size}`，响应带 `PageInfo{total, page, page_size}` 回执（dto 层为 gen 类型别名）。宿主钳制：`page < 1` 按 1、`page_size` 缺省 20、**上限 200**（超限截到 200），实际生效值以 `PageInfo` 回执为准。按归属锚定的完整关联（`List*ByWorkId` 族、作品集父子导航——语义即全集，体量由归属上界锚定）与注册表投影（`ListSites` 站点键只增不改；`ListResourceTypes` 资源类型=内置 6 类+插件运行时注册的自定义类型——均个位数级）不分页。
 3. **重查询节制（指导原则）**：主程序数据库连接池 `MaxOpenConns=1`（SQLite 单写者），插件查询与主程序 UI/任务操作**共享同一连接**——重查询会阻塞用户界面。优先用过滤条件收窄结果集，避免「大页 + 全量翻页遍历」形态；扫描类需求先取 `PageInfo.total` 估算规模再定策略。
 4. **软删/活行语义**：查询**默认只返回活数据**——软删作品/store 不出现在任何结果，`resource_store` 关联按活行过滤（软删残留不现役）。无 IncludeDeleted 通道（插件无消费死行的合法场景）。
 5. **未命中语义**：`Get*` 族未命中返回 gRPC `NotFound`；`Query*` 族的 `site_key` 是过滤条件而非寻址——site_key 未命中注册表返回**空集**（不报错）。

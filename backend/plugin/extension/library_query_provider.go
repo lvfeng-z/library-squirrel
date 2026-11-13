@@ -818,6 +818,39 @@ func (p *libraryQueryProvider) listSites(ctx context.Context) (*gen.ListSitesRes
 	return &gen.ListSitesResponse{Items: items}, nil
 }
 
+// ===== 资源类型（注册表投影，只读）=====
+
+// listResourceTypes 资源类型注册表投影：内置 6 类 + 插件运行时注册的自定义类型全集，
+// 类型规约（结构角色与基数、展示主体链、各角色文件标准）一并下发——消费方（聚合规则、
+// 类型下拉等）一次拉取缓存，注册表为进程内单一事实源，不经域 repository
+func (p *libraryQueryProvider) listResourceTypes() (*gen.ListResourceTypesResponse, error) {
+	specs := entity.ResourceTypeRegistry.ListAll()
+	items := make([]*gen.ResourceTypeSpec, 0, len(specs))
+	for _, spec := range specs {
+		items = append(items, resourceTypeSpecToProto(spec))
+	}
+	return &gen.ListResourceTypesResponse{Items: items}, nil
+}
+
+// resourceTypeSpecToProto 实体资源类型规约映射为契约消息：字段逐一镜像
+// （ResourceTypeSpec/StoreRoleSpec/StoreStandard 同名同义），无形态转换
+func resourceTypeSpecToProto(spec entity.ResourceTypeSpec) *gen.ResourceTypeSpec {
+	roles := make([]*gen.StoreRoleSpec, 0, len(spec.Roles))
+	for _, r := range spec.Roles {
+		roles = append(roles, &gen.StoreRoleSpec{StoreType: r.StoreType, Min: int32(r.Min), Max: int32(r.Max)})
+	}
+	standards := make(map[string]*gen.StoreStandard, len(spec.StoreStandards))
+	for k, v := range spec.StoreStandards {
+		standards[k] = &gen.StoreStandard{Description: v.Description, Formats: v.Formats, Generation: v.Generation}
+	}
+	return &gen.ResourceTypeSpec{
+		ResourceType:   spec.ResourceType,
+		Roles:          roles,
+		PrimaryRoles:   spec.PrimaryRoles,
+		StoreStandards: standards,
+	}
+}
+
 // ===== 工作目录 =====
 
 // getWorkDir 返回资源库根目录绝对路径；未配置时对齐 RefuseIfUnconfigured 哨兵语义

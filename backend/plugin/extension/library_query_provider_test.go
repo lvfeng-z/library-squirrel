@@ -487,3 +487,91 @@ func TestWorkSetNavigation(t *testing.T) {
 		t.Fatalf("未命中作品集错误码 = %v, 期望 NotFound (err=%v)", status.Code(err), err)
 	}
 }
+
+// TestListResourceTypesProjection 资源类型注册表投影：返回内置 6 类全集 + 插件运行时注册的
+// 自定义类型，类型规约（结构角色与必含/数量界、展示主体链、各角色文件标准）随条目下发；
+// 全集按 resource_type 键字母序确定性排序
+func TestListResourceTypesProjection(t *testing.T) {
+	const customType = "com.example.procedure"
+	custom := entity.ResourceTypeSpec{
+		ResourceType: customType,
+		Roles: []entity.StoreRoleSpec{
+			{StoreType: entity.StoreTypeDocument, Min: 1, Max: 1},
+			{StoreType: entity.StoreTypeImage, Min: 0, Max: 0}, // 内嵌图 0~N（Max=0 表示不限）
+		},
+		PrimaryRoles: []string{entity.StoreTypeDocument},
+		StoreStandards: map[string]entity.StoreStandard{
+			entity.StoreTypeDocument: {Description: "正文", Formats: []string{".md"}, Generation: "downloaded"},
+			entity.StoreTypeImage:    {Description: "内嵌图", Formats: []string{".png"}, Generation: "downloaded"},
+		},
+	}
+	if err := entity.ResourceTypeRegistry.Register(custom); err != nil {
+		t.Fatalf("注册自定义类型失败: %v", err)
+	}
+	t.Cleanup(func() { entity.ResourceTypeRegistry.Unregister(customType) })
+
+	p := NewLibraryQueryProvider(LibraryQueryDeps{})
+	resp, err := p.listResourceTypes()
+	if err != nil {
+		t.Fatalf("listResourceTypes: %v", err)
+	}
+	byType := make(map[string]*gen.ResourceTypeSpec, len(resp.Items))
+	for _, item := range resp.Items {
+		byType[item.ResourceType] = item
+	}
+	// 内置 6 类全在投影内
+	for _, builtin := range []string{
+		entity.ResourceTypeImage, entity.ResourceTypeVideo, entity.ResourceTypeArticle,
+		entity.ResourceTypeDocument, entity.ResourceTypeAudio, entity.ResourceTypeUnknown,
+	} {
+		if _, ok := byType[builtin]; !ok {
+			t.Fatalf("投影缺少内置类型 %s（items=%d）", builtin, len(resp.Items))
+		}
+	}
+	// 字母序确定性（消费方缓存比对依赖稳定顺序）
+	for i := 1; i < len(resp.Items); i++ {
+		if resp.Items[i-1].ResourceType >= resp.Items[i].ResourceType {
+			t.Fatalf("投影非字母序: %s >= %s", resp.Items[i-1].ResourceType, resp.Items[i].ResourceType)
+		}
+	}
+	// video 规约：可播放主体必含单例轨 + 可选轨 + 展示主体链 + 文件标准
+	video := byType[entity.ResourceTypeVideo]
+	roleOf := func(storeType string) *gen.StoreRoleSpec {
+		for _, r := range video.Roles {
+			if r.StoreType == storeType {
+				return r
+			}
+		}
+		return nil
+	}
+	if mainRole := roleOf(entity.StoreTypeVideoMain); mainRole == nil || mainRole.Min != 1 || mainRole.Max != 1 {
+		t.Fatalf("video 缺 videoMain 必含单例轨: %+v", roleOf(entity.StoreTypeVideoMain))
+	}
+	if thumb := roleOf(entity.StoreTypeThumbnail); thumb == nil || thumb.Min != 0 || thumb.Max != 1 {
+		t.Fatalf("video 缺 thumbnail 可选轨: %+v", roleOf(entity.StoreTypeThumbnail))
+	}
+	if len(video.PrimaryRoles) != 1 || video.PrimaryRoles[0] != entity.StoreTypeVideoMain {
+		t.Fatalf("video 展示主体链 = %v, 期望 [videoMain]", video.PrimaryRoles)
+	}
+	if std := video.StoreStandards[entity.StoreTypeVideoMain]; std == nil || len(std.Formats) == 0 {
+		t.Fatalf("video 缺 videoMain 文件标准: %+v", video.StoreStandards[entity.StoreTypeVideoMain])
+	}
+	// unknown 无结构约束（roles/primary_roles/store_standards 皆空）
+	if unknown := byType[entity.ResourceTypeUnknown]; len(unknown.Roles) != 0 || len(unknown.PrimaryRoles) != 0 || len(unknown.StoreStandards) != 0 {
+		t.Fatalf("unknown 应无结构约束: %+v", unknown)
+	}
+	// 运行时注册的自定义类型随投影下发，轨角色与必含/数量界原样可达
+	got, ok := byType[customType]
+	if !ok {
+		t.Fatalf("投影缺少已注册自定义类型 %s", customType)
+	}
+	if len(got.Roles) != 2 ||
+		got.Roles[0].StoreType != entity.StoreTypeDocument || got.Roles[0].Min != 1 || got.Roles[0].Max != 1 ||
+		got.Roles[1].StoreType != entity.StoreTypeImage || got.Roles[1].Min != 0 || got.Roles[1].Max != 0 {
+		t.Fatalf("自定义类型角色规约失真: %+v", got.Roles)
+	}
+	if std := got.StoreStandards[entity.StoreTypeDocument]; std == nil || std.Description != "正文" ||
+		len(std.Formats) != 1 || std.Formats[0] != ".md" || std.Generation != "downloaded" {
+		t.Fatalf("自定义类型文件标准失真: %+v", got.StoreStandards[entity.StoreTypeDocument])
+	}
+}
