@@ -210,7 +210,7 @@ func TestValidateResourceType(t *testing.T) {
 }
 
 func TestValidateStoreType(t *testing.T) {
-	valid := []string{StoreTypeImage, StoreTypeDocument, StoreTypeThumbnail, StoreTypeVideoTrack, StoreTypeAudioTrack, StoreTypeVideoMain, StoreTypeAudioMain}
+	valid := []string{StoreTypeImage, StoreTypeDocument, StoreTypeThumbnail, StoreTypeVideoTrack, StoreTypeAudioTrack, StoreTypeVideoMain, StoreTypeAudioMain, StoreTypeSubtitle}
 	for _, st := range valid {
 		if err := ValidateStoreType(st); err != nil {
 			t.Fatalf("ValidateStoreType(%q) 期望 nil, 实际 %v", st, err)
@@ -220,6 +220,50 @@ func TestValidateStoreType(t *testing.T) {
 		if err := ValidateStoreType(st); err != ErrStoreTypeInvalid {
 			t.Fatalf("ValidateStoreType(%q) 期望 ErrStoreTypeInvalid, 实际 %v", st, err)
 		}
+	}
+}
+
+func TestVideoSubtitleRole(t *testing.T) {
+	// video 规约含 subtitle 可选轨:Min=0(可选) Max=0(不限——多语言字幕每语言一轨)
+	spec, ok := ResourceTypeRegistry.Lookup(ResourceTypeVideo)
+	if !ok {
+		t.Fatal("video 规约未注册")
+	}
+	var subtitleRole *StoreRoleSpec
+	for i := range spec.Roles {
+		if spec.Roles[i].StoreType == StoreTypeSubtitle {
+			subtitleRole = &spec.Roles[i]
+		}
+	}
+	if subtitleRole == nil {
+		t.Fatal("video 规约缺 subtitle 角色")
+	}
+	if subtitleRole.Min != 0 || subtitleRole.Max != 0 {
+		t.Fatalf("subtitle 基数期望 (Min=0,Max=0) 可选且不限, 实际 (Min=%d,Max=%d)", subtitleRole.Min, subtitleRole.Max)
+	}
+	// 同一资源挂多条 subtitle store 不触发超量(Max=0 不限)
+	miss, excess := ValidateResourceStructure(ResourceTypeVideo, map[string]int{StoreTypeVideoMain: 1, StoreTypeSubtitle: 3})
+	if len(miss) != 0 || len(excess) != 0 {
+		t.Fatalf("video 含多条字幕轨期望无缺失无超量, 实际 miss=%v excess=%v", miss, excess)
+	}
+	// 无字幕轨也完整(可选轨)
+	miss, excess = ValidateResourceStructure(ResourceTypeVideo, map[string]int{StoreTypeVideoMain: 1})
+	if len(miss) != 0 || len(excess) != 0 {
+		t.Fatalf("video 无字幕轨期望完整, 实际 miss=%v excess=%v", miss, excess)
+	}
+	// subtitle 不进展示主体优先级链(主体仍为 videoMain)
+	if len(spec.PrimaryRoles) != 1 || spec.PrimaryRoles[0] != StoreTypeVideoMain {
+		t.Fatalf("video PrimaryRoles 期望仅 [videoMain], 实际 %v", spec.PrimaryRoles)
+	}
+	// 封闭枚举全集含 subtitle(「空选择=全量板块」展开面)
+	found := false
+	for _, st := range AllStoreTypes() {
+		if st == StoreTypeSubtitle {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("AllStoreTypes 缺 subtitle")
 	}
 }
 

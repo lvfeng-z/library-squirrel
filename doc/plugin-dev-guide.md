@@ -300,12 +300,12 @@ type MyWorkFetcher struct{}
 
 **字段**：
 - `type`：类型值，**强制反向域名前缀**（如 `com.example.xxx`），禁止裸通用词（防抢占内置名）。插件 Create 时填此值。
-- `roles`：结构角色 + 基数。`storeType` 必须 ∈ 内置 7 角色（`image`/`document`/`thumbnail`/`videoTrack`/`audioTrack`/`videoMain`/`audioMain`）；**插件自定义 store 角色当前不支持**（延后）。`min`=最少数量(0=可选,1=必含)，`max`=最多数量(0=不限,1=单例)。
+- `roles`：结构角色 + 基数。`storeType` 必须 ∈ 内置 8 角色（`image`/`document`/`thumbnail`/`videoTrack`/`audioTrack`/`videoMain`/`audioMain`/`subtitle`）；**插件自定义 store 角色当前不支持**（延后）。`min`=最少数量(0=可选,1=必含)，`max`=最多数量(0=不限,1=单例)。
 - `primaryRoles`：展示主体优先级链，每项须在 `roles.storeType` 集合内。
 - `storeStandards`（可选）：各 store 角色的文件标准声明（key=storeType），字段 `description`（角色用途说明）、`formats`（期望文件扩展名，描述性非强制）、`generation`（该角色典型 generation：`downloaded`/`derived`，可跨多种 generation 的角色留空）。**描述性信息，不做内容校验**，校验不强制其存在；与宿主侧规约结构 `entity.StoreStandard` 对齐（`backend/base/model/entity/resource_type.go:45-48`、`ResourceTypeSpec.StoreStandards` 见 `:53-57`）。该字段目前无读取点（仅内置类型的规约赋值），补齐它使插件自定义类型的规约声明完整。
 
 **注册时强校验**（守卫严格识别不变量；坏 spec 拒绝并记日志跳过，不株连插件其他能力）：
-- `type` 缺反向域名前缀 → 拒；`roles.storeType` 非 7 角色 / `min`>`max` / `primaryRoles` 不在 roles → 拒。
+- `type` 缺反向域名前缀 → 拒；`roles.storeType` 非 8 角色 / `min`>`max` / `primaryRoles` 不在 roles → 拒。
 - 两插件声明同 `type` → 后注册者拒 + 日志告警。
 
 **渲染/完整性自动跟随**：自定义类型注册后，前端 resourceViewer 按该类型查找插件 `resourceViewer` 渲染器（命中覆盖内置，无则降级 UnknownRenderer）；完整性按 `roles` 基数自动判定。完整规约见 `doc/resource-type-spec.md` 第七节。
@@ -534,7 +534,7 @@ type WorkFetcher interface {
 `TaskCreateResponse` / `TaskCreateChildResponse` 的 `ResourceType` 字段**必须声明**内置值之一(`sdkdto.ResourceTypeImage`/`Video`/`Article`/`Document`/`Audio`/`Unknown`)或插件经 `resourceTypes` 段注册的自定义类型。主程序**严格识别,不推断、不兜底**:
 
 - `ResourceType` 空 / 未注册值 → 写入路径抛错(任务创建/执行失败)
-- `StoreSpec.Role` 非 `image`/`document`/`thumbnail`/`videoTrack`/`audioTrack`/`videoMain`/`audioMain` 七角色 → 抛错
+- `StoreSpec.Role` 非 `image`/`document`/`thumbnail`/`videoTrack`/`audioTrack`/`videoMain`/`audioMain`/`subtitle` 八角色 → 抛错
 - `unknown` 是合法显式值(插件确实无法分类时声明),不报错
 
 资源类型决定 store 角色组合(结构规约)+ 展示主体优先级 + 文件标准。完整规约见 **`doc/resource-type-spec.md`**。例:图片资源声明 `ResourceType: sdkdto.ResourceTypeImage`,Start 产出 `Role: sdkdto.StoreRoleImage`(+ 可选 `StoreRoleThumbnail`)。**禁止硬编码字面量**——store_type/resource_type/generation 一律用 SDK dto 常量(`sdkdto.StoreRole*`/`ResourceType*`/`Generation*`，真相源在 SDK `contract` 子包)，改一处即处处同步;硬编码绕过编译期保护，升级时易漂移（见「共享枚举常量」）。
@@ -543,7 +543,7 @@ type WorkFetcher interface {
 
 ```go
 type StoreSpec struct {
-    Role        string        // store_type: image | document | thumbnail | videoTrack | audioTrack | videoMain | audioMain
+    Role        string        // store_type: image | document | thumbnail | videoTrack | audioTrack | videoMain | audioMain | subtitle
     Generation  string        // downloaded(流式可续传) | derived(一次性派生)
     ReadCloser  io.ReadCloser // 资源数据流,调用方负责 Close
     Format      string        // 文件扩展名

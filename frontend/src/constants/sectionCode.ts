@@ -6,7 +6,8 @@ export const StoreRole = {
   VIDEO_TRACK: 'videoTrack', // 分离流视频原料(无音频)
   AUDIO_TRACK: 'audioTrack', // 分离流音频原料
   VIDEO_MAIN: 'videoMain', // 视频可播放主体(封装原文件 downloaded 或合并产物 derived)
-  AUDIO_MAIN: 'audioMain' // 音频可播放主体(独立音频资源主体)
+  AUDIO_MAIN: 'audioMain', // 音频可播放主体(独立音频资源主体)
+  SUBTITLE: 'subtitle' // 字幕轨(video 可选轨;多语言字幕每语言一轨,语言由文件名承载)
 } as const
 
 // 兜底资源角色集(task 未声明 involvedRoles 时展示的可选全集;用户不勾选任何板块时下发等价全量重执行)
@@ -17,7 +18,8 @@ export const ALL_STORE_ROLES: string[] = [
   StoreRole.VIDEO_TRACK,
   StoreRole.AUDIO_TRACK,
   StoreRole.VIDEO_MAIN,
-  StoreRole.AUDIO_MAIN
+  StoreRole.AUDIO_MAIN,
+  StoreRole.SUBTITLE
 ]
 
 // 资源板块中文标签(操作栏勾选项展示)
@@ -28,7 +30,8 @@ export const StoreRoleLabels: Record<string, string> = {
   [StoreRole.VIDEO_TRACK]: '分离流视频',
   [StoreRole.AUDIO_TRACK]: '分离流音频',
   [StoreRole.VIDEO_MAIN]: '视频主体',
-  [StoreRole.AUDIO_MAIN]: '音频主体'
+  [StoreRole.AUDIO_MAIN]: '音频主体',
+  [StoreRole.SUBTITLE]: '字幕'
 }
 
 // 资源类型(与后端 entity.ResourceType* 常量一致;前端按此分发渲染/外部打开)

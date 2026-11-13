@@ -141,7 +141,7 @@ func isBuiltinResourceType(resourceType string) bool {
 
 // validateSpecForRegister 注册时强校验 spec 合法性(守卫严格识别不变量,前移到注册时拦截)。
 //   - ResourceType 非空;插件自定义类型(非内置)强制反向域名前缀(决策8,防抢占未来内置名)
-//   - 每个 Role 的 StoreType ∈ 内置 7 角色;Min≥0;Max=0(不限) 或 Max≥Min
+//   - 每个 Role 的 StoreType ∈ 内置 8 角色;Min≥0;Max=0(不限) 或 Max≥Min
 //   - PrimaryRoles 每项 ∈ Roles 的 StoreType 集合
 //
 // 内置类型经包级初始化注册,豁免前缀校验(内置名无点,如 image/video/audio)。
@@ -176,7 +176,7 @@ func validateSpecForRegister(spec ResourceTypeSpec) error {
 	return nil
 }
 
-// validStoreTypes 合法的 store_type 集合(写入路径严格识别用;内置 7 角色)
+// validStoreTypes 合法的 store_type 集合(写入路径严格识别用;内置 8 角色)
 var validStoreTypes = map[string]struct{}{
 	StoreTypeImage:      {},
 	StoreTypeDocument:   {},
@@ -185,6 +185,7 @@ var validStoreTypes = map[string]struct{}{
 	StoreTypeAudioTrack: {},
 	StoreTypeVideoMain:  {},
 	StoreTypeAudioMain:  {},
+	StoreTypeSubtitle:   {},
 }
 
 // AllStoreTypes 内置 store_type 封闭枚举全集(字母序)。供「空选择=全量板块」展开为显式角色集合——
@@ -219,6 +220,8 @@ var videoResourceTypeSpec = ResourceTypeSpec{
 		// videoTrack/audioTrack 为分离流原料(可选):仅远程分离流场景产出,本地封装视频无需拆轨
 		{StoreType: StoreTypeVideoTrack, Min: 0, Max: 1},
 		{StoreType: StoreTypeAudioTrack, Min: 0, Max: 1},
+		// subtitle 为字幕轨(可选,不限数量):多语言字幕每语言一轨,语言维度由文件名承载
+		{StoreType: StoreTypeSubtitle, Min: 0, Max: 0},
 		{StoreType: StoreTypeThumbnail, Min: 0, Max: 1},
 	},
 	PrimaryRoles: []string{StoreTypeVideoMain},
@@ -226,6 +229,7 @@ var videoResourceTypeSpec = ResourceTypeSpec{
 		StoreTypeVideoMain:  {Description: "可播放视频主体(封装原文件 downloaded 或合并产物 derived)", Formats: []string{".mp4"}, Generation: ""}, // generation 不固定:封装原文件 downloaded、分离流合并产物 derived,以产出方声明为准
 		StoreTypeVideoTrack: {Description: "分离流视频原料(无音频)", Formats: []string{".mp4"}, Generation: GenerationDownloaded},
 		StoreTypeAudioTrack: {Description: "分离流音频原料", Formats: []string{".m4a", ".mp3", ".aac"}, Generation: GenerationDownloaded},
+		StoreTypeSubtitle:   {Description: "字幕轨(多语言字幕每语言一轨,语言由文件名承载)", Formats: []string{".srt", ".ass", ".ssa", ".sub", ".vtt"}, Generation: GenerationDownloaded},
 		StoreTypeThumbnail:  {Description: "封面/缩略图", Formats: []string{".jpg", ".png", ".webp"}, Generation: GenerationDerived},
 	},
 }
@@ -370,7 +374,7 @@ func ValidateResourceType(resourceType string) error {
 	return nil
 }
 
-// ValidateStoreType 严格识别 store_type(写入路径用)。非 6 预定义角色→ErrStoreTypeInvalid。
+// ValidateStoreType 严格识别 store_type(写入路径用)。非 8 预定义角色→ErrStoreTypeInvalid。
 func ValidateStoreType(storeType string) error {
 	if _, ok := validStoreTypes[storeType]; !ok {
 		return ErrStoreTypeInvalid

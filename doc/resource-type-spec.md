@@ -18,9 +18,9 @@ ResourceTypeSpec { Roles[](结构角色+基数), PrimaryRoles[](展示优先级)
 - `ResourceTypeRegistry` 内置 6 种资源类型（image/video/article/document/audio/unknown）；插件可经 manifest `extensions.resourceTypes` 段声明自定义类型（**段存在即启用**——自契约 v9 起自顶层迁入 `extensions`，不再需要 `resourceTypeProvider` 通行证；注册时强校验，见第七节）。
 - 前端**纯消费**：渲染/外部打开按 ResourceType 分发，展示主体用后端派生的 `workStore`，零主体决策。
 
-## 二、store_type 七角色（内置封闭枚举）
+## 二、store_type 八角色（内置封闭枚举）
 
-`store_type` 标识 resource_store 的业务角色，内置 7 角色封闭枚举（插件自定义资源类型本次仅复用内置角色；插件自定义 store 角色延后）。
+`store_type` 标识 resource_store 的业务角色，内置 8 角色封闭枚举（插件自定义资源类型本次仅复用内置角色；插件自定义 store 角色延后）。
 
 | store_type | 语义 | generation 典型 |
 |---|---|---|
@@ -31,6 +31,7 @@ ResourceTypeSpec { Roles[](结构角色+基数), PrimaryRoles[](展示优先级)
 | `audioTrack` | 音频轨（video 组成） | downloaded |
 | `videoMain` | 视频可播放主体（封装原文件 / 合并产物，单例） | downloaded 或 derived |
 | `audioMain` | 音频可播放主体（独立音频资源主体，单例） | downloaded |
+| `subtitle` | 字幕轨（video 可选轨；多语言字幕每语言一轨，语言维度由文件名承载，规约无语言字段） | downloaded |
 
 > **generation 是 store 实例属性，非 role 属性**：上表"generation 典型"列仅描述性参考。每个 store 行的实际 generation 由**产出方**决定（插件 `StoreSpec.Generation` / `MergeService` / 还原），以 `resource_store.generation` 列为准，**不从 store_type 推断**。同一 store_type 可跨 generation——`videoMain` 可由本地导入产出（downloaded，封装原文件）或由分离流合并产出（derived，MergeService 合成）。generation 决定执行流程：downloaded 走流式 copy + 断点续传 + size 完整性校验；derived 走一次性 + 完成即完整 + 失败整轨重产。
 
@@ -47,10 +48,10 @@ Roles 记法 `角色(Min~Max)`：Min=最少数量（0=可选，1=必含）；Max
 
 ### video — 视频资源
 
-- **Roles**：`videoMain(1~1)`、`videoTrack(0~1)`、`audioTrack(0~1)`、`thumbnail(0~1)`
-- **PrimaryRoles**：`[videoMain]`（唯一可播放主体）
-- **文件标准**：videoMain=可播放主体(`.mp4`，封装原文件 downloaded / 合并产物 derived)；videoTrack=分离流视频原料(`.mp4`，downloaded)；audioTrack=分离流音频原料(`.m4a`/`.mp3`/`.aac`，downloaded)；thumbnail=封面(derived)
-- **典型**：本地封装视频（仅 videoMain）；bilibili 分离流（videoTrack+audioTrack，合并后增 videoMain）
+- **Roles**：`videoMain(1~1)`、`videoTrack(0~1)`、`audioTrack(0~1)`、`subtitle(0~不限)`、`thumbnail(0~1)`
+- **PrimaryRoles**：`[videoMain]`（唯一可播放主体；subtitle 为伴随字幕轨，不进主体优先级链）
+- **文件标准**：videoMain=可播放主体(`.mp4`，封装原文件 downloaded / 合并产物 derived)；videoTrack=分离流视频原料(`.mp4`，downloaded)；audioTrack=分离流音频原料(`.m4a`/`.mp3`/`.aac`，downloaded)；subtitle=字幕轨(`.srt`/`.ass`/`.ssa`/`.sub`/`.vtt`，downloaded)；thumbnail=封面(derived)
+- **典型**：本地封装视频（仅 videoMain）；bilibili 分离流（videoTrack+audioTrack，合并后增 videoMain）；视频+外挂字幕聚合（videoMain+subtitle 多轨，多语言字幕各一轨）
 
 ### article — 图文紧密结合文档
 
@@ -90,9 +91,9 @@ Roles 记法 `角色(Min~Max)`：Min=最少数量（0=可选，1=必含）；Max
 
 2. **严格识别**（主程序不推断、不兜底）：
    - `ResourceType` 空 / 未注册值 → **写入路径抛错**（任务创建/执行失败）
-   - `store_type`（StoreSpec.Role）非七预定义角色 → **写入路径抛错**
+   - `store_type`（StoreSpec.Role）非八预定义角色 → **写入路径抛错**
    - `unknown` 是合法显式值，不报错
-3. **store 角色产出**：插件 `Start` 返回的 `StoreSpec.Role` 必须用七预定义角色，且与声明的 ResourceType 的 Roles 一致（软不变量：Roles 角色 ⊆ 实际产出，以实际产出为准）。
+3. **store 角色产出**：插件 `Start` 返回的 `StoreSpec.Role` 必须用八预定义角色，且与声明的 ResourceType 的 Roles 一致（软不变量：Roles 角色 ⊆ 实际产出，以实际产出为准）。
 4. **多图一致性**：每个子 resource 独立声明 ResourceType（resource 级，无 work 级约束）。
 
 ## 五、完整性（ResourceComplete 三态）
@@ -124,7 +125,7 @@ Roles 记法 `角色(Min~Max)`：Min=最少数量（0=可选，1=必含）；Max
 
 1. **声明载体**：plugin.json `extensions.resourceTypes` 段（结构化声明：type + roles + primaryRoles + 可选 storeStandards）——**段存在即启用**（自契约 v9 起自顶层迁入 `extensions`；`resourceTypeProvider` 通行证取消，一把锁不再需要两把钥匙）。要求主程序 `contractVersion`≥3（自 v9 起主程序 `minSupportedContractVersion` 升至 9）。
    - 段内条目可选字段 `storeStandards`（key=storeType）：`description`/`formats`/`generation`，与宿主侧规约结构 `ResourceTypeSpec.StoreStandards` 对齐（`backend/base/model/entity/resource_type.go:45-57`）；**描述性、校验不强制其存在**，当前无读取点。
-2. **注册时强校验**（守卫严格识别不变量）：type 强制反向域名前缀（如 `com.example.xxx`，防抢占内置名）；`roles.storeType` 必须 ∈ 内置 7 角色（插件自定义 store 角色延后）；Min≤Max；primaryRoles ⊆ roles。坏 spec 拒绝并记日志跳过，不株连插件其他能力。
+2. **注册时强校验**（守卫严格识别不变量）：type 强制反向域名前缀（如 `com.example.xxx`，防抢占内置名）；`roles.storeType` 必须 ∈ 内置 8 角色（插件自定义 store 角色延后）；Min≤Max；primaryRoles ⊆ roles。坏 spec 拒绝并记日志跳过，不株连插件其他能力。
 3. **同名冲突**：两插件声明同 type 值 → 后注册者拒绝 + 日志告警。
 4. **渲染/完整性自动跟随**：自定义类型注册后，前端 resourceViewer 按该类型查找插件渲染器（命中则覆盖内置）；完整性校验按声明的 Roles 基数自动判定。无插件渲染器则降级 UnknownRenderer。
 5. **卸载**：插件卸载时反注册其类型；内置类型受保护不可卸载。历史 resource 引用已卸载类型时 Lookup 返回 nil，走 unknown 降级（读路径安全，完整性徽标失效）。
