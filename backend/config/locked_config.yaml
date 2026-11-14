@@ -2,5 +2,8 @@
 # 由构建管线 task build:plugins 生成维护，勿手改（手改仅影响本地构建产物）
 officialPlugins:
   - publicId: com.lvfeng.localImport
+    buildId: "67365e1"
+    contentDigest: e9f03d3e1e547077019b038f0b654da4782c21161411b5d2457509b1d0906e60
+  - publicId: com.lvfeng.localImport
     buildId: e741bba
     contentDigest: d908a95c678069bbeec2f6a156d4e3221d93bfdddf67b1bf0884c40d4b60d9cb
