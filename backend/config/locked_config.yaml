@@ -1,3 +1,6 @@
 # 订死配置（locked）——随二进制分发的权威数据，不参与两层合并，磁盘无对应覆盖物；
 # 由构建管线 task build:plugins 生成维护，勿手改（手改仅影响本地构建产物）
-officialPlugins: []
+officialPlugins:
+  - publicId: com.lvfeng.localImport
+    buildId: e741bba
+    contentDigest: d908a95c678069bbeec2f6a156d4e3221d93bfdddf67b1bf0884c40d4b60d9cb
